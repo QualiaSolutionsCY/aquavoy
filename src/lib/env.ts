@@ -63,3 +63,12 @@ let sbCache: z.infer<typeof supabaseSchema> | null = null;
 export function getSupabaseEnv() {
   return (sbCache ??= validate(supabaseSchema, "Supabase"));
 }
+
+// ── Tavily (web research) ────────────────────────────────
+const tavilySchema = z.object({
+  TAVILY_API_KEY: z.string().min(1, "TAVILY_API_KEY is required"),
+});
+let tavilyCache: z.infer<typeof tavilySchema> | null = null;
+export function getTavilyEnv() {
+  return (tavilyCache ??= validate(tavilySchema, "Tavily"));
+}

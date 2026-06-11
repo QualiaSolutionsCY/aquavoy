@@ -126,3 +126,17 @@ export async function loadAccountWithSecret(id: string): Promise<MailAccountWith
   if (error || !data) throw new Error(`Mail account not found: ${id}`);
   return toMailAccountWithSecret(data as AccountRow);
 }
+
+/** Load a mail account by email address (case-insensitive), WITH the password. */
+export async function loadAccountWithSecretByEmail(
+  email: string,
+): Promise<MailAccountWithSecret | null> {
+  const db = supabaseAdmin();
+  const { data, error } = await db
+    .from(TABLE)
+    .select("*")
+    .ilike("email", email.toLowerCase())
+    .single();
+  if (error || !data) return null;
+  return toMailAccountWithSecret(data as AccountRow);
+}

@@ -59,7 +59,6 @@ export default function Chat() {
   const [identity, setIdentity] = useState<Principal | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [web, setWeb] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -68,10 +67,47 @@ export default function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  function pick(name: Principal) {
+  async function pick(name: Principal) {
     setIdentity(name);
     setMessages([greeting(name)]);
     setError(null);
+
+    // Hydrate from persistent memory (enhancement — failures are silent).
+    try {
+      const res = await fetch(`/api/chat/history?principal=${name}`);
+      const json = await res.json();
+      if (json.ok && Array.isArray(json.data) && json.data.length > 0) {
+        setMessages(
+          json.data.map((m: { role: "user" | "assistant"; content: string }) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        );
+      }
+    } catch {
+      /* memory is an enhancement, not a blocker */
+    }
+  }
+
+  /** Fire-and-forget: persist a single message to chat history. */
+  function persist(principal: Principal, role: "user" | "assistant", content: string) {
+    fetch("/api/chat/history", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ principal, role, content }),
+    }).catch((e) => console.warn("chat-history persist failed", e));
+  }
+
+  /** Clear all stored messages for the current principal. */
+  async function clearMemory() {
+    if (!identity) return;
+    if (!confirm(`Clear all saved messages for ${identity}?`)) return;
+    try {
+      await fetch(`/api/chat/history?principal=${identity}`, { method: "DELETE" });
+    } catch (e) {
+      console.warn("chat-history clear failed", e);
+    }
+    setMessages([greeting(identity)]);
   }
 
   async function send() {
@@ -84,6 +120,9 @@ export default function Chat() {
     setMessages([...history, { role: "assistant", content: "" }]);
     setBusy(true);
 
+    // Fire-and-forget: persist the user message.
+    persist(identity, "user", text);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -92,7 +131,6 @@ export default function Chat() {
           // Drop the local greeting (index 0) before sending to the model.
           messages: history.slice(1),
           identity,
-          web,
         }),
       });
 
@@ -133,7 +171,10 @@ export default function Chat() {
           }
         }
       }
-      if (!acc) {
+      if (acc) {
+        // Fire-and-forget: persist the assistant reply.
+        persist(identity, "assistant", acc);
+      } else {
         setMessages((prev) => {
           const next = [...prev];
           next[next.length - 1] = { role: "assistant", content: "(no response)" };
@@ -195,6 +236,13 @@ export default function Chat() {
         <div className="row">
           <button
             className="btn ghost"
+            onClick={clearMemory}
+            aria-label="Clear conversation memory"
+          >
+            Clear memory
+          </button>
+          <button
+            className="btn ghost"
             onClick={() => setIdentity(null)}
             aria-label="Switch user identity"
           >
@@ -235,15 +283,6 @@ export default function Chat() {
       </div>
 
       <div className="composer">
-        <button
-          className={`web-toggle ${web ? "on" : ""}`}
-          onClick={() => setWeb((w) => !w)}
-          title="Toggle internet search"
-          aria-pressed={web}
-          aria-label={`Web search ${web ? "enabled" : "disabled"}`}
-        >
-          Web {web ? "on" : "off"}
-        </button>
         <textarea
           rows={1}
           placeholder={`Message Aquavoy as ${identity}…`}

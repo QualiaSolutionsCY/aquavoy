@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import Nav from "@/components/Nav";
+import Footer from "@/components/Footer";
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -18,8 +19,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aquavoy",
-  description: "Aquavoy maritime operations console.",
+  title: "Aquavoy — Inland Operations Console",
+  description:
+    "Aquavoy & Faial BV inland waterway operations — AI chat, company mail, OneDrive files, and crew email prep. Powered by Qualia Solutions.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -31,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         <Nav />
         <div id="main">{children}</div>
+        <Footer />
       </body>
     </html>
   );

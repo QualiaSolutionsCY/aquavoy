@@ -17,6 +17,44 @@ function greeting(name: Principal): Msg {
   };
 }
 
+/* ── Lightweight Markdown rendering for assistant replies ──
+   Handles **bold**, *italic*, `code`, and "* " / "- " bullet markers.
+   Newlines survive via the bubble's pre-wrap white-space. */
+const INLINE_MD = /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|`[^`]+`)/g;
+
+function renderInline(text: string): React.ReactNode[] {
+  return text.split(INLINE_MD).map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      return <code key={i}>{part.slice(1, -1)}</code>;
+    }
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    }
+    return part;
+  });
+}
+
+function renderMarkdown(text: string): React.ReactNode {
+  return text.split("\n").map((line, i) => {
+    const bullet = line.match(/^(\s*)[*-]\s+(.*)$/);
+    return (
+      <span key={i}>
+        {i > 0 && "\n"}
+        {bullet ? (
+          <>
+            {bullet[1]}&bull; {renderInline(bullet[2])}
+          </>
+        ) : (
+          renderInline(line)
+        )}
+      </span>
+    );
+  });
+}
+
 export default function Chat() {
   const [identity, setIdentity] = useState<Principal | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -115,7 +153,17 @@ export default function Chat() {
     return (
       <main className="gate">
         <div className="gate-card">
+          <p className="gate-coords">51.92&deg; N &middot; 4.48&deg; E — Inland Waterways</p>
           <h1>Aquavoy</h1>
+          <svg className="gate-wave" viewBox="0 0 140 12" aria-hidden="true">
+            <path
+              d="M0 6 Q 8.75 0, 17.5 6 T 35 6 T 52.5 6 T 70 6 T 87.5 6 T 105 6 T 122.5 6 T 140 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
           <p className="tag">Who is chatting today?</p>
           <div className="pick-row">
             {PRINCIPALS.map((name) => (
@@ -124,6 +172,12 @@ export default function Chat() {
               </button>
             ))}
           </div>
+          <p className="gate-credit">
+            Powered by{" "}
+            <a href="https://qualiasolutions.net" target="_blank" rel="noopener noreferrer">
+              Qualia Solutions
+            </a>
+          </p>
         </div>
       </main>
     );
@@ -160,7 +214,21 @@ export default function Chat() {
           <div key={i} className={`bubble ${m.role}`}>
             <span className="who">{m.role === "user" ? identity : "Aquavoy"}</span>
             <div className="text">
-              {m.content || (busy && i === messages.length - 1 ? "…" : "")}
+              {m.content ? (
+                m.role === "assistant" ? (
+                  renderMarkdown(m.content)
+                ) : (
+                  m.content
+                )
+              ) : busy && i === messages.length - 1 ? (
+                <span className="typing-dots" role="status" aria-label="Aquavoy is thinking">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+              ) : (
+                ""
+              )}
             </div>
           </div>
         ))}
@@ -195,8 +263,14 @@ export default function Chat() {
           disabled={busy || !input.trim()}
           aria-label="Send message"
         >
-          {busy ? "…" : "Send"}
+          {busy ? <span className="spinner" aria-hidden="true" /> : "Send"}
         </button>
+      </div>
+      <div className="chat-credit">
+        Powered by{" "}
+        <a href="https://qualiasolutions.net" target="_blank" rel="noopener noreferrer">
+          Qualia Solutions
+        </a>
       </div>
     </main>
   );

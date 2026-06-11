@@ -40,6 +40,7 @@ export default function Home() {
   const [activeConn, setActiveConn] = useState<string>("");
   const [items, setItems] = useState<DriveItem[]>([]);
   const [crumbs, setCrumbs] = useState<Crumb[]>([{ name: "OneDrive" }]);
+  const [initializing, setInitializing] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -81,10 +82,13 @@ export default function Home() {
     if (err) setError(err);
     if (connected) setNotice("OneDrive connected.");
     if (err || connected) window.history.replaceState({}, "", url.pathname);
-    loadConnections().then((list) => {
-      const conn = connected || list[0]?.id;
-      if (conn) loadFolder(conn);
-    });
+    loadConnections()
+      .then((list) => {
+        const conn = connected || list[0]?.id;
+        if (conn) loadFolder(conn);
+      })
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setInitializing(false));
   }, [loadConnections, loadFolder]);
 
   const openFolder = (item: DriveItem) => {
@@ -198,10 +202,20 @@ export default function Home() {
         </div>
       )}
 
-      {!connected ? (
+      {initializing ? (
+        <div className="list" aria-busy="true" aria-label="Loading OneDrive accounts">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div className="skeleton-row" key={i}>
+              <span className="skeleton icon" />
+              <span className="skeleton" style={{ width: `${72 - i * 9}%` }} />
+              <span className="skeleton meta" />
+            </div>
+          ))}
+        </div>
+      ) : !connected ? (
         <div className="empty">
           No OneDrive account connected yet. Click <strong>Connect OneDrive</strong> to
-          authorize via Microsoft.
+          authorize via Microsoft and bring the company drive aboard.
         </div>
       ) : (
         <>
@@ -262,9 +276,19 @@ export default function Home() {
             ))}
           </nav>
 
-          <div className="list" role="list" aria-label="Files and folders">
-            {items.length === 0 ? (
-              <div className="empty">{busy ? "Loading…" : "Empty folder"}</div>
+          <div className="list" role="list" aria-label="Files and folders" aria-busy={busy}>
+            {busy ? (
+              [0, 1, 2, 3].map((i) => (
+                <div className="skeleton-row" key={i}>
+                  <span className="skeleton icon" />
+                  <span className="skeleton" style={{ width: `${68 - i * 11}%` }} />
+                  <span className="skeleton meta" />
+                </div>
+              ))
+            ) : items.length === 0 ? (
+              <div className="empty">
+                This folder is empty. Upload a file or create a folder to get started.
+              </div>
             ) : (
               items.map((item) => (
                 <div className="item" key={item.id} role="listitem">

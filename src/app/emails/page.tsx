@@ -17,6 +17,19 @@ interface MailAccount {
   verifiedAt: string | null;
 }
 
+interface ScheduledEmail {
+  id: string;
+  fromEmail: string;
+  toEmail: string;
+  subject: string;
+  scheduledAt: string;
+  status: "pending" | "sent" | "failed" | "cancelled";
+  sentAt: string | null;
+  error: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: string };
 
 /* ── Form state for connecting a mailbox ── */
@@ -31,6 +44,28 @@ interface ConnectForm {
   imapHost: string;
   imapPort: number;
 }
+
+function fmtAmsterdam(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("en-GB", {
+      timeZone: "Europe/Amsterdam",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  pending: "muted",
+  sent: "ok",
+  failed: "err",
+  cancelled: "muted",
+};
 
 function makeForm(email: string, group: "aquavoy.com" | "faialbv.com"): ConnectForm {
   const defaults = DOMAIN_DEFAULTS[group];
@@ -62,6 +97,44 @@ export default function Emails() {
   /* Disconnect confirmation */
   const [confirmDisconnect, setConfirmDisconnect] = useState<string | null>(null);
 
+  /* Scheduled emails state */
+  const [scheduled, setScheduled] = useState<ScheduledEmail[]>([]);
+  const [scheduledLoading, setScheduledLoading] = useState(true);
+  const [scheduledError, setScheduledError] = useState<string | null>(null);
+
+  const fetchScheduled = useCallback(async () => {
+    try {
+      const res = await fetch("/api/mail/scheduled");
+      if (!res.ok) {
+        if (res.status === 404) {
+          setScheduled([]);
+          return;
+        }
+        throw new Error(`Server responded ${res.status}`);
+      }
+      const json = (await res.json()) as Envelope<ScheduledEmail[]>;
+      if (!json.ok) throw new Error(json.error);
+      setScheduled(json.data);
+    } catch (e) {
+      setScheduledError((e as Error).message);
+    } finally {
+      setScheduledLoading(false);
+    }
+  }, []);
+
+  async function cancelScheduledEmail(id: string) {
+    if (!confirm("Cancel this scheduled email?")) return;
+    try {
+      const res = await fetch(`/api/mail/scheduled?id=${id}`, { method: "DELETE" });
+      const json = (await res.json()) as Envelope<unknown>;
+      if (!json.ok) throw new Error((json as { ok: false; error: string }).error);
+      setNotice("Scheduled email cancelled.");
+      await fetchScheduled();
+    } catch (e) {
+      setScheduledError((e as Error).message);
+    }
+  }
+
   const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch("/api/mail/accounts");
@@ -85,7 +158,8 @@ export default function Emails() {
 
   useEffect(() => {
     fetchAccounts();
-  }, [fetchAccounts]);
+    fetchScheduled();
+  }, [fetchAccounts, fetchScheduled]);
 
   function findAccount(address: string): MailAccount | undefined {
     return accounts.find((a) => a.email.toLowerCase() === address.toLowerCase());
@@ -448,6 +522,55 @@ export default function Emails() {
           </section>
         ))
       )}
+      {/* ── Scheduled emails panel ── */}
+      <section className="panel" style={{ marginTop: "2rem" }}>
+        <h2 className="panel-h">Scheduled Emails</h2>
+
+        {scheduledError && (
+          <div className="notice err" role="alert">{scheduledError}</div>
+        )}
+
+        {scheduledLoading ? (
+          <div className="empty">Loading scheduled emails&hellip;</div>
+        ) : scheduled.length === 0 ? (
+          <div className="empty">No scheduled emails yet.</div>
+        ) : (
+          <div className="list">
+            {scheduled.map((item) => (
+              <div
+                key={item.id}
+                className="item"
+                style={{ gridTemplateColumns: "1fr auto auto" }}
+              >
+                <div>
+                  <span className="name">
+                    {item.fromEmail} &rarr; {item.toEmail}
+                  </span>
+                  <span className="meta">
+                    {item.subject} &middot; {fmtAmsterdam(item.scheduledAt)}
+                  </span>
+                  {item.error && (
+                    <span className="meta" style={{ color: "oklch(0.82 0.10 25)" }}>
+                      {item.error}
+                    </span>
+                  )}
+                </div>
+                <span className={`badge ${STATUS_BADGE[item.status] ?? "muted"}`}>
+                  {item.status}
+                </span>
+                {item.status === "pending" && (
+                  <button
+                    className="btn danger sm"
+                    onClick={() => cancelScheduledEmail(item.id)}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </main>
   );
 }

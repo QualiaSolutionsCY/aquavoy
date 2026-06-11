@@ -12,6 +12,7 @@ import { tavilySearch } from "@/lib/agents/tavily";
 import { recallMemory } from "@/lib/agents/memoryTools";
 import { loadAccountWithSecretByEmail, listAccounts } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
+import { scheduleEmail, listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
 
 /**
  * Tool definitions (OpenAI function-calling JSON schema) and executor for the
@@ -278,6 +279,77 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+
+  // ── Schedule email ──
+  {
+    type: "function" as const,
+    function: {
+      name: "schedule_email",
+      description:
+        "Schedule an email to be sent at a future date/time. IMPORTANT: Before calling this tool, ALWAYS show the user the full draft (from, to, subject, body, scheduled time) in chat and wait for their EXPLICIT confirmation in a follow-up message. Never schedule without asking first.",
+      parameters: {
+        type: "object",
+        properties: {
+          from: {
+            type: "string",
+            description: "The sender email address — must match a connected mail account.",
+          },
+          to: {
+            type: "string",
+            description: "Recipient email address.",
+          },
+          subject: {
+            type: "string",
+            description: "Email subject line.",
+          },
+          body: {
+            type: "string",
+            description: "Email body (plain text).",
+          },
+          sendAt: {
+            type: "string",
+            description:
+              "ISO-8601 datetime WITH timezone offset for when to send (e.g. 2026-06-12T09:00:00+02:00).",
+          },
+        },
+        required: ["from", "to", "subject", "body", "sendAt"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "list_scheduled_emails",
+      description:
+        "List the most recent scheduled emails with their statuses (pending, sent, failed, cancelled).",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "cancel_scheduled_email",
+      description:
+        "Cancel a scheduled email by its ID. Only works if the email is still pending.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "The UUID of the scheduled email to cancel.",
+          },
+        },
+        required: ["id"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ── Slim DriveItem projection for tool results ───────────────
@@ -499,6 +571,62 @@ export async function executeTool(
 
         await sendMail({ account, to, subject, body });
         return JSON.stringify({ sent: true, from: account.email, to, subject });
+      }
+
+      // ── Schedule email ──
+      case "schedule_email": {
+        const from = typeof args.from === "string" ? args.from : "";
+        const to = typeof args.to === "string" ? args.to : "";
+        const subject = typeof args.subject === "string" ? args.subject : "";
+        const body = typeof args.body === "string" ? args.body : "";
+        const sendAt = typeof args.sendAt === "string" ? args.sendAt : "";
+        if (!from || !to || !subject || !body || !sendAt)
+          return JSON.stringify({ error: "from, to, subject, body, and sendAt are all required" });
+
+        const sendDate = new Date(sendAt);
+        if (isNaN(sendDate.getTime()))
+          return JSON.stringify({ error: "sendAt must be a valid ISO-8601 datetime" });
+        if (sendDate.getTime() <= Date.now())
+          return JSON.stringify({ error: "sendAt must be in the future" });
+
+        const row = await scheduleEmail({
+          fromEmail: from,
+          toEmail: to,
+          subject,
+          body,
+          scheduledAt: sendAt,
+          createdBy: "agent",
+        });
+        return JSON.stringify({
+          scheduled: true,
+          id: row.id,
+          from: row.fromEmail,
+          to: row.toEmail,
+          subject: row.subject,
+          scheduledAt: row.scheduledAt,
+        });
+      }
+
+      case "list_scheduled_emails": {
+        const emails = await listScheduled();
+        const summary = emails.map((e) => ({
+          id: e.id,
+          from: e.fromEmail,
+          to: e.toEmail,
+          subject: e.subject,
+          scheduledAt: e.scheduledAt,
+          status: e.status,
+          sentAt: e.sentAt,
+          error: e.error,
+        }));
+        return JSON.stringify(summary);
+      }
+
+      case "cancel_scheduled_email": {
+        const id = typeof args.id === "string" ? args.id : "";
+        if (!id) return JSON.stringify({ error: "id is required" });
+        const row = await cancelScheduled(id);
+        return JSON.stringify({ cancelled: true, id: row.id, status: row.status });
       }
 
       default:

@@ -90,7 +90,13 @@ export const SYSTEM_PROMPT = [
   "   subject, body) in chat and wait for their EXPLICIT confirmation in a",
   "   follow-up message. Never send without asking first.",
   "",
-  "5. FILE ORGANIZATION: use create_folder, move_item, rename_item, delete_item",
+  "5b. SCHEDULED EMAIL: use schedule_email to queue an email for a future time.",
+  "    The same confirm-first rule applies: show the user the draft including the",
+  "    scheduled time, wait for explicit yes, then call schedule_email. Use",
+  "    list_scheduled_emails to show the queue and cancel_scheduled_email to",
+  "    cancel a pending email by id.",
+  "",
+  "6. FILE ORGANIZATION: use create_folder, move_item, rename_item, delete_item",
   "   to organize files on OneDrive. IMPORTANT: For any organization request,",
   "   first inspect the current structure with list_folder, then PROPOSE the",
   "   folder structure and moves in chat, and wait for user confirmation before",
@@ -107,9 +113,7 @@ export async function streamChat(
   opts: ChatOptions = {},
 ): Promise<Response> {
   const provider = chatProvider();
-  const system = opts.identity
-    ? `${SYSTEM_PROMPT}\n\nThe person you are chatting with right now is ${opts.identity}. Address them by name as ${opts.identity} and tailor your help to them.`
-    : SYSTEM_PROMPT;
+  const system = buildSystemContent(opts);
 
   const payload: Record<string, unknown> = {
     model: provider.model,
@@ -218,9 +222,11 @@ function withFallbacks(p: ChatProvider, payload: Record<string, unknown>): void 
 }
 
 function buildSystemContent(opts: ChatOptions): string {
+  const timeContext = `\n\nCurrent date/time: ${new Date().toISOString()} (UTC). The user's timezone is Europe/Amsterdam — interpret spoken times like "tomorrow 9:00" in Europe/Amsterdam and pass sendAt as ISO-8601 with the correct offset.`;
+  const base = SYSTEM_PROMPT + timeContext;
   return opts.identity
-    ? `${SYSTEM_PROMPT}\n\nThe person you are chatting with right now is ${opts.identity}. Address them by name as ${opts.identity} and tailor your help to them.`
-    : SYSTEM_PROMPT;
+    ? `${base}\n\nThe person you are chatting with right now is ${opts.identity}. Address them by name as ${opts.identity} and tailor your help to them.`
+    : base;
 }
 
 /**

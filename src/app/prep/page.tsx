@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+/* ── Types ── */
 
 interface Recipient {
   id: string;
@@ -8,6 +10,18 @@ interface Recipient {
   email: string;
   role: string | null;
   notes: string | null;
+}
+
+interface MailAccount {
+  id: string;
+  email: string;
+  displayName: string | null;
+  smtpHost: string;
+  smtpPort: number;
+  imapHost: string | null;
+  imapPort: number | null;
+  username: string;
+  verifiedAt: string | null;
 }
 
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -26,6 +40,11 @@ export default function Prep() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  /* Mail accounts (for "From" selector) */
+  const [mailAccounts, setMailAccounts] = useState<MailAccount[]>([]);
+  const [mailAccountsLoading, setMailAccountsLoading] = useState(true);
+  const [fromAccountId, setFromAccountId] = useState<string>("");
+
   // add-recipient form
   const [form, setForm] = useState({ name: "", email: "", role: "", notes: "" });
 
@@ -37,6 +56,31 @@ export default function Prep() {
   const [drafting, setDrafting] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const fetchMailAccounts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/mail/accounts");
+      if (!res.ok) {
+        if (res.status === 404) {
+          setMailAccounts([]);
+          return;
+        }
+        throw new Error(`Server responded ${res.status}`);
+      }
+      const json = (await res.json()) as Envelope<MailAccount[]>;
+      if (!json.ok) throw new Error(json.error);
+      setMailAccounts(json.data);
+      // Auto-select first account
+      if (json.data.length > 0) {
+        setFromAccountId(json.data[0].id);
+      }
+    } catch {
+      // Backend may not be deployed yet -- silently degrade
+      setMailAccounts([]);
+    } finally {
+      setMailAccountsLoading(false);
+    }
+  }, []);
+
   async function loadCrew() {
     try {
       setCrew(await api<Recipient[]>("/api/recipients"));
@@ -47,9 +91,11 @@ export default function Prep() {
       );
     }
   }
+
   useEffect(() => {
     loadCrew();
-  }, []);
+    fetchMailAccounts();
+  }, [fetchMailAccounts]);
 
   async function addRecipient() {
     if (!form.name || !form.email) return;
@@ -98,40 +144,39 @@ export default function Prep() {
     }
   }
 
-  async function pushToOutlook(mode: "draft" | "send") {
-    if (!selected || !subject || !bodyText) return;
+  async function sendEmail() {
+    if (!selected || !subject || !bodyText || !fromAccountId) return;
     setSending(true);
     setError(null);
     setNotice(null);
     try {
-      const r = await api<{ sent?: boolean; draft?: boolean; webLink?: string }>(
-        "/api/outlook/send",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ to: selected.email, subject, body: bodyText, mode }),
-        },
-      );
-      setNotice(
-        r.sent
-          ? `Sent to ${selected.email}`
-          : `Saved to Outlook Drafts${r.webLink ? "" : ""}.`,
-      );
+      await api<{ sent: boolean }>("/api/mail/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: fromAccountId,
+          to: selected.email,
+          subject,
+          body: bodyText,
+        }),
+      });
+      setNotice(`Sent to ${selected.email}`);
     } catch (e) {
-      setError(
-        `${(e as Error).message} — sending needs a connected Microsoft account (Azure app creds).`,
-      );
+      setError((e as Error).message);
     } finally {
       setSending(false);
     }
   }
+
+  const hasConnectedAccount = mailAccounts.length > 0;
+  const canSend = hasConnectedAccount && !!selected && !!subject && !!bodyText && !!fromAccountId;
 
   return (
     <main className="wrap">
       <div className="head">
         <div>
           <h1>1:1 Email Prep</h1>
-          <div className="tag">Draft, review, send via Outlook</div>
+          <div className="tag">Draft, review, send via SMTP</div>
         </div>
       </div>
 
@@ -147,7 +192,7 @@ export default function Prep() {
       )}
 
       <div className="prep-grid">
-        {/* ── Crew column ── */}
+        {/* -- Crew column -- */}
         <section className="panel">
           <h2 className="panel-h">Crew</h2>
           {crewError && <div className="notice err">{crewError}</div>}
@@ -215,7 +260,7 @@ export default function Prep() {
           </div>
         </section>
 
-        {/* ── Compose column ── */}
+        {/* -- Compose column -- */}
         <section className="panel">
           <h2 className="panel-h">
             {selected ? `Prepare email to ${selected.name}` : "Select a recipient"}
@@ -224,6 +269,37 @@ export default function Prep() {
             <div className="empty">Pick someone from the crew to prepare their 1:1 email.</div>
           ) : (
             <>
+              {/* From account selector */}
+              <label className="lbl" htmlFor="from-account">
+                From
+              </label>
+              {mailAccountsLoading ? (
+                <div className="meta" style={{ padding: "var(--sp-2) 0" }}>Loading accounts&hellip;</div>
+              ) : hasConnectedAccount ? (
+                <select
+                  id="from-account"
+                  value={fromAccountId}
+                  onChange={(e) => setFromAccountId(e.target.value)}
+                  style={{ width: "100%" }}
+                >
+                  {mailAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.email}{a.displayName ? ` (${a.displayName})` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div
+                  className="notice err"
+                  style={{ fontSize: "0.8125rem", padding: "var(--sp-2) var(--sp-3)" }}
+                >
+                  No mail account connected.{" "}
+                  <a href="/emails" style={{ fontWeight: 600 }}>
+                    Connect a mailbox first
+                  </a>
+                </div>
+              )}
+
               <label className="lbl" htmlFor="intent-field">
                 What should this email achieve?
               </label>
@@ -245,7 +321,7 @@ export default function Prep() {
                   Web {web ? "on" : "off"}
                 </button>
                 <button className="btn" onClick={draft} disabled={drafting || !intent.trim()}>
-                  {drafting ? "Drafting…" : "Draft with AI"}
+                  {drafting ? "Drafting..." : "Draft with AI"}
                 </button>
               </div>
 
@@ -271,18 +347,12 @@ export default function Prep() {
 
               <div className="row" style={{ marginTop: "1rem" }}>
                 <button
-                  className="btn ghost"
-                  onClick={() => pushToOutlook("draft")}
-                  disabled={sending || !subject || !bodyText}
-                >
-                  Save to Outlook Drafts
-                </button>
-                <button
                   className="btn"
-                  onClick={() => pushToOutlook("send")}
-                  disabled={sending || !subject || !bodyText}
+                  onClick={sendEmail}
+                  disabled={sending || !canSend}
+                  title={!hasConnectedAccount ? "Connect a mailbox on the Emails page first" : undefined}
                 >
-                  {sending ? "…" : "Send via Outlook"}
+                  {sending ? "Sending..." : "Send"}
                 </button>
               </div>
             </>

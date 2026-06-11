@@ -1,9 +1,32 @@
-/** Single source of truth for company mailboxes and their domain groups. */
+/** Single source of truth for company mailboxes, domain groups, and default server settings. */
 
 export interface Mailbox {
   address: string;
   group: "aquavoy.com" | "faialbv.com";
 }
+
+/** Default IMAP/SMTP server settings per domain (DNS + port probes verified). */
+export interface DomainDefaults {
+  smtpHost: string;
+  smtpPort: number;
+  imapHost: string;
+  imapPort: number;
+}
+
+export const DOMAIN_DEFAULTS: Record<Mailbox["group"], DomainDefaults> = {
+  "aquavoy.com": {
+    smtpHost: "mail.aquavoy.com",
+    smtpPort: 465,
+    imapHost: "mail.aquavoy.com",
+    imapPort: 993,
+  },
+  "faialbv.com": {
+    smtpHost: "mail.faialbv.com",
+    smtpPort: 465,
+    imapHost: "mail.faialbv.com",
+    imapPort: 993,
+  },
+};
 
 export const MAILBOXES: Mailbox[] = [
   // aquavoy.com

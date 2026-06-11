@@ -106,25 +106,21 @@ export async function streamChat(
   messages: ChatMessage[],
   opts: ChatOptions = {},
 ): Promise<Response> {
-  const env = getOpenRouterEnv();
+  const provider = chatProvider();
   const system = opts.identity
     ? `${SYSTEM_PROMPT}\n\nThe person you are chatting with right now is ${opts.identity}. Address them by name as ${opts.identity} and tailor your help to them.`
     : SYSTEM_PROMPT;
 
   const payload: Record<string, unknown> = {
-    model: env.OPENROUTER_MODEL,
+    model: provider.model,
     stream: true,
     messages: [{ role: "system", content: system }, ...messages],
   };
+  withFallbacks(provider, payload);
 
-  const res = await fetch(OPENROUTER_URL, {
+  const res = await fetch(provider.url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://aquavoy.app",
-      "X-Title": "Aquavoy",
-    },
+    headers: buildHeaders(provider.key),
     body: JSON.stringify(payload),
   });
 
@@ -140,21 +136,18 @@ export async function streamChat(
  * drafting an email as JSON). Returns the assistant message content.
  */
 export async function complete(messages: ChatMessage[], opts: ChatOptions & { web?: boolean } = {}): Promise<string> {
-  const env = getOpenRouterEnv();
+  const provider = chatProvider();
   const payload: Record<string, unknown> = {
-    model: env.OPENROUTER_MODEL,
+    model: provider.model,
     messages,
   };
-  if (opts.web) payload.plugins = [{ id: "web", max_results: 5 }];
+  // The web plugin is OpenRouter-specific; skip it on direct Gemini.
+  if (opts.web && provider.openrouter) payload.plugins = [{ id: "web", max_results: 5 }];
+  withFallbacks(provider, payload);
 
-  const res = await fetch(OPENROUTER_URL, {
+  const res = await fetch(provider.url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://aquavoy.app",
-      "X-Title": "Aquavoy",
-    },
+    headers: buildHeaders(provider.key),
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
@@ -174,6 +167,54 @@ function buildHeaders(apiKey: string): Record<string, string> {
     "HTTP-Referer": "https://aquavoy.app",
     "X-Title": "Aquavoy",
   };
+}
+
+const GOOGLE_OPENAI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+
+interface ChatProvider {
+  url: string;
+  key: string;
+  model: string;
+  /** True when talking to OpenRouter — enables models-fallback + plugins. */
+  openrouter: boolean;
+}
+
+/**
+ * Resolve the chat provider. A funded GOOGLE_API_KEY routes straight to
+ * Gemini's OpenAI-compatible endpoint; otherwise OpenRouter. The endpoint is
+ * OpenAI-wire-compatible either way, so the tool loop works unchanged.
+ */
+function chatProvider(): ChatProvider {
+  const google = process.env.GOOGLE_API_KEY;
+  if (google) {
+    return {
+      url: GOOGLE_OPENAI_URL,
+      key: google,
+      model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+      openrouter: false,
+    };
+  }
+  const env = getOpenRouterEnv();
+  return {
+    url: OPENROUTER_URL,
+    key: env.OPENROUTER_API_KEY,
+    model: env.OPENROUTER_MODEL,
+    openrouter: true,
+  };
+}
+
+/**
+ * OpenRouter auto-fallback: when OPENROUTER_FALLBACK_MODELS (comma-separated)
+ * is set, send a `models` list — the first non-rate-limited model serves.
+ */
+function withFallbacks(p: ChatProvider, payload: Record<string, unknown>): void {
+  if (!p.openrouter) return;
+  const extra = (process.env.OPENROUTER_FALLBACK_MODELS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (extra.length) payload.models = [p.model, ...extra];
 }
 
 function buildSystemContent(opts: ChatOptions): string {
@@ -201,8 +242,8 @@ export async function streamChatWithTools(
   messages: ChatMessage[],
   opts: ChatOptions = {},
 ): Promise<Response> {
-  const env = getOpenRouterEnv();
-  const headers = buildHeaders(env.OPENROUTER_API_KEY);
+  const provider = chatProvider();
+  const headers = buildHeaders(provider.key);
   const system = buildSystemContent(opts);
 
   // Working message history — starts with system + user messages.
@@ -215,13 +256,14 @@ export async function streamChatWithTools(
   let iterations = 0;
   while (iterations < MAX_TOOL_ITERATIONS) {
     const payload: Record<string, unknown> = {
-      model: env.OPENROUTER_MODEL,
+      model: provider.model,
       stream: false,
       messages: history,
       tools: TOOL_DEFINITIONS,
     };
+    withFallbacks(provider, payload);
 
-    const res = await fetch(OPENROUTER_URL, {
+    const res = await fetch(provider.url, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
@@ -280,12 +322,13 @@ export async function streamChatWithTools(
   // ── Final streaming call ───────────────────────────────────
   // Drop tool definitions on the final call so the model just answers.
   const finalPayload: Record<string, unknown> = {
-    model: env.OPENROUTER_MODEL,
+    model: provider.model,
     stream: true,
     messages: history,
   };
+  withFallbacks(provider, finalPayload);
 
-  const finalRes = await fetch(OPENROUTER_URL, {
+  const finalRes = await fetch(provider.url, {
     method: "POST",
     headers,
     body: JSON.stringify(finalPayload),

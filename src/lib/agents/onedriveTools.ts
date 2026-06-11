@@ -13,6 +13,7 @@ import { recallMemory } from "@/lib/agents/memoryTools";
 import { loadAccountWithSecretByEmail, listAccounts } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail, listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
+import { listFolders, listEmails, readEmail, searchEmails } from "@/lib/mail/imap";
 
 /**
  * Tool definitions (OpenAI function-calling JSON schema) and executor for the
@@ -350,6 +351,124 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+
+  // ── Mailbox read (IMAP) ──
+  {
+    type: "function" as const,
+    function: {
+      name: "list_emails",
+      description:
+        "List the most recent emails in a connected mailbox folder. Returns uid, date, from, to, subject, and seen/unseen status. Newest first.",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description:
+              "The email address of the connected mailbox (e.g. info@aquavoy.com).",
+          },
+          folder: {
+            type: "string",
+            description:
+              'Folder hint: "inbox", "sent", "drafts", "trash", or an explicit IMAP path. Defaults to inbox.',
+          },
+          count: {
+            type: "number",
+            description: "Number of messages to return (max 25, default 15).",
+          },
+        },
+        required: ["mailbox"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "read_email",
+      description:
+        "Read the full content of a single email by UID. Returns from, to, cc, date, subject, and plain-text body (capped at 12000 chars).",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description: "The email address of the connected mailbox.",
+          },
+          folder: {
+            type: "string",
+            description:
+              'Folder hint: "inbox", "sent", "drafts", "trash", or an explicit IMAP path. Defaults to inbox.',
+          },
+          uid: {
+            type: "number",
+            description: "The UID of the message to read (from list_emails or search_emails results).",
+          },
+        },
+        required: ["mailbox", "uid"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "search_emails",
+      description:
+        "Search emails in a connected mailbox folder by text content, sender, and/or date. Returns matching envelope summaries, newest first.",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description: "The email address of the connected mailbox.",
+          },
+          folder: {
+            type: "string",
+            description:
+              'Folder hint: "inbox", "sent", "drafts", "trash", or an explicit IMAP path. Defaults to inbox.',
+          },
+          query: {
+            type: "string",
+            description: "Free-text search across headers and body.",
+          },
+          from: {
+            type: "string",
+            description: "Filter by sender address or name.",
+          },
+          since: {
+            type: "string",
+            description: "Only messages after this ISO date (e.g. 2026-06-01).",
+          },
+          count: {
+            type: "number",
+            description: "Max results (max 25, default 15).",
+          },
+        },
+        required: ["mailbox"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "list_mail_folders",
+      description:
+        "List all IMAP folders/mailboxes for a connected email account. Returns path, name, and special-use flags.",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description: "The email address of the connected mailbox.",
+          },
+        },
+        required: ["mailbox"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ── Slim DriveItem projection for tool results ───────────────
@@ -630,6 +749,83 @@ export async function executeTool(
         if (!id) return JSON.stringify({ error: "id is required" });
         const row = await cancelScheduled(id);
         return JSON.stringify({ cancelled: true, id: row.id, status: row.status });
+      }
+
+      // ── Mailbox read (IMAP) ──
+      case "list_emails": {
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        if (!mailbox) return JSON.stringify({ error: "mailbox (email address) is required" });
+        const acct = await loadAccountWithSecretByEmail(mailbox);
+        if (!acct) {
+          const accounts = await listAccounts();
+          return JSON.stringify({
+            error: `No connected mail account for "${mailbox}".`,
+            connected_addresses: accounts.map((a) => a.email),
+            hint: "Tell the user which addresses are available and ask them to pick one.",
+          });
+        }
+        const folder = typeof args.folder === "string" ? args.folder : undefined;
+        const count = typeof args.count === "number" ? args.count : undefined;
+        const emails = await listEmails(mailbox, folder, count);
+        return JSON.stringify(emails);
+      }
+
+      case "read_email": {
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        const uid = typeof args.uid === "number" ? args.uid : Number(args.uid);
+        if (!mailbox || !uid || isNaN(uid))
+          return JSON.stringify({ error: "mailbox and uid are required" });
+        const acct2 = await loadAccountWithSecretByEmail(mailbox);
+        if (!acct2) {
+          const accounts = await listAccounts();
+          return JSON.stringify({
+            error: `No connected mail account for "${mailbox}".`,
+            connected_addresses: accounts.map((a) => a.email),
+          });
+        }
+        const folder = typeof args.folder === "string" ? args.folder : undefined;
+        const detail = await readEmail(mailbox, folder, uid);
+        return JSON.stringify(detail);
+      }
+
+      case "search_emails": {
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        if (!mailbox) return JSON.stringify({ error: "mailbox (email address) is required" });
+        const acct3 = await loadAccountWithSecretByEmail(mailbox);
+        if (!acct3) {
+          const accounts = await listAccounts();
+          return JSON.stringify({
+            error: `No connected mail account for "${mailbox}".`,
+            connected_addresses: accounts.map((a) => a.email),
+          });
+        }
+        const folder = typeof args.folder === "string" ? args.folder : undefined;
+        const query = typeof args.query === "string" ? args.query : undefined;
+        const from = typeof args.from === "string" ? args.from : undefined;
+        const since = typeof args.since === "string" ? args.since : undefined;
+        const count = typeof args.count === "number" ? args.count : undefined;
+        const results = await searchEmails(
+          mailbox,
+          folder,
+          { text: query, from, since },
+          count,
+        );
+        return JSON.stringify(results);
+      }
+
+      case "list_mail_folders": {
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        if (!mailbox) return JSON.stringify({ error: "mailbox (email address) is required" });
+        const acct4 = await loadAccountWithSecretByEmail(mailbox);
+        if (!acct4) {
+          const accounts = await listAccounts();
+          return JSON.stringify({
+            error: `No connected mail account for "${mailbox}".`,
+            connected_addresses: accounts.map((a) => a.email),
+          });
+        }
+        const folders = await listFolders(mailbox);
+        return JSON.stringify(folders);
       }
 
       default:

@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
+    "imapflow": "^1.4.0",
+    "mailparser": "^3.9.9",
     "mammoth": "^1.12.0",
     "next": "^16.0.0",
     "nodemailer": "^8.0.11",
@@ -21,6 +23,7 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
     "@types/pdf-parse": "^1.1.5",

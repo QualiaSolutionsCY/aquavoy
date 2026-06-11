@@ -19,9 +19,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aquavoy — Inland Operations Console",
+  title: "Aquavoy — Shipping Operations",
   description:
-    "Aquavoy & Faial BV inland waterway operations — AI chat, company mail, OneDrive files, and crew email prep. Powered by Qualia Solutions.",
+    "Aquavoy Shipping Ltd — inland waterway transports, AI chat, company mail, OneDrive files, and crew email prep. Powered by Qualia Solutions.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

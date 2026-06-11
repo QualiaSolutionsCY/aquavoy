@@ -154,30 +154,34 @@ export default function Chat() {
   }
 
   async function pick(name: Principal) {
-    setIdentity(name);
-    setMessages([greeting(name)]);
-    setError(null);
+    const minDelay = new Promise((r) => setTimeout(r, 600));
 
     // Hydrate the latest session (enhancement — failures are silent).
+    let msgs: Msg[] = [greeting(name)];
+    let sid = crypto.randomUUID();
     try {
       const res = await fetch(`/api/chat/history?principal=${name}`);
       const json = await res.json();
       if (json.ok && json.data?.sessionId && json.data.messages.length > 0) {
-        sessionRef.current = json.data.sessionId;
-        setMessages(
-          json.data.messages.map(
-            (m: { role: "user" | "assistant"; content: string }) => ({
-              role: m.role,
-              content: m.content,
-            }),
-          ),
+        sid = json.data.sessionId;
+        msgs = json.data.messages.map(
+          (m: { role: "user" | "assistant"; content: string }) => ({
+            role: m.role,
+            content: m.content,
+          }),
         );
-      } else {
-        sessionRef.current = crypto.randomUUID();
       }
     } catch {
       /* memory is an enhancement, not a blocker */
     }
+
+    // Ensure splash shows for at least 600ms so the logo animation reads.
+    await minDelay;
+
+    sessionRef.current = sid;
+    setMessages(msgs);
+    setError(null);
+    setIdentity(name);
   }
 
   /** Start a fresh thread — past sessions stay stored and recallable. */
@@ -288,30 +292,26 @@ export default function Chat() {
     }
   }
 
-  // ── Identity gate: choose Wency or Jeanette before chatting ──
+  // ── Auto-login as Wency on mount ──
+  useEffect(() => {
+    if (!identity) {
+      pick("Wency");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Splash screen while identity hydrates ──
   if (!identity) {
     return (
       <main className="gate">
         <div className="gate-card">
-          <p className="gate-coords">51.92&deg; N &middot; 4.48&deg; E — Inland Waterways</p>
+          <img src="/logo.png" alt="Aquavoy Shipping Ltd" className="gate-logo" />
           <h1>Aquavoy</h1>
-          <svg className="gate-wave" viewBox="0 0 140 12" aria-hidden="true">
-            <path
-              d="M0 6 Q 8.75 0, 17.5 6 T 35 6 T 52.5 6 T 70 6 T 87.5 6 T 105 6 T 122.5 6 T 140 6"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-          <p className="tag">Who is chatting today?</p>
-          <div className="pick-row">
-            {PRINCIPALS.map((name) => (
-              <button key={name} className="pick-btn" onClick={() => pick(name)}>
-                {name}
-              </button>
-            ))}
-          </div>
+          <span className="typing-dots gate-loader" role="status" aria-label="Loading">
+            <span />
+            <span />
+            <span />
+          </span>
           <p className="gate-credit">
             Powered by{" "}
             <a href="https://qualiasolutions.net" target="_blank" rel="noopener noreferrer">
@@ -350,13 +350,6 @@ export default function Chat() {
             aria-label="Clear conversation memory"
           >
             Clear memory
-          </button>
-          <button
-            className="btn ghost"
-            onClick={() => setIdentity(null)}
-            aria-label="Switch user identity"
-          >
-            Switch
           </button>
         </div>
       </div>

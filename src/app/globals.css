@@ -126,9 +126,8 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--sp-3) clamp(var(--sp-4), 5vw, var(--sp-6));
+  width: 100%;
+  padding: var(--sp-3) clamp(1rem, 3vw, 3.5rem);
   gap: var(--sp-4);
 }
 .nav-brand {
@@ -142,19 +141,13 @@ html, body {
 .nav-brand:hover {
   text-decoration: none;
 }
-.nav-logo {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), oklch(0.58 0.12 210));
-  display: grid;
-  place-items: center;
+.nav-logo-img {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
   flex-shrink: 0;
-}
-.nav-logo svg {
-  width: 16px;
-  height: 16px;
-  color: var(--bg);
+  object-fit: cover;
 }
 .nav-wordmark {
   font-size: 1.0625rem;
@@ -245,9 +238,8 @@ a:focus-visible {
    ================================================================ */
 
 .wrap {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: clamp(var(--sp-5), 4vw, var(--sp-7)) clamp(var(--sp-4), 5vw, var(--sp-6));
+  width: 100%;
+  padding: clamp(var(--sp-5), 4vw, var(--sp-7)) clamp(1rem, 3vw, 3.5rem);
 }
 
 .head {
@@ -484,9 +476,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
    CHAT
    ================================================================ */
 .chat-wrap {
-  max-width: 800px;
+  width: 100%;
+  max-width: 60rem;
   margin: 0 auto;
-  padding: 0 clamp(var(--sp-4), 4vw, var(--sp-6));
+  padding: 0 clamp(1rem, 3vw, 3.5rem);
   height: calc(100dvh - 53px); /* account for nav height */
   display: flex;
   flex-direction: column;
@@ -852,7 +845,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
    ================================================================ */
 .prep-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: minmax(280px, 360px) 1fr;
   gap: var(--sp-5);
   align-items: start;
 }
@@ -977,6 +970,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   }
   .chat-wrap {
     padding: 0 var(--sp-3);
+    max-width: none;
   }
   .bubble {
     max-width: 90%;
@@ -1100,28 +1094,25 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 
 /* ================================================================
-   IDENTITY GATE — waterline + coordinates brand details
+   IDENTITY GATE / SPLASH — logo reveal
    ================================================================ */
-.gate-coords {
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin: 0;
+.gate-logo {
+  width: clamp(96px, 15vw, 120px);
+  height: clamp(96px, 15vw, 120px);
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow:
+    0 0 0 1px var(--border),
+    0 4px 24px oklch(0.72 0.14 192 / 0.12),
+    0 0 48px oklch(0.72 0.14 192 / 0.06);
+  animation: gate-logo-in 600ms var(--ease-out) both;
 }
-.gate-wave {
-  width: 140px;
-  height: 14px;
-  color: var(--accent);
-  opacity: 0.85;
+@keyframes gate-logo-in {
+  from { opacity: 0; transform: scale(0.85); }
+  to   { opacity: 1; transform: scale(1); }
 }
-.gate-wave path {
-  stroke-dasharray: 4 7;
-  animation: wave-flow 1.8s linear infinite;
-}
-@keyframes wave-flow {
-  to { stroke-dashoffset: -11; }
+.gate-loader {
+  margin-top: var(--sp-2);
 }
 .gate-credit {
   margin-top: var(--sp-6);
@@ -1173,9 +1164,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   opacity: 0.35;
 }
 .footer-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--sp-5) clamp(var(--sp-4), 5vw, var(--sp-6));
+  width: 100%;
+  padding: var(--sp-5) clamp(1rem, 3vw, 3.5rem);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1195,10 +1185,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   letter-spacing: -0.02em;
   color: var(--text);
 }
-.footer-wordmark svg {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
+.footer-logo-img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 .footer-tag {
   font-family: var(--font-mono);

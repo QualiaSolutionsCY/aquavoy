@@ -10,6 +10,14 @@ interface Msg {
   content: string;
 }
 
+interface SessionSummary {
+  sessionId: string;
+  startedAt: string;
+  lastAt: string;
+  count: number;
+  title: string;
+}
+
 function greeting(name: Principal): Msg {
   return {
     role: "assistant",
@@ -66,9 +74,84 @@ export default function Chat() {
   // and remain reachable through the agent's recall_memory tool.
   const sessionRef = useRef<string>(crypto.randomUUID());
 
+  // ── History panel state ──
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyPanelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Close history panel on Escape key
+  useEffect(() => {
+    if (!historyOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setHistoryOpen(false);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [historyOpen]);
+
+  /** Fetch session list for the history panel. */
+  async function loadHistory() {
+    if (!identity) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const res = await fetch(
+        `/api/chat/history?principal=${identity}&view=sessions`,
+      );
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error ?? "Failed to load history");
+      setSessions(json.data?.sessions ?? []);
+    } catch (e) {
+      setHistoryError((e as Error).message);
+      setSessions([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  /** Toggle history panel open/closed. */
+  function toggleHistory() {
+    if (historyOpen) {
+      setHistoryOpen(false);
+    } else {
+      setHistoryOpen(true);
+      loadHistory();
+    }
+  }
+
+  /** Open a specific session from history. */
+  async function openSession(sid: string) {
+    if (!identity || busy) return;
+    setHistoryOpen(false);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/chat/history?principal=${identity}&sessionId=${sid}`,
+      );
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error ?? "Failed to load session");
+      const msgs: Msg[] = (json.data?.messages ?? []).map(
+        (m: { role: "user" | "assistant"; content: string }) => ({
+          role: m.role,
+          content: m.content,
+        }),
+      );
+      if (msgs.length > 0) {
+        sessionRef.current = sid;
+        setMessages(msgs);
+      } else {
+        setError("That session has no messages.");
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   async function pick(name: Principal) {
     setIdentity(name);
@@ -255,6 +338,14 @@ export default function Chat() {
           </button>
           <button
             className="btn ghost"
+            onClick={toggleHistory}
+            aria-label={historyOpen ? "Close chat history" : "Browse chat history"}
+            aria-expanded={historyOpen}
+          >
+            History
+          </button>
+          <button
+            className="btn ghost"
             onClick={clearMemory}
             aria-label="Clear conversation memory"
           >
@@ -273,6 +364,77 @@ export default function Chat() {
       {error && (
         <div className="notice err" role="alert">
           {error}
+        </div>
+      )}
+
+      {historyOpen && (
+        <div
+          className="history-panel"
+          ref={historyPanelRef}
+          role="dialog"
+          aria-label="Chat history"
+        >
+          <div className="history-header">
+            <span className="panel-h">Past conversations</span>
+            <button
+              className="btn ghost history-close"
+              onClick={() => setHistoryOpen(false)}
+              aria-label="Close history panel"
+            >
+              &#x2715;
+            </button>
+          </div>
+
+          {historyLoading && (
+            <div className="history-list">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="skeleton-row">
+                  <div className="skeleton" style={{ width: "1.25rem", height: "1.25rem" }} />
+                  <div className="skeleton" />
+                  <div className="skeleton meta" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {historyError && (
+            <div className="notice err" role="alert">
+              {historyError}
+            </div>
+          )}
+
+          {!historyLoading && !historyError && sessions.length === 0 && (
+            <div className="empty">No past conversations yet.</div>
+          )}
+
+          {!historyLoading && !historyError && sessions.length > 0 && (
+            <div className="history-list">
+              {sessions.map((s) => (
+                <button
+                  key={s.sessionId}
+                  className={`history-item${s.sessionId === sessionRef.current ? " active" : ""}`}
+                  onClick={() => openSession(s.sessionId)}
+                  aria-label={`Open conversation: ${s.title}`}
+                  aria-current={
+                    s.sessionId === sessionRef.current ? "true" : undefined
+                  }
+                >
+                  <span className="history-title">{s.title}</span>
+                  <span className="history-meta">
+                    <span className="history-count">
+                      {s.count} msg{s.count !== 1 ? "s" : ""}
+                    </span>
+                    <span className="history-date">
+                      {new Date(s.lastAt).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

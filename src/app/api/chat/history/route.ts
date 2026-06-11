@@ -22,9 +22,14 @@ const postBody = z.object({
 
 /**
  * GET /api/chat/history?principal=Wency
- * Returns the latest session's messages (ascending) plus its sessionId.
- * Older sessions stay stored and remain searchable via recall_memory —
- * "New chat" just starts writing under a fresh sessionId.
+ *   Default mode — returns the latest session's messages (ascending) plus its sessionId.
+ *
+ * GET /api/chat/history?principal=Wency&view=sessions
+ *   Session-list mode — returns up to 30 distinct sessions (most-recent first),
+ *   each with { sessionId, startedAt, lastAt, count, title }.
+ *
+ * GET /api/chat/history?principal=Wency&sessionId=<uuid>
+ *   Single-session mode — returns that session's messages ascending.
  */
 export function GET(req: NextRequest) {
   return handle(async () => {
@@ -33,8 +38,109 @@ export function GET(req: NextRequest) {
     );
     if (!principal.success) return fail("principal must be Wency or Jeanette");
 
+    const view = req.nextUrl.searchParams.get("view");
+    const sessionIdParam = req.nextUrl.searchParams.get("sessionId");
+
     const db = supabaseAdmin();
 
+    // ── Mode: session list ──
+    if (view === "sessions") {
+      // Fetch all messages for aggregation in TypeScript (row counts are small).
+      const { data: rows, error: rowsErr } = await db
+        .from("chat_messages")
+        .select("session_id, role, content, created_at")
+        .eq("principal", principal.data)
+        .order("created_at", { ascending: true });
+
+      if (rowsErr) return fail(rowsErr.message, 500);
+
+      // Group by session_id, aggregate per-session stats.
+      const map = new Map<
+        string,
+        { startedAt: string; lastAt: string; count: number; title: string }
+      >();
+
+      for (const r of rows ?? []) {
+        const sid = r.session_id as string;
+        const existing = map.get(sid);
+        if (!existing) {
+          // First row for this session — derive title.
+          const raw = (r.content as string) ?? "";
+          const title =
+            r.role === "user"
+              ? raw.trim().slice(0, 60) || "(empty thread)"
+              : raw.trim().slice(0, 60) || "(empty thread)";
+          map.set(sid, {
+            startedAt: r.created_at as string,
+            lastAt: r.created_at as string,
+            count: 1,
+            title,
+          });
+        } else {
+          existing.lastAt = r.created_at as string;
+          existing.count++;
+          // Prefer the first user message as the title (overwrite only once).
+          if (
+            r.role === "user" &&
+            existing.count <= 10 &&
+            existing.title === ((rows ?? []).find((x) => x.session_id === sid)?.content as string)?.trim().slice(0, 60)
+          ) {
+            // Title is already the first message; only overwrite if it was from assistant.
+          }
+        }
+      }
+
+      // Second pass: ensure title prefers first user message.
+      // Since rows are ordered ascending, walk again per session.
+      const titleOverrides = new Map<string, string>();
+      for (const r of rows ?? []) {
+        const sid = r.session_id as string;
+        if (titleOverrides.has(sid)) continue;
+        if (r.role === "user") {
+          const raw = (r.content as string)?.trim().slice(0, 60);
+          if (raw) titleOverrides.set(sid, raw);
+        }
+      }
+      for (const [sid, title] of titleOverrides) {
+        const entry = map.get(sid);
+        if (entry) entry.title = title;
+      }
+
+      // Sort by lastAt descending, cap at 30.
+      const sessions = Array.from(map.entries())
+        .map(([sessionId, s]) => ({ sessionId, ...s }))
+        .sort((a, b) => (b.lastAt > a.lastAt ? 1 : b.lastAt < a.lastAt ? -1 : 0))
+        .slice(0, 30);
+
+      return ok({ sessions });
+    }
+
+    // ── Mode: single session by ID ──
+    if (sessionIdParam) {
+      const parsed = z.string().uuid().safeParse(sessionIdParam);
+      if (!parsed.success) return fail("sessionId must be a valid UUID");
+
+      const { data, error } = await db
+        .from("chat_messages")
+        .select("role, content, created_at")
+        .eq("principal", principal.data)
+        .eq("session_id", parsed.data)
+        .order("created_at", { ascending: true })
+        .limit(200);
+
+      if (error) return fail(error.message, 500);
+
+      return ok({
+        sessionId: parsed.data,
+        messages: (data ?? []).map((r) => ({
+          role: r.role,
+          content: r.content,
+          createdAt: r.created_at,
+        })),
+      });
+    }
+
+    // ── Default mode: latest session (original behavior) ──
     // Latest session = session of the most recent message.
     const { data: latest, error: latestErr } = await db
       .from("chat_messages")

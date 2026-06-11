@@ -55,7 +55,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "list_folder",
       description:
-        "List items in a OneDrive folder. Returns name, id, isFolder, and size for each item. Omit folderId to list the root.",
+        "List items in a OneDrive folder. Returns name, id, isFolder, size, and lastModified for each item. Omit folderId to list the root. For 'latest/newest/most recent file' questions, prefer navigating the folder structure (e.g. an invoices folder, then the newest year subfolder) and compare lastModified dates yourself.",
       parameters: {
         type: "object",
         properties: {
@@ -360,6 +360,9 @@ function slimItem(item: DriveItem) {
     id: item.id,
     isFolder: item.isFolder,
     size: item.size,
+    // Dates let the model answer "latest/newest/last" correctly — search
+    // ranking is by relevance, never by recency.
+    ...(item.lastModified ? { lastModified: item.lastModified } : {}),
     ...(item.path ? { path: item.path } : {}),
   };
 }

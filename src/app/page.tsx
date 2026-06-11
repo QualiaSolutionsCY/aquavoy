@@ -62,6 +62,9 @@ export default function Chat() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Current thread id — "New chat" rotates it; old threads stay stored
+  // and remain reachable through the agent's recall_memory tool.
+  const sessionRef = useRef<string>(crypto.randomUUID());
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -72,21 +75,34 @@ export default function Chat() {
     setMessages([greeting(name)]);
     setError(null);
 
-    // Hydrate from persistent memory (enhancement — failures are silent).
+    // Hydrate the latest session (enhancement — failures are silent).
     try {
       const res = await fetch(`/api/chat/history?principal=${name}`);
       const json = await res.json();
-      if (json.ok && Array.isArray(json.data) && json.data.length > 0) {
+      if (json.ok && json.data?.sessionId && json.data.messages.length > 0) {
+        sessionRef.current = json.data.sessionId;
         setMessages(
-          json.data.map((m: { role: "user" | "assistant"; content: string }) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          json.data.messages.map(
+            (m: { role: "user" | "assistant"; content: string }) => ({
+              role: m.role,
+              content: m.content,
+            }),
+          ),
         );
+      } else {
+        sessionRef.current = crypto.randomUUID();
       }
     } catch {
       /* memory is an enhancement, not a blocker */
     }
+  }
+
+  /** Start a fresh thread — past sessions stay stored and recallable. */
+  function newChat() {
+    if (!identity || busy) return;
+    sessionRef.current = crypto.randomUUID();
+    setMessages([greeting(identity)]);
+    setError(null);
   }
 
   /** Fire-and-forget: persist a single message to chat history. */
@@ -94,7 +110,7 @@ export default function Chat() {
     fetch("/api/chat/history", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ principal, role, content }),
+      body: JSON.stringify({ principal, role, content, sessionId: sessionRef.current }),
     }).catch((e) => console.warn("chat-history persist failed", e));
   }
 
@@ -234,6 +250,9 @@ export default function Chat() {
           </div>
         </div>
         <div className="row">
+          <button className="btn" onClick={newChat} aria-label="Start a new chat thread">
+            + New chat
+          </button>
           <button
             className="btn ghost"
             onClick={clearMemory}

@@ -17,11 +17,14 @@ const postBody = z.object({
     .string()
     .min(1, "content must not be empty")
     .max(32_000, "content exceeds 32 000 characters"),
+  sessionId: z.string().uuid("sessionId must be a UUID"),
 });
 
 /**
  * GET /api/chat/history?principal=Wency
- * Returns the last 100 messages for the given principal, ascending by time.
+ * Returns the latest session's messages (ascending) plus its sessionId.
+ * Older sessions stay stored and remain searchable via recall_memory —
+ * "New chat" just starts writing under a fresh sessionId.
  */
 export function GET(req: NextRequest) {
   return handle(async () => {
@@ -30,22 +33,38 @@ export function GET(req: NextRequest) {
     );
     if (!principal.success) return fail("principal must be Wency or Jeanette");
 
-    const { data, error } = await supabaseAdmin()
+    const db = supabaseAdmin();
+
+    // Latest session = session of the most recent message.
+    const { data: latest, error: latestErr } = await db
+      .from("chat_messages")
+      .select("session_id")
+      .eq("principal", principal.data)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (latestErr) return fail(latestErr.message, 500);
+    if (!latest) return ok({ sessionId: null, messages: [] });
+
+    const { data, error } = await db
       .from("chat_messages")
       .select("role, content, created_at")
       .eq("principal", principal.data)
+      .eq("session_id", latest.session_id)
       .order("created_at", { ascending: true })
-      .limit(100);
+      .limit(200);
 
     if (error) return fail(error.message, 500);
 
-    return ok(
-      (data ?? []).map((r) => ({
+    return ok({
+      sessionId: latest.session_id as string,
+      messages: (data ?? []).map((r) => ({
         role: r.role,
         content: r.content,
         createdAt: r.created_at,
       })),
-    );
+    });
   });
 }
 
@@ -62,11 +81,11 @@ export function POST(req: NextRequest) {
       );
     }
 
-    const { principal, role, content } = body.data;
+    const { principal, role, content, sessionId } = body.data;
 
     const { error } = await supabaseAdmin()
       .from("chat_messages")
-      .insert({ principal, role, content });
+      .insert({ principal, role, content, session_id: sessionId });
 
     if (error) return fail(error.message, 500);
     return ok({ saved: true });

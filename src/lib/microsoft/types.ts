@@ -21,6 +21,8 @@ export interface DriveItem {
   webUrl?: string;
   /** Path relative to the drive root, e.g. "/Documents/report.pdf". */
   path?: string;
+  /** Pre-authenticated thumbnail URL (short-lived, from Graph $expand=thumbnails). */
+  thumbnailUrl?: string;
 }
 
 export interface TokenSet {
@@ -49,4 +51,8 @@ export interface GraphDriveItem {
   file?: { mimeType?: string };
   parentReference?: { path?: string };
   "@microsoft.graph.downloadUrl"?: string;
+  thumbnails?: Array<{
+    medium?: { url?: string };
+    small?: { url?: string };
+  }>;
 }

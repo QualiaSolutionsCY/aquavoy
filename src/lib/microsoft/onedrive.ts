@@ -23,6 +23,9 @@ function map(raw: GraphDriveItem): DriveItem {
   // parentReference.path looks like "/drive/root:/Documents"; strip the prefix.
   const parent = raw.parentReference?.path?.replace(/^\/drive\/root:?/, "") ?? "";
   const path = `${parent}/${raw.name}`.replace(/\/+/g, "/");
+  // Prefer medium thumbnail, fall back to small.
+  const thumb = raw.thumbnails?.[0];
+  const thumbnailUrl = thumb?.medium?.url ?? thumb?.small?.url;
   return {
     id: raw.id,
     name: raw.name,
@@ -33,6 +36,7 @@ function map(raw: GraphDriveItem): DriveItem {
     lastModified: raw.lastModifiedDateTime ?? "",
     webUrl: raw.webUrl,
     path,
+    thumbnailUrl,
   };
 }
 
@@ -53,7 +57,7 @@ export async function listChildren(
   // For path-addressed folders Graph needs the children suffix without a 2nd colon.
   const suffix = base.endsWith(":") ? "/children" : "/children";
   const data = await graphJson<{ value: GraphDriveItem[] }>(connectionId, {
-    path: `${base}${suffix}?$select=${SELECT}&$top=200`,
+    path: `${base}${suffix}?$select=${SELECT}&$expand=thumbnails&$top=200`,
   });
   return data.value.map(map);
 }
@@ -240,7 +244,7 @@ export async function copyItem(
 export async function search(connectionId: string, query: string): Promise<DriveItem[]> {
   const q = encodeURIComponent(query.replace(/'/g, "''"));
   const data = await graphJson<{ value: GraphDriveItem[] }>(connectionId, {
-    path: `/me/drive/root/search(q='${q}')?$select=${SELECT}&$top=100`,
+    path: `/me/drive/root/search(q='${q}')?$select=${SELECT}&$expand=thumbnails&$top=100`,
   });
   return data.value.map(map);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import type { DriveItem } from "@/lib/microsoft/types";
 
 interface Connection {
@@ -290,11 +290,34 @@ export default function Home() {
                 This folder is empty. Upload a file or create a folder to get started.
               </div>
             ) : (
-              items.map((item) => (
+              items.map((item) => {
+                const isImage = !item.isFolder && item.mimeType?.startsWith("image/");
+                const showThumb = isImage && !!item.thumbnailUrl;
+                return (
                 <div className="item" key={item.id} role="listitem">
-                  <span aria-hidden="true" style={{ opacity: 0.5, fontSize: "1rem" }}>
-                    {item.isFolder ? "\u{1F4C1}" : "\u{1F4C4}"}
-                  </span>
+                  {showThumb ? (
+                    <img
+                      className="thumb"
+                      src={item.thumbnailUrl}
+                      alt={item.name}
+                      loading="lazy"
+                      onError={(e: SyntheticEvent<HTMLImageElement>) => {
+                        const img = e.currentTarget;
+                        img.style.display = "none";
+                        // Insert fallback icon after the hidden img.
+                        const span = document.createElement("span");
+                        span.setAttribute("aria-hidden", "true");
+                        span.style.opacity = "0.5";
+                        span.style.fontSize = "1rem";
+                        span.textContent = "\u{1F4C4}";
+                        img.parentElement?.insertBefore(span, img.nextSibling);
+                      }}
+                    />
+                  ) : (
+                    <span aria-hidden="true" style={{ opacity: 0.5, fontSize: "1.25rem", display: "grid", placeItems: "center", width: 40, height: 40 }}>
+                      {item.isFolder ? "\u{1F4C1}" : "\u{1F4C4}"}
+                    </span>
+                  )}
                   {item.isFolder ? (
                     <span
                       className="name folder"
@@ -325,7 +348,8 @@ export default function Home() {
                     Delete
                   </button>
                 </div>
-              ))
+                );
+              })
             )}
           </div>
         </>

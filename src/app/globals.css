@@ -389,7 +389,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 .item {
   display: grid;
-  grid-template-columns: 1.5rem 1fr auto auto;
+  grid-template-columns: 40px 1fr auto auto;
   gap: var(--sp-3);
   align-items: center;
   padding: var(--sp-3) var(--sp-4);
@@ -423,6 +423,16 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   font-family: var(--font-mono);
   white-space: nowrap;
   letter-spacing: 0.02em;
+}
+
+/* ── Thumbnail ── */
+.thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  flex-shrink: 0;
 }
 
 /* ── Breadcrumbs ── */
@@ -837,7 +847,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
     width: 100%;
   }
   .item {
-    grid-template-columns: 1.25rem 1fr auto;
+    grid-template-columns: 40px 1fr auto;
     gap: var(--sp-2);
     padding: var(--sp-3);
   }

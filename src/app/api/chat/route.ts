@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PRINCIPALS, streamChatWithTools, type ChatMessage, type Principal } from "@/lib/openrouter/client";
+import { autoRecall } from "@/lib/agents/memoryTools";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,6 +38,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Automatic memory: surface relevant past-conversation snippets so the
+    // model never has to "remember to remember". Soft-fails silently.
+    if (identity) {
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      if (lastUser) {
+        const memo = await autoRecall(identity, lastUser.content).catch(() => null);
+        if (memo) messages = [{ role: "system", content: memo }, ...messages];
+      }
+    }
+
     const upstream = await streamChatWithTools(messages, { identity });
     return new Response(upstream.body, {
       headers: {

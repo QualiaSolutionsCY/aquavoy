@@ -1,34 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PRINCIPALS, streamChatWithTools, type ChatMessage, type Principal } from "@/lib/openrouter/client";
+import { streamChatWithTools, type ChatMessage } from "@/lib/openrouter/client";
 import { autoRecall } from "@/lib/agents/memoryTools";
+import { getPrincipal } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const ROLES = new Set(["user", "assistant", "system"]);
-const PRINCIPAL_SET = new Set<string>(PRINCIPALS);
 
 /**
- * POST /api/chat  { messages: ChatMessage[], identity?: "Wency"|"Jeanette" }
+ * POST /api/chat  { messages: ChatMessage[] }
  * Streams the model's reply back as Server-Sent Events (OpenRouter's native
- * SSE format), which the client parses incrementally.
+ * SSE format), which the client parses incrementally. The acting principal is
+ * derived from the verified session cookie (ADR-001) — never from the body.
  */
 export async function POST(req: NextRequest) {
+  // Identity comes from the verified session, not the request body.
+  const identity = getPrincipal(req) ?? undefined;
+  if (!identity) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
   let messages: ChatMessage[];
-  let identity: Principal | undefined;
   try {
     const body = (await req.json()) as {
       messages?: ChatMessage[];
-      identity?: string;
     };
     messages = (body.messages ?? []).filter(
       (m) => m && ROLES.has(m.role) && typeof m.content === "string",
     );
-    // Whitelist the identity — never trust it raw into the prompt.
-    identity =
-      typeof body.identity === "string" && PRINCIPAL_SET.has(body.identity)
-        ? (body.identity as Principal)
-        : undefined;
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }

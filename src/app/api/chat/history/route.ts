@@ -2,16 +2,12 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { handle, ok, fail } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { getPrincipal } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PRINCIPALS = ["Wency", "Jeanette"] as const;
-
-const principalParam = z.enum(PRINCIPALS);
-
 const postBody = z.object({
-  principal: z.enum(PRINCIPALS),
   role: z.enum(["user", "assistant"]),
   content: z
     .string()
@@ -21,22 +17,24 @@ const postBody = z.object({
 });
 
 /**
- * GET /api/chat/history?principal=Wency
+ * The acting principal is derived from the verified session cookie (ADR-001 +
+ * REQ-3) — never from a query param or body. One operator cannot read or write
+ * another's history.
+ *
+ * GET /api/chat/history
  *   Default mode — returns the latest session's messages (ascending) plus its sessionId.
  *
- * GET /api/chat/history?principal=Wency&view=sessions
+ * GET /api/chat/history?view=sessions
  *   Session-list mode — returns up to 30 distinct sessions (most-recent first),
  *   each with { sessionId, startedAt, lastAt, count, title }.
  *
- * GET /api/chat/history?principal=Wency&sessionId=<uuid>
+ * GET /api/chat/history?sessionId=<uuid>
  *   Single-session mode — returns that session's messages ascending.
  */
 export function GET(req: NextRequest) {
   return handle(async () => {
-    const principal = principalParam.safeParse(
-      req.nextUrl.searchParams.get("principal"),
-    );
-    if (!principal.success) return fail("principal must be Wency or Jeanette");
+    const principal = getPrincipal(req);
+    if (!principal) return fail("Unauthorized", 401);
 
     const view = req.nextUrl.searchParams.get("view");
     const sessionIdParam = req.nextUrl.searchParams.get("sessionId");
@@ -49,7 +47,7 @@ export function GET(req: NextRequest) {
       const { data: rows, error: rowsErr } = await db
         .from("chat_messages")
         .select("session_id, role, content, created_at")
-        .eq("principal", principal.data)
+        .eq("principal", principal)
         .order("created_at", { ascending: true });
 
       if (rowsErr) return fail(rowsErr.message, 500);
@@ -123,7 +121,7 @@ export function GET(req: NextRequest) {
       const { data, error } = await db
         .from("chat_messages")
         .select("role, content, created_at")
-        .eq("principal", principal.data)
+        .eq("principal", principal)
         .eq("session_id", parsed.data)
         .order("created_at", { ascending: true })
         .limit(200);
@@ -145,7 +143,7 @@ export function GET(req: NextRequest) {
     const { data: latest, error: latestErr } = await db
       .from("chat_messages")
       .select("session_id")
-      .eq("principal", principal.data)
+      .eq("principal", principal)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -156,7 +154,7 @@ export function GET(req: NextRequest) {
     const { data, error } = await db
       .from("chat_messages")
       .select("role, content, created_at")
-      .eq("principal", principal.data)
+      .eq("principal", principal)
       .eq("session_id", latest.session_id)
       .order("created_at", { ascending: true })
       .limit(200);
@@ -180,6 +178,9 @@ export function GET(req: NextRequest) {
  */
 export function POST(req: NextRequest) {
   return handle(async () => {
+    const principal = getPrincipal(req);
+    if (!principal) return fail("Unauthorized", 401);
+
     const body = postBody.safeParse(await req.json());
     if (!body.success) {
       return fail(
@@ -187,7 +188,7 @@ export function POST(req: NextRequest) {
       );
     }
 
-    const { principal, role, content, sessionId } = body.data;
+    const { role, content, sessionId } = body.data;
 
     const { error } = await supabaseAdmin()
       .from("chat_messages")
@@ -199,20 +200,18 @@ export function POST(req: NextRequest) {
 }
 
 /**
- * DELETE /api/chat/history?principal=Wency
- * Clears all messages for the given principal.
+ * DELETE /api/chat/history
+ * Clears all messages for the session's principal.
  */
 export function DELETE(req: NextRequest) {
   return handle(async () => {
-    const principal = principalParam.safeParse(
-      req.nextUrl.searchParams.get("principal"),
-    );
-    if (!principal.success) return fail("principal must be Wency or Jeanette");
+    const principal = getPrincipal(req);
+    if (!principal) return fail("Unauthorized", 401);
 
     const { error } = await supabaseAdmin()
       .from("chat_messages")
       .delete()
-      .eq("principal", principal.data);
+      .eq("principal", principal);
 
     if (error) return fail(error.message, 500);
     return ok({ cleared: true });

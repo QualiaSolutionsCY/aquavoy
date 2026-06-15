@@ -100,3 +100,27 @@ let tavilyCache: z.infer<typeof tavilySchema> | null = null;
 export function getTavilyEnv() {
   return (tavilyCache ??= validate(tavilySchema, "Tavily"));
 }
+
+// ── Crypto (at-rest secret encryption) ───────────────────
+// ENCRYPTION_KEY is the AES-256-GCM master key: exactly 32 bytes, base64-encoded.
+// Used by src/lib/crypto/secrets.ts to encrypt mailbox passwords / OAuth tokens
+// at rest. Server-only.
+const cryptoSchema = z.object({
+  ENCRYPTION_KEY: z
+    .string()
+    .min(1, "ENCRYPTION_KEY is required")
+    .refine(
+      (v) => {
+        try {
+          return Buffer.from(v, "base64").length === 32;
+        } catch {
+          return false;
+        }
+      },
+      "ENCRYPTION_KEY must be 32 bytes, base64-encoded",
+    ),
+});
+let cryptoCache: z.infer<typeof cryptoSchema> | null = null;
+export function getCryptoEnv() {
+  return (cryptoCache ??= validate(cryptoSchema, "crypto"));
+}

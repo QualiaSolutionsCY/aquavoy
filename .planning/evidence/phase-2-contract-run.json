@@ -1,0 +1,98 @@
+{
+  "ok": true,
+  "phase": 2,
+  "goal": "No plaintext secrets in Postgres — mailbox passwords and OAuth access/refresh tokens stored encrypted, decrypted only server-side at point of use.",
+  "checked": 11,
+  "failed": 0,
+  "generated_at": "2026-06-15T15:47:38.395Z",
+  "results": [
+    {
+      "task_id": "T1",
+      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Encrypt mailbox passwords at rest in mail/accounts.ts",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Encrypt mailbox passwords at rest in mail/accounts.ts",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Encrypt mailbox passwords at rest in mail/accounts.ts",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

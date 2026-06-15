@@ -2,7 +2,9 @@
 
 > Multi-milestone, REQ-ID tracked. VAL-* are already shipped (see PROJECT.md). REQ-* are this journey's active work. Proposed — pending approval.
 
-## M1 — Trust & Hardening
+## M1 — Trust & Hardening ✓ COMPLETE (shipped 2026-06-15 → https://aquavoy.vercel.app)
+
+All REQ-1…8 verified and live. See `.planning/archive/milestone-1-trust-and-hardening/`.
 
 | ID | Requirement | Maps to concern | Phase |
 |---|---|---|---|

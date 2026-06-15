@@ -1,0 +1,122 @@
+{
+  "ok": true,
+  "phase": 1,
+  "goal": "No unauthenticated caller can drive the agent or read company data; the principal is verified server-side, not trusted from request input.",
+  "checked": 14,
+  "failed": 0,
+  "generated_at": "2026-06-15T15:42:26.587Z",
+  "results": [
+    {
+      "task_id": "T1",
+      "task_title": "Session signing/verification util + per-operator credential check",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Session signing/verification util + per-operator credential check",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Session signing/verification util + per-operator credential check",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Login page + replace auto-login splash in page.tsx",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Login page + replace auto-login splash in page.tsx",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Login page + replace auto-login splash in page.tsx",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
+      "index": 3,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

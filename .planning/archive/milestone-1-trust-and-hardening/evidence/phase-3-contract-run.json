@@ -1,0 +1,104 @@
+{
+  "ok": true,
+  "phase": 3,
+  "goal": "The repo's migrations match the live DB, and the seams are protected by tests.",
+  "checked": 11,
+  "failed": 0,
+  "generated_at": "2026-06-15T15:54:59.804Z",
+  "results": [
+    {
+      "task_id": "T1",
+      "task_title": "Track the scheduled_emails migration to match the live table",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Track the scheduled_emails migration to match the live table",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Track the scheduled_emails migration to match the live table",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Add vitest + seam/route test safety net",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Add vitest + seam/route test safety net",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Add vitest + seam/route test safety net",
+      "index": 2,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Add vitest + seam/route test safety net",
+      "index": 3,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 1228,
+      "stdout": "\n RUN  v4.1.9 /home/qualiasolutions/Projects/aquavoy\n\n\n Test Files  8 passed (8)\n      Tests  30 passed (30)\n   Start at  18:54:57\n   Duration  565ms (transform 555ms, setup 227ms, import 899ms, tests 118ms, environment 1ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Add vitest + seam/route test safety net",
+      "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 1597,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}

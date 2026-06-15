@@ -1,42 +1,49 @@
-# ROADMAP — Aquavoy · Milestone 1: Trust & Hardening
+# ROADMAP — Aquavoy · Milestone 2: Agent Depth
 
-> Current milestone's phase detail. Proposed — pending approval. M2–M4 sketched in JOURNEY.md.
+> Current milestone's phase detail. M1 (Trust & Hardening) shipped — archived at `.planning/archive/milestone-1-trust-and-hardening/`. M3/M4 sketched in JOURNEY.md.
 
-## Phase 1 — Access Control
+**Milestone goal:** Make the agent more *capable* (deeper memory, document understanding) and more *trustworthy* (hard confirm/undo on destructive actions) — building on the now-secure foundation.
 
-**Goal:** no one but the real operators can drive the agent or read company data.
-
-**Success criteria:**
-- App entry requires a real credential check (not the current loading splash that auto-logs in as "Wency").
-- Every API route except the cron runner rejects unauthenticated requests: `chat`, `chat/history`, `mail/*`, `outlook/*`, `onedrive/*` (write paths at minimum), `recipients`.
-- The authenticated session establishes the principal server-side; the `principal` query param is no longer trusted as identity.
-- One principal cannot read another principal's chat history.
-
-**Notes / approach options (decide in `/qualia-scope` or `/qualia-plan 1`):**
-- Lightest: Vercel deployment protection + a shared app password → server-set session cookie that carries the principal. Fits single-tenant, two-operator reality.
-- Fuller: Supabase Auth with two seeded users + per-principal RLS policies (the path the migration comments anticipate). Heavier but enables real per-user isolation.
-
-## Phase 2 — Credentials at Rest
-
-**Goal:** no plaintext secrets in Postgres.
-
-**Success criteria:**
-- Mailbox passwords (`mail_accounts.password`) stored encrypted; decrypted only server-side at SMTP/IMAP use.
-- OAuth `access_token`/`refresh_token` (`onedrive_connections`) stored encrypted.
-- Encryption key sourced from env (not committed); a documented rotation path.
-- Public accessors still never return secrets (preserve current `MailAccount` vs `MailAccountWithSecret` split).
-
-## Phase 3 — Migration Integrity + Test Safety Net
-
-**Goal:** the repo matches the live DB, and the seams are protected by tests.
-
-**Success criteria:**
-- A tracked `supabase/migrations/0007_scheduled_emails.sql` (or correct number) exists and matches the live `scheduled_emails` table; `npx supabase db diff` is clean.
-- `mail_accounts` has one authoritative email-uniqueness constraint.
-- Test framework (vitest) configured with an `npm test` script.
-- Seam tests: Graph transport + OneDrive ops (mocked), IMAP read, SMTP send, scheduled `runDue()` batch, and route-level tests for agent tool dispatch + the new auth guard.
-- `npm test` green; `npx tsc --noEmit` clean.
+**Why now:** M1 made the agent safe to drive; M2 makes it worth driving more. With auth + encryption in place, it's safe to give the agent stronger memory and document reach.
 
 ---
 
-**Next:** `/qualia-scope 1` to grill the Phase 1 approach (auth strategy is a real fork worth an ADR), then `/qualia-plan 1`.
+## Phase 1 — Durable Memory
+
+**Goal:** Recall is reliable across long histories, not just keyword-grep over recent messages.
+
+**Why:** Today `autoRecall` greps `chat_messages` for ≥5-char word overlaps (`memoryTools.ts:61-100`) — it misses paraphrases and drowns in long histories. Operators expect the agent to "remember what we decided last week."
+
+**Success criteria (to be sharpened in `/qualia-scope 1`):**
+- Conversations are summarized into durable per-session (or rolling) summaries the agent can recall, not just raw message-substring matches.
+- Recall ranks by salience + recency, not just word-length threshold; demonstrably surfaces a relevant fact from an older session a keyword match would miss.
+- The dual-path model (server `autoRecall` + callable `recall_memory`) is preserved; no regression to the existing tool.
+- Memory remains scoped to the session principal (REQ-3 invariant from M1 holds).
+
+## Phase 2 — Inline Document Understanding
+
+**Goal:** The agent reads and reasons over a OneDrive document within a single turn.
+
+**Why:** The deps exist (`mammoth`/`pdf-parse`/`xlsx`) and the agent can already locate/download drive files, but reading a file's *content* into the conversation is not a first-class tool. "Summarize the latest invoice in Verzonden Facturen" should work end-to-end.
+
+**Success criteria (to be sharpened in `/qualia-scope 2`):**
+- A `read_document` agent tool fetches a drive item, extracts text (Word/PDF/Excel via the existing parsers), and returns content the agent reasons over in the same turn.
+- Sensible size/æktype guards (large files truncated with a note, unsupported types reported cleanly).
+- Wired into the tool registry (`onedriveTools.ts`) and the system prompt's capability list.
+
+## Phase 3 — Confirm / Undo on Destructive Actions
+
+**Goal:** Destructive tool calls (send email, delete/move file) are gated by a hard confirmation, not just a prompt-level instruction, with undo where the platform allows.
+
+**Why:** The confirm-before-send/delete rule today is soft (system-prompt text, `client.ts:56-122`). For an agent that sends company mail and deletes OneDrive files, that should be an enforced step, not a suggestion.
+
+**Success criteria (to be sharpened in `/qualia-scope 3`):**
+- Destructive tools require an explicit confirmation step the model cannot skip (structured, not prose-dependent).
+- Where the platform supports it, an undo affordance (e.g. OneDrive delete → restore-from-recycle); where it doesn't (email send), the confirm is the guard and is logged.
+- An auditable record of destructive actions taken (who/what/when), scoped to the session principal.
+
+---
+
+**Exit criteria (milestone):** the agent recalls across long histories, reads drive documents inline, and cannot perform a destructive action without an enforced confirm — all without regressing M1's auth/encryption invariants.
+
+**Next:** `/qualia-scope 1` (memory approach is a real fork — summarization model, storage shape, recall ranking — worth grilling + an ADR) then `/qualia-plan 1`.

@@ -64,6 +64,34 @@ export function getSupabaseEnv() {
   return (sbCache ??= validate(supabaseSchema, "Supabase"));
 }
 
+// ── Auth (signed session + per-operator credentials) ─────
+// SESSION_SECRET signs the principal HMAC; OPERATOR_CREDENTIALS is a JSON map
+// of principal → "saltHex:hashHex" scrypt hashes. Both server-only.
+const authSchema = z.object({
+  SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 chars"),
+  OPERATOR_CREDENTIALS: z
+    .string()
+    .min(1, "OPERATOR_CREDENTIALS is required")
+    .refine(
+      (raw) => {
+        try {
+          const parsed = JSON.parse(raw) as unknown;
+          if (typeof parsed !== "object" || parsed === null) return false;
+          return Object.values(parsed as Record<string, unknown>).every(
+            (v) => typeof v === "string" && /^[0-9a-f]+:[0-9a-f]+$/i.test(v),
+          );
+        } catch {
+          return false;
+        }
+      },
+      'OPERATOR_CREDENTIALS must be a JSON map of principal → "saltHex:hashHex"',
+    ),
+});
+let authCache: z.infer<typeof authSchema> | null = null;
+export function getAuthEnv() {
+  return (authCache ??= validate(authSchema, "Auth"));
+}
+
 // ── Tavily (web research) ────────────────────────────────
 const tavilySchema = z.object({
   TAVILY_API_KEY: z.string().min(1, "TAVILY_API_KEY is required"),
@@ -71,4 +99,28 @@ const tavilySchema = z.object({
 let tavilyCache: z.infer<typeof tavilySchema> | null = null;
 export function getTavilyEnv() {
   return (tavilyCache ??= validate(tavilySchema, "Tavily"));
+}
+
+// ── Crypto (at-rest secret encryption) ───────────────────
+// ENCRYPTION_KEY is the AES-256-GCM master key: exactly 32 bytes, base64-encoded.
+// Used by src/lib/crypto/secrets.ts to encrypt mailbox passwords / OAuth tokens
+// at rest. Server-only.
+const cryptoSchema = z.object({
+  ENCRYPTION_KEY: z
+    .string()
+    .min(1, "ENCRYPTION_KEY is required")
+    .refine(
+      (v) => {
+        try {
+          return Buffer.from(v, "base64").length === 32;
+        } catch {
+          return false;
+        }
+      },
+      "ENCRYPTION_KEY must be 32 bytes, base64-encoded",
+    ),
+});
+let cryptoCache: z.infer<typeof cryptoSchema> | null = null;
+export function getCryptoEnv() {
+  return (cryptoCache ??= validate(cryptoSchema, "crypto"));
 }

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { encryptSecret, decryptSecret } from "@/lib/crypto/secrets";
 
 /**
  * Persistence for SMTP/IMAP mail accounts. A "mail account" is one mailbox
@@ -59,7 +60,7 @@ function toMailAccount(row: AccountRow): MailAccount {
 function toMailAccountWithSecret(row: AccountRow): MailAccountWithSecret {
   return {
     ...toMailAccount(row),
-    password: row.password,
+    password: decryptSecret(row.password),
   };
 }
 
@@ -89,7 +90,8 @@ export async function saveAccount(
         imap_host: fields.imapHost ?? null,
         imap_port: fields.imapPort ?? null,
         username: fields.username,
-        password: fields.password,
+        // Self-healing backfill: legacy plaintext is tolerated on read and re-encrypted on the next save.
+        password: encryptSecret(fields.password),
         verified_at: fields.verifiedAt ?? null,
         updated_at: new Date().toISOString(),
       },

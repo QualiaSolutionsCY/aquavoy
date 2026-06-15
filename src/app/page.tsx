@@ -101,9 +101,7 @@ export default function Chat() {
     setHistoryLoading(true);
     setHistoryError(null);
     try {
-      const res = await fetch(
-        `/api/chat/history?principal=${identity}&view=sessions`,
-      );
+      const res = await fetch(`/api/chat/history?view=sessions`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Failed to load history");
       setSessions(json.data?.sessions ?? []);
@@ -131,9 +129,7 @@ export default function Chat() {
     setHistoryOpen(false);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/chat/history?principal=${identity}&sessionId=${sid}`,
-      );
+      const res = await fetch(`/api/chat/history?sessionId=${sid}`);
       const json = await res.json();
       if (!json.ok) throw new Error(json.error ?? "Failed to load session");
       const msgs: Msg[] = (json.data?.messages ?? []).map(
@@ -160,7 +156,7 @@ export default function Chat() {
     let msgs: Msg[] = [greeting(name)];
     let sid = crypto.randomUUID();
     try {
-      const res = await fetch(`/api/chat/history?principal=${name}`);
+      const res = await fetch(`/api/chat/history`);
       const json = await res.json();
       if (json.ok && json.data?.sessionId && json.data.messages.length > 0) {
         sid = json.data.sessionId;
@@ -206,7 +202,7 @@ export default function Chat() {
     if (!identity) return;
     if (!confirm(`Clear all saved messages for ${identity}?`)) return;
     try {
-      await fetch(`/api/chat/history?principal=${identity}`, { method: "DELETE" });
+      await fetch(`/api/chat/history`, { method: "DELETE" });
     } catch (e) {
       console.warn("chat-history clear failed", e);
     }
@@ -292,11 +288,29 @@ export default function Chat() {
     }
   }
 
-  // ── Auto-login as Wency on mount ──
+  // ── Learn our identity from the verified session on mount (ADR-001) ──
+  // No more self-electing "Wency": the principal comes from the signed
+  // session cookie via GET /api/auth/me. On 401 we bounce to /login.
   useEffect(() => {
-    if (!identity) {
-      pick("Wency");
-    }
+    if (identity) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
+        const json = await res.json();
+        const principal = json?.data?.principal as Principal | undefined;
+        if (json.ok && principal) {
+          pick(principal);
+        } else {
+          window.location.href = "/login";
+        }
+      } catch {
+        window.location.href = "/login";
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

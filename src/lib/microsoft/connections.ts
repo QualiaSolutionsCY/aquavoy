@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { encryptSecret, decryptSecret } from "@/lib/crypto/secrets";
 import { refreshTokens } from "./oauth";
 import type { MicrosoftUser, TokenSet } from "./types";
 
@@ -53,8 +54,9 @@ export async function saveConnection(user: MicrosoftUser, tokens: TokenSet): Pro
         ms_user_id: user.id,
         ms_user_principal_name: user.userPrincipalName,
         display_name: user.displayName,
-        access_token: tokens.accessToken,
-        refresh_token: tokens.refreshToken,
+        // Encrypt at rest; legacy plaintext rows self-heal to ciphertext on next save/refresh.
+        access_token: encryptSecret(tokens.accessToken),
+        refresh_token: encryptSecret(tokens.refreshToken),
         scope: tokens.scope,
         token_type: tokens.tokenType,
         expires_at: new Date(tokens.expiresAt).toISOString(),
@@ -109,15 +111,15 @@ export async function getValidAccessToken(connectionId: string): Promise<string>
   const row = await loadRow(connectionId);
   const expiresAt = new Date(row.expires_at).getTime();
   if (Date.now() < expiresAt - EXPIRY_SKEW_MS) {
-    return row.access_token;
+    return decryptSecret(row.access_token);
   }
-  const next = await refreshTokens(row.refresh_token);
+  const next = await refreshTokens(decryptSecret(row.refresh_token));
   const db = supabaseAdmin();
   const { error } = await db
     .from(TABLE)
     .update({
-      access_token: next.accessToken,
-      refresh_token: next.refreshToken,
+      access_token: encryptSecret(next.accessToken),
+      refresh_token: encryptSecret(next.refreshToken),
       scope: next.scope,
       token_type: next.tokenType,
       expires_at: new Date(next.expiresAt).toISOString(),

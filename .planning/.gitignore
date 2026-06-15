@@ -1,0 +1,10 @@
+# A5: per-step-mutated planning state is LOCAL (generated views), never committed.
+# Only increments/ and releases/ are the durable, committed source of truth —
+# so two people on two branches never conflict on the planning files.
+STATE.md
+tracking.json
+.cursor.json
+.state.lock
+.state.journal
+.backup/
+migration-manifest.json

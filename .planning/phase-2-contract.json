@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "phase": 2,
+  "goal": "No plaintext secrets in Postgres — mailbox passwords and OAuth access/refresh tokens stored encrypted, decrypted only server-side at point of use.",
+  "why": "Closes concerns.md HIGH-2: mail_accounts.password and onedrive_connections.access_token/refresh_token sit in plaintext today (accounts.ts:62,92; connections.ts:30-31,55-56), a live-credential exposure if the service-role key or a DB backup leaks.",
+  "generated_at": "2026-06-15T12:06:09Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:24ea997bcad31de371b0d526ded9f8fb7c490629a803788f3d4a79d8d8421a9d",
+  "success_criteria": [
+    "mail_accounts.password is stored encrypted (iv:authTag:ciphertext); SMTP/IMAP send still works because MailAccountWithSecret decrypts at point of use (REQ-4).",
+    "onedrive_connections.access_token and refresh_token are stored encrypted; getValidAccessToken returns a usable plaintext token and refresh still works against Microsoft's endpoint (REQ-5).",
+    "Encryption key is sourced from ENCRYPTION_KEY env (32-byte base64, validated lazily), never committed; rotation path documented in secrets.ts.",
+    "Public accessors (MailAccount, listAccounts, Connection, listConnections) still expose no secrets — the existing secret/no-secret split is unchanged.",
+    "Existing plaintext rows are not broken: tolerant decryptSecret reads them verbatim and the next write re-encrypts (self-healing backfill, no orphaned data).",
+    "No new npm dependency added; crypto is Node built-in node:crypto.",
+    "npx tsc --noEmit is clean."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Server-only AES-256-GCM secret crypto util + env key",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "security",
+      "files_modify": [
+        "src/lib/env.ts"
+      ],
+      "files_create": [
+        "src/lib/crypto/secrets.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "encryptSecret returns iv:authTag:ciphertext (base64 segments) with a random 12-byte IV per call; two calls on the same input differ.",
+        "decryptSecret(encryptSecret(x)) === x round-trips for any UTF-8 string.",
+        "decryptSecret of a non-encrypted value (legacy plaintext password or raw JWT) returns the input unchanged — tolerant read, no throw.",
+        "isEncrypted returns true only for the 3-segment base64 GCM shape (12-byte IV, 16-byte auth tag), false for plaintext.",
+        "getCryptoEnv throws a clear 'Invalid crypto configuration' error if ENCRYPTION_KEY is missing or not exactly 32 bytes base64-decoded."
+      ],
+      "action": "Add getCryptoEnv() lazy zod accessor for ENCRYPTION_KEY (32-byte base64, refined) to env.ts mirroring getTavilyEnv. Create src/lib/crypto/secrets.ts using node:crypto. encryptSecret: 12-byte random IV, aes-256-gcm, append getAuthTag(), join base64 with colons. decryptSecret: tolerant — return verbatim if !isEncrypted, else decode/setAuthTag/decipher, let GCM auth failure throw. isEncrypted: exactly 3 base64 parts, iv 12 bytes, tag 16 bytes. Document format, server-only, rotation in header.",
+      "context_files": [
+        "src/lib/env.ts",
+        ".planning/codebase/concerns.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "src/lib/crypto/secrets.ts",
+          "pattern": "",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/crypto/secrets.ts",
+          "pattern": "node:crypto|aes-256-gcm",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/crypto/secrets.ts",
+          "pattern": "export function (encryptSecret|decryptSecret|isEncrypted)",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/env.ts",
+          "pattern": "ENCRYPTION_KEY|getCryptoEnv",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Encrypt mailbox passwords at rest in mail/accounts.ts",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "security",
+      "files_modify": [
+        "src/lib/mail/accounts.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "After saveAccount, mail_accounts.password holds iv:authTag:ciphertext, not the raw password.",
+        "loadAccountWithSecret and loadAccountWithSecretByEmail return the original plaintext password (decrypt in the accessor).",
+        "listAccounts and the public MailAccount shape still expose no password field.",
+        "An existing plaintext-password row is still readable via tolerant decryptSecret, and the next saveAccount upsert re-writes it encrypted (self-healing backfill, no separate script)."
+      ],
+      "action": "Import encryptSecret, decryptSecret from @/lib/crypto/secrets. In saveAccount change accounts.ts:92 'password: fields.password,' to 'password: encryptSecret(fields.password),'. In toMailAccountWithSecret change accounts.ts:62 'password: row.password,' to 'password: decryptSecret(row.password),' (both load paths funnel through this mapper). Leave toMailAccount, listAccounts, and the MailAccount interface untouched. Add a one-line comment noting the self-healing backfill.",
+      "context_files": [
+        "src/lib/mail/accounts.ts",
+        "src/lib/crypto/secrets.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/accounts.ts",
+          "pattern": "encryptSecret\\(fields.password\\)",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/accounts.ts",
+          "pattern": "decryptSecret\\(row.password\\)",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/accounts.ts",
+          "pattern": "password: (row.password|fields.password)",
+          "expect": "absent"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "security",
+      "files_modify": [
+        "src/lib/microsoft/connections.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "After saveConnection, onedrive_connections.access_token and refresh_token hold iv:authTag:ciphertext, not the raw JWT/refresh string.",
+        "getValidAccessToken returns a usable plaintext token in both branches: fresh token is decrypted before return; expired path calls refreshTokens with the decrypted refresh token then persists the new pair encrypted.",
+        "refreshTokens receives a decrypted refresh token (Microsoft's endpoint never gets ciphertext).",
+        "listConnections still returns no tokens.",
+        "A legacy plaintext-token row keeps working via tolerant decryptSecret and is re-persisted encrypted on the next saveConnection or refresh (self-healing backfill)."
+      ],
+      "action": "Import encryptSecret/decryptSecret. In saveConnection (:55-56) wrap access_token/refresh_token writes in encryptSecret. In getValidAccessToken: fresh branch (:112) return decryptSecret(row.access_token); refresh call (:114) refreshTokens(decryptSecret(row.refresh_token)); re-persist (:120-121) wrap next tokens in encryptSecret; final return next.accessToken (:128) stays plaintext. loadRow/toConnection/listConnections unchanged. Add self-healing-backfill comment.",
+      "context_files": [
+        "src/lib/microsoft/connections.ts",
+        "src/lib/crypto/secrets.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/microsoft/connections.ts",
+          "pattern": "encryptSecret\\(",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/microsoft/connections.ts",
+          "pattern": "decryptSecret\\(",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/microsoft/connections.ts",
+          "pattern": "refreshTokens\\(row\\.refresh_token\\)",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/microsoft/connections.ts",
+          "pattern": "access_token: (tokens.accessToken|next.accessToken)",
+          "expect": "absent"
+        }
+      ]
+    }
+  ]
+}

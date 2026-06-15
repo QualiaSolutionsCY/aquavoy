@@ -1,0 +1,186 @@
+{
+  "version": 1,
+  "phase": 3,
+  "goal": "The repo's migrations match the live DB, and the seams are protected by tests.",
+  "why": "Phases 1 and 2 added auth and encryption to a codebase with zero tests and a scheduled_emails table that exists in the live DB but not on disk. This phase makes the repo reproducible (tracked + reconciled migrations) and the seams refactor-safe (vitest seam/route/util tests).",
+  "generated_at": "2026-06-15T12:05:19Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:c55af5a8e25c6caf02131d9c803f47ad53d21634c566b6db6610d9abddd8195f",
+  "success_criteria": [
+    "supabase/migrations/0007_scheduled_emails.sql exists with all 11 columns, the four-value status check, and RLS-on/no-policy; npx supabase db diff is clean (or schema-match self-check passes if no local stack).",
+    "mail_accounts has exactly one authoritative email-uniqueness rule; the redundant lower(email) expression index is dropped by 0008.",
+    "vitest is a devDependency and npm test runs the suite green.",
+    "Seam tests pass for Graph, OneDrive ops, IMAP read, SMTP send, and runDue() per-row isolation with vendors mocked.",
+    "The Phase-2 encryption round-trip and Phase-1 session sign/verify tests pass against the real utils.",
+    "The agent tool-dispatch test passes (success, validation-error, unknown-tool no-throw).",
+    "npx tsc --noEmit is clean."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Track the scheduled_emails migration to match the live table",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0007_scheduled_emails.sql"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "0007_scheduled_emails.sql creates public.scheduled_emails with every column scheduled.ts reads/writes (id, from_email, to_email, subject, body, scheduled_at, status, sent_at, error, created_by, created_at).",
+        "A check constraint restricts status to exactly pending/sent/failed/cancelled.",
+        "RLS enabled with no policies (service-role-only lockdown matching 0003).",
+        "Migration is idempotent (create table if not exists) and self-contained.",
+        "npx supabase db diff is clean for scheduled_emails, or a schema-match self-check passes if no local stack."
+      ],
+      "action": "Reconstruct columns from ScheduledRow (scheduled.ts:29-41). Create public.scheduled_emails (if not exists): id uuid pk; from_email/to_email/subject/body text not null; scheduled_at timestamptz not null; status text default pending; sent_at timestamptz; error text; created_by text nullable; created_at default now(). Add a check on the four status values, an index on (status, scheduled_at), RLS enabled no policies. Verify via supabase db diff or the grep self-check.",
+      "context_files": [
+        "src/lib/mail/scheduled.ts",
+        "supabase/migrations/0003_mail_accounts.sql",
+        "supabase/migrations/0006_chat_sessions.sql",
+        ".planning/codebase/architecture.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0007_scheduled_emails.sql"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0007_scheduled_emails.sql",
+          "pattern": "in \\('pending','sent','failed','cancelled'\\)",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0007_scheduled_emails.sql",
+          "pattern": "enable row level security",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0008_reconcile_mail_accounts_email_unique.sql"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "0008 drops the redundant lower(email) expression index (mail_accounts_email_unique from 0003:25) and keeps the plain unique(email) (mail_accounts_email_key from 0005:6) as the single authoritative rule.",
+        "Case-insensitive correctness is preserved by application-layer lowercasing (accounts.ts:85, scheduled.ts:86-87) documented in the migration comment.",
+        "Migration is idempotent (drop index if exists) and runs cleanly regardless of prior migration state."
+      ],
+      "action": "Confirm both constraints (0003:25 expression index, 0005:5-6 plain constraint). In 0008 run drop index if exists public.mail_accounts_email_unique. Comment that mail_accounts_email_key (plain unique email) is authoritative, the index is removed, and case-insensitivity holds via app-layer lowercasing (accounts.ts:85, scheduled.ts:86-87). Keep mail_accounts_email_key; add no new constraint.",
+      "context_files": [
+        "supabase/migrations/0003_mail_accounts.sql",
+        "supabase/migrations/0005_fix_mail_accounts_on_conflict.sql",
+        "src/lib/mail/accounts.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0008_reconcile_mail_accounts_email_unique.sql"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0008_reconcile_mail_accounts_email_unique.sql",
+          "pattern": "drop index if exists public.mail_accounts_email_unique",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0008_reconcile_mail_accounts_email_unique.sql",
+          "pattern": "add constraint",
+          "expect": "absent"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Add vitest + seam/route test safety net",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "architect",
+      "files_modify": [
+        "package.json"
+      ],
+      "files_create": [
+        "vitest.config.ts",
+        "vitest.setup.ts",
+        "src/lib/microsoft/graph.test.ts",
+        "src/lib/microsoft/onedrive.test.ts",
+        "src/lib/mail/imap.test.ts",
+        "src/lib/mail/smtp.test.ts",
+        "src/lib/mail/scheduled.test.ts",
+        "src/lib/crypto/secrets.test.ts",
+        "src/lib/auth/session.test.ts",
+        "src/lib/agents/onedriveTools.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "npm test runs vitest and exits 0; package.json has a test: vitest run script and vitest in devDependencies.",
+        "npx tsc --noEmit stays clean; the @/ alias resolves in both tsc and vitest.",
+        "Seam tests pass for Graph transport (auth header + GraphError), OneDrive ops (GraphDriveItem to DriveItem mapping), IMAP read (folder resolution + envelope formatting), SMTP send (from header + transport.sendMail), and runDue() per-row isolation (one failure still flips others to sent).",
+        "Phase-2 encryption round-trip passes: decrypt(encrypt(x))===x and ciphertext differs from plaintext, against the real util discovered at build time.",
+        "Phase-1 session sign/verify passes: verify(sign(principal))===principal and an invalid token is rejected, against the real util discovered at build time.",
+        "Agent tool-dispatch passes: send_email success JSON, send_email validation-error JSON, unknown-tool returns a readable string and does not throw.",
+        "No test hits a real Graph/IMAP/SMTP/Supabase endpoint — all vendors mocked."
+      ],
+      "action": "STEP 1: grep src for the real session and encrypt/decrypt util paths (deviation if not session.ts/secrets.ts). STEP 2: add vitest devDep + test script. STEP 3: vitest.config.ts node env, globals, @/ alias, setupFiles. STEP 4: vitest.setup.ts stubs env. STEP 5: seam tests via vi.mock (fetch+connections, graph, imapflow+mailparser+accounts, nodemailer, supabase+accounts+smtp, tool deps). STEP 6/7: encryption round-trip + session sign/verify vs real utils. STEP 8: npm test and tsc clean.",
+      "context_files": [
+        "src/lib/microsoft/graph.ts",
+        "src/lib/microsoft/onedrive.ts",
+        "src/lib/mail/imap.ts",
+        "src/lib/mail/smtp.ts",
+        "src/lib/mail/scheduled.ts",
+        "src/lib/mail/accounts.ts",
+        "src/lib/agents/onedriveTools.ts",
+        "tsconfig.json",
+        "package.json",
+        ".planning/decisions/ADR-001-access-control-strategy.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "package.json",
+          "pattern": "\"test\": \"vitest run\"",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "package.json",
+          "pattern": "\"vitest\"",
+          "expect": "present"
+        },
+        {
+          "type": "file-exists",
+          "path": "vitest.config.ts"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    }
+  ]
+}

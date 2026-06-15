@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "phase": 1,
+  "goal": "No unauthenticated caller can drive the agent or read company data; the principal is verified server-side, not trusted from request input.",
+  "why": "Closes codebase-map HIGH-1 (unauthenticated mutating/PII API surface) and MED-1 (principal trusted from query param) by implementing ADR-001: app password + signed httpOnly session cookie carrying the verified principal.",
+  "generated_at": "2026-06-15T12:04:31Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:859652ad1f1cdf5ffe99ee2576422233defe4664ab449f4cb18afcf77895099a",
+  "success_criteria": [
+    "App entry requires a real credential check; the pick(\"Wency\") auto-login is removed (REQ-2).",
+    "Every API route except /api/login and the CRON_SECRET cron runner rejects unauthenticated requests with 401 (REQ-1).",
+    "The authenticated session establishes the principal server-side; body.identity and the principal query param are no longer trusted (REQ-3, MED-1).",
+    "One principal cannot read another principal's chat history regardless of query string (REQ-3).",
+    "No new npm dependency added; session signing uses Node crypto (HMAC + scrypt + timingSafeEqual)."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Session signing/verification util + per-operator credential check",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "security",
+      "files_modify": ["src/lib/env.ts"],
+      "files_create": ["src/lib/auth/session.ts"],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "signSession(\"Wency\") returns \"Wency.<hmac>\"; verifySession round-trips it to \"Wency\"; a tampered token returns null.",
+        "verifyCredential returns true only for the correct per-operator password, using constant-time comparison.",
+        "No new npm dependency added; only node:crypto is imported."
+      ],
+      "action": "Create src/lib/auth/session.ts exporting signSession, verifySession, getPrincipal, verifyCredential, SESSION_COOKIE using node:crypto (createHmac sha256 over SESSION_SECRET; scryptSync for password hashes; timingSafeEqual for both comparisons). Import PRINCIPALS/Principal from @/lib/openrouter/client. Add authSchema + getAuthEnv() to env.ts (SESSION_SECRET min 32, OPERATOR_CREDENTIALS JSON salt:hash map) following the existing per-feature lazy-cache pattern.",
+      "context_files": [".planning/decisions/ADR-001-access-control-strategy.md", "src/lib/env.ts", "src/app/api/chat/route.ts", "rules/security.md"],
+      "verification": [
+        { "type": "file-exists", "path": "src/lib/auth/session.ts", "pattern": "", "expect": "present" },
+        { "type": "grep-match", "path": "src/lib/auth/session.ts", "pattern": "createHmac|timingSafeEqual|scrypt", "expect": "present" },
+        { "type": "grep-match", "path": "src/lib/env.ts", "pattern": "getAuthEnv|SESSION_SECRET|OPERATOR_CREDENTIALS", "expect": "present" }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "wave": 2,
+      "depends_on": ["T1"],
+      "persona": "security",
+      "files_modify": [],
+      "files_create": ["src/proxy.ts", "src/app/api/login/route.ts", "src/app/api/logout/route.ts"],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Unauthenticated page requests to /, /emails, /files, /prep redirect (307) to /login.",
+        "Unauthenticated POST /api/chat or GET /api/chat/history returns 401 JSON without reaching the handler.",
+        "POST /api/login with correct credentials returns 200 + Set-Cookie aq_session (HttpOnly; Secure; SameSite=Lax); wrong password returns 401 with no cookie.",
+        "GET /api/mail/scheduled/run with correct Bearer CRON_SECRET still returns 200 (allowlisted).",
+        "POST /api/logout clears the cookie and returns 200."
+      ],
+      "action": "Create src/proxy.ts (Next 16 renamed middleware): proxy(request) calls getPrincipal; allowlist /login, /api/login, /api/mail/scheduled/run; else null -> 401 JSON for /api/* else redirect /login. matcher excludes _next + static assets. Create src/app/api/login/route.ts (runtime nodejs): zod {principal,password}, verifyCredential, on success cookies.set signed session httpOnly secure sameSite lax maxAge 30d, else fail 401. Create src/app/api/logout/route.ts clearing the cookie.",
+      "context_files": [".planning/decisions/ADR-001-access-control-strategy.md", "src/app/api/mail/scheduled/run/route.ts", "src/lib/http.ts", "src/app/api/chat/route.ts"],
+      "verification": [
+        { "type": "file-exists", "path": "src/proxy.ts", "pattern": "", "expect": "present" },
+        { "type": "grep-match", "path": "src/proxy.ts", "pattern": "getPrincipal", "expect": "present" },
+        { "type": "grep-match", "path": "src/proxy.ts", "pattern": "scheduled/run", "expect": "present" },
+        { "type": "grep-match", "path": "src/app/api/login/route.ts", "pattern": "httpOnly", "expect": "present" }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Login page + replace auto-login splash in page.tsx",
+      "wave": 3,
+      "depends_on": ["T2"],
+      "persona": "frontend",
+      "files_modify": ["src/app/page.tsx"],
+      "files_create": ["src/app/login/page.tsx"],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "/login shows a branded form: choose operator + password + submit.",
+        "Wrong password shows an inline .notice err; correct password redirects to / and chat loads as that operator.",
+        "Chat page no longer auto-logs in as Wency; identity comes from GET /api/auth/me.",
+        "Form works at 375px and 1440px; inputs/buttons >= 44px; keyboard submit; reduced-motion honored."
+      ],
+      "action": "Create src/app/login/page.tsx (use client) reusing the gate/.gate-card/.pick-btn visual language; POST {principal,password} to /api/login; on ok redirect to /, else render json.error as .notice err. In src/app/page.tsx remove the pick(\"Wency\") on-mount effect (lines 296-301); replace with an effect that GETs /api/auth/me, setIdentity from the response, and redirects to /login on 401; reuse pick(principal) for session hydration with the returned principal.",
+      "context_files": [".planning/DESIGN.md", "src/app/page.tsx", "src/app/globals.css"],
+      "verification": [
+        { "type": "grep-match", "path": "src/app/login/page.tsx", "pattern": "/api/login", "expect": "present" },
+        { "type": "grep-match", "path": "src/app/page.tsx", "pattern": "pick\\(\"Wency\"\\)", "expect": "absent" },
+        { "type": "grep-match", "path": "src/app/login/page.tsx", "pattern": "Inter|Arial|system-ui", "expect": "absent" }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Read principal from session in chat + history routes; add /api/auth/me",
+      "wave": 2,
+      "depends_on": ["T1"],
+      "persona": "security",
+      "files_modify": ["src/app/api/chat/route.ts", "src/app/api/chat/history/route.ts"],
+      "files_create": ["src/app/api/auth/me/route.ts"],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "POST /api/chat ignores body.identity and uses only the session principal.",
+        "GET /api/chat/history (all 3 modes) scopes to the session principal and ignores the principal query param.",
+        "POST /api/chat/history persists under the session principal, not a body-supplied principal.",
+        "GET /api/auth/me returns the session principal (200) or 401 when unauthenticated."
+      ],
+      "action": "chat/route.ts: replace the body.identity whitelist (lines 27-31) with identity = getPrincipal(req) ?? undefined, remove identity from the body type, 401 if null. chat/history/route.ts: replace the principal query-param parse (GET lines 36-38), POST body principal, and DELETE query param with getPrincipal(req); use it in every .eq(\"principal\",...). Create src/app/api/auth/me/route.ts (runtime nodejs) GET returning ok({principal}) or fail(\"Unauthorized\",401).",
+      "context_files": ["src/app/api/chat/route.ts", "src/app/api/chat/history/route.ts", "src/lib/http.ts", ".planning/decisions/ADR-001-access-control-strategy.md"],
+      "verification": [
+        { "type": "grep-match", "path": "src/app/api/chat/route.ts", "pattern": "body.identity", "expect": "absent" },
+        { "type": "grep-match", "path": "src/app/api/chat/route.ts", "pattern": "getPrincipal", "expect": "present" },
+        { "type": "grep-match", "path": "src/app/api/chat/history/route.ts", "pattern": "getPrincipal", "expect": "present" },
+        { "type": "file-exists", "path": "src/app/api/auth/me/route.ts", "pattern": "", "expect": "present" }
+      ]
+    }
+  ]
+}

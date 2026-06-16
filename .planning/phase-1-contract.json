@@ -1,0 +1,321 @@
+{
+  "version": 1,
+  "phase": 1,
+  "goal": "Recall is reliable across long histories, not just keyword-grep over recent messages.",
+  "why": "autoRecall greps chat_messages for >=5-char word overlaps and recallMemory does ilike %query% (memoryTools.ts:20-100) -- both miss paraphrases and drown in long histories. Replace substring recall with memory formation (extracted facts) + a 3-signal hybrid ranker per ADR-002, preserving the dual-path model and REQ-3 principal isolation.",
+  "generated_at": "2026-06-16T11:42:58Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:b852a7183fd2a7647425d77cbdce71663fe1ce6bb0b2326907a249d0670d264e",
+  "success_criteria": [
+    "Conversations are reduced to durable extracted facts (memory_facts), embedded and principal-scoped, that the agent recalls -- not raw message substrings.",
+    "Recall ranks by salience + recency (cosine + lexical + recency-decay + importance) and surfaces a paraphrased fact an ilike keyword match would miss.",
+    "The dual-path model is preserved: both autoRecall and recall_memory route through hybridRecall; the recall_memory tool input/output contract is unchanged and onedriveTools.test.ts still passes.",
+    "Memory is scoped to the session principal: every memory_facts query filters on principal; cross-principal recall returns nothing (REQ-3).",
+    "Fact extraction is idempotent (upsert on (session_id, fact)), runs on session close and via a 5-min cron sweep, with per-session error isolation.",
+    "npx tsc --noEmit exits 0 and npx vitest run passes (existing + new suites).",
+    "Migration 0009 enables pgvector and creates memory_facts with RLS on, no policies, and a principal check constraint."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Migration 0009: pgvector + memory_facts table",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0009_memory_facts.sql"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "supabase/migrations/0009_memory_facts.sql exists, numbered after 0008.",
+        "Migration runs 'create extension if not exists vector;' to enable pgvector.",
+        "Creates public.memory_facts with principal check (Wency, Jeanette), session_id, fact, summary, embedding vector(768), importance int 1..5, created_at.",
+        "Unique constraint memory_facts_session_fact_uniq (session_id, fact) supports idempotent upsert.",
+        "RLS enabled with NO policies; principal check constraint present.",
+        "Btree index on (principal, created_at) and a cosine ANN index on embedding."
+      ],
+      "action": "Mirror 0004_chat_messages.sql and 0007_scheduled_emails.sql comment/RLS pattern. Enable pgvector, create memory_facts with the listed columns/constraints/indexes, add the (session_id, fact) unique constraint, enable RLS with no policies, use vector(768) to match the adapter output_dimensionality.",
+      "context_files": [
+        "supabase/migrations/0004_chat_messages.sql",
+        "supabase/migrations/0007_scheduled_emails.sql",
+        ".planning/decisions/ADR-002-durable-memory-architecture.md",
+        ".planning/phase-1-context.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0009_memory_facts.sql"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0009_memory_facts.sql",
+          "pattern": "create extension if not exists vector",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0009_memory_facts.sql",
+          "pattern": "enable row level security",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0009_memory_facts.sql",
+          "pattern": "create policy",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0009_memory_facts.sql",
+          "pattern": "vector\\(768\\)",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Embedding adapter (src/lib/embeddings/) + env block",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "architect",
+      "files_modify": [
+        "src/lib/env.ts"
+      ],
+      "files_create": [
+        "src/lib/embeddings/index.ts",
+        "src/lib/embeddings/index.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "src/lib/embeddings/index.ts exports embedText(text): Promise<number[]> returning a 768-length vector.",
+        "Provider resolved by config (GOOGLE_API_KEY -> Gemini gemini-embedding-001 embedContent), model overridable via EMBEDDING_MODEL, dim via config -- never hardcoded in callers.",
+        "src/lib/env.ts gains lazy getEmbeddingsEnv() following the getTavilyEnv/getCryptoEnv pattern.",
+        "Adapter unit-testable without a network call: test mocks fetch, asserts returned vector and correct request shape (embedContent URL, content.parts[0].text).",
+        "npx tsc --noEmit exits 0; new test passes."
+      ],
+      "action": "Mirror client.ts:182-239 Gemini-via-env resolution and env.ts:95-126 lazy-cached Zod pattern. Implement embedText posting to the Gemini models/${model}:embedContent endpoint with x-goog-api-key header and body { content: { parts: [{ text }] }, output_dimensionality: dim }; parse embedding.values; throw on non-2xx or wrong length. Add a vitest stubbing global.fetch.",
+      "context_files": [
+        "src/lib/openrouter/client.ts",
+        "src/lib/env.ts",
+        "src/lib/agents/onedriveTools.test.ts",
+        ".planning/decisions/ADR-002-durable-memory-architecture.md"
+      ],
+      "verification": [
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/embeddings/index.ts",
+          "pattern": "export async function embedText",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/env.ts",
+          "pattern": "getEmbeddingsEnv",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/embeddings/index.ts",
+          "pattern": ":embedContent",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/embeddings/index.test.ts"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/memoryStore.ts",
+          "pattern": "from.*@/lib/embeddings",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
+      "wave": 2,
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/memoryTools.ts"
+      ],
+      "files_create": [
+        "src/lib/agents/memoryStore.ts",
+        "src/lib/agents/memoryStore.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "memoryStore.ts exports extractFacts (LLM-extract + embed + upsert keyed on (session_id, fact)), rankFacts (pure, deterministic score = w_sim*cosine + w_lex*lexical + w_rec*recencyDecay + w_imp*importanceNorm), hybridRecall (embed query, fetch principal-scoped candidates, rank, top-K).",
+        "recallMemory(query, principal) calls hybridRecall and returns the SAME JSON string shape; signature unchanged (AC3).",
+        "autoRecall(principal, userText) calls hybridRecall and still returns string | null (AC3).",
+        "Every memory_facts query filters .eq('principal', principal) (AC4 / REQ-3).",
+        "Existing onedriveTools.test.ts passes unchanged; new memoryStore.test.ts covers AC1 paraphrase, AC2 deterministic order, AC4 isolation, AC5 idempotency.",
+        "npx tsc --noEmit exits 0; npx vitest run passes."
+      ],
+      "action": "Create memoryStore.ts importing supabaseAdmin and embedText. rankFacts (pure): cosine + >=5-char lexical hit (reuse memoryTools.ts:67-75) + exp(-ageHours/halfLife) recency + importance/5; weights sim.5 lex.2 rec.2 imp.1; ties by created_at. hybridRecall: embed query, select principal-scoped facts, rank, slice. extractFacts: openrouter chat extracts facts+importance, embed, upsert onConflict 'session_id,fact'. Rewire recallMemory+autoRecall to hybridRecall, remove ilike. Add memoryStore.test.ts.",
+      "context_files": [
+        "src/lib/agents/memoryTools.ts",
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/onedriveTools.test.ts",
+        "src/app/api/chat/route.ts",
+        "src/lib/openrouter/client.ts",
+        "src/lib/supabase/server.ts",
+        ".planning/decisions/ADR-002-durable-memory-architecture.md",
+        ".planning/phase-1-context.md"
+      ],
+      "verification": [
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/memoryTools.ts",
+          "pattern": "hybridRecall",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/memoryTools.ts",
+          "pattern": "ilike",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/memoryStore.ts",
+          "pattern": "onConflict",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/memoryStore.ts",
+          "pattern": "eq\\(\"principal\"",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/agents/onedriveTools.test.ts"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/agents/memoryStore.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Build cadence: cron sweep route for fact extraction",
+      "wave": 3,
+      "depends_on": [
+        "T3"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "vercel.json"
+      ],
+      "files_create": [
+        "src/app/api/memory/sweep/route.ts",
+        "src/app/api/memory/sweep/route.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "src/app/api/memory/sweep/route.ts exports a GET handler guarded by CRON_SECRET bearer (exact pattern of mail/scheduled/run/route.ts); 401 without the matching bearer.",
+        "Handler finds stragglers: closed sessions (not the principal's latest) with no memory_facts rows, runs extractFacts per session with per-session try/catch (mirrors runDue).",
+        "vercel.json gains { path: /api/memory/sweep, schedule: */5 * * * * }; existing mail cron preserved.",
+        "Running the sweep twice does not duplicate facts (carried by T3's (session_id, fact) upsert).",
+        "npx tsc --noEmit exits 0; sweep route test passes (auth guard + straggler selection mocked)."
+      ],
+      "action": "Copy the CRON_SECRET bearer guard and runtime/dynamic exports from mail/scheduled/run/route.ts. Query chat_messages for (principal, session_id) groups, exclude each principal latest session, skip sessions already having a memory_facts row, call extractFacts per remaining session in try/catch tallying processed/failed. Add the sweep cron to vercel.json keeping the mail entry. Add a vitest: 401 without bearer (extractFacts not called); correct bearer over a straggler -> extractFacts called once.",
+      "context_files": [
+        "src/app/api/mail/scheduled/run/route.ts",
+        "src/lib/mail/scheduled.ts",
+        "vercel.json",
+        "src/lib/agents/memoryStore.ts",
+        "src/app/api/chat/history/route.ts",
+        ".planning/decisions/ADR-002-durable-memory-architecture.md"
+      ],
+      "verification": [
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/memory/sweep/route.ts",
+          "pattern": "CRON_SECRET",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/memory/sweep/route.ts",
+          "pattern": "extractFacts",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "vercel.json",
+          "pattern": "/api/memory/sweep",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "vercel.json",
+          "pattern": "/api/mail/scheduled/run",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/app/api/memory/sweep/route.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    }
+  ]
+}

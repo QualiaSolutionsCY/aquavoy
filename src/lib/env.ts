@@ -124,3 +124,19 @@ let cryptoCache: z.infer<typeof cryptoSchema> | null = null;
 export function getCryptoEnv() {
   return (cryptoCache ??= validate(cryptoSchema, "crypto"));
 }
+
+// ── Embeddings (durable-memory semantic recall) ──────────
+// The embedding provider is a config detail behind src/lib/embeddings (ADR-002
+// §3 adapters-at-seams; "never hardcode a provider"). Defaults to Gemini via the
+// existing GOOGLE_API_KEY path; the model id and output dimension are overridable
+// so the provider can be swapped without touching feature code. EMBEDDING_DIM
+// MUST match the vector(N) column in 0009_memory_facts.sql (768). Server-only.
+const embeddingsSchema = z.object({
+  GOOGLE_API_KEY: z.string().min(1, "GOOGLE_API_KEY is required for embeddings"),
+  EMBEDDING_MODEL: z.string().min(1).default("gemini-embedding-001"),
+  EMBEDDING_DIM: z.coerce.number().int().positive().default(768),
+});
+let embeddingsCache: z.infer<typeof embeddingsSchema> | null = null;
+export function getEmbeddingsEnv() {
+  return (embeddingsCache ??= validate(embeddingsSchema, "embeddings"));
+}

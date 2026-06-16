@@ -49,6 +49,9 @@ vi.mock("@/lib/mail/accounts", () => ({
 }));
 
 import { executeTool } from "./onedriveTools";
+import { recallMemory } from "@/lib/agents/memoryTools";
+
+const recallMemoryMock = vi.mocked(recallMemory);
 
 const account = {
   id: "acct-1",
@@ -109,5 +112,25 @@ describe("agents/onedriveTools executeTool", () => {
     const out = await executeTool("unknown_tool", {});
     const parsed = JSON.parse(out);
     expect(parsed.error).toBe("Unknown tool: unknown_tool");
+  });
+});
+
+describe("agents/onedriveTools recall_memory principal pinning (REQ-3)", () => {
+  beforeEach(() => recallMemoryMock.mockReset());
+
+  it("pins recall to the verified session principal, ignoring args.principal", async () => {
+    recallMemoryMock.mockResolvedValueOnce(JSON.stringify({ hits: [] }));
+    // Attacker steers the model: logged in as Wency, asks for Jeanette's memory.
+    await executeTool("recall_memory", { query: "pricing", principal: "Jeanette" }, null, "Wency");
+    // The session identity wins — never the model-supplied principal.
+    expect(recallMemoryMock).toHaveBeenCalledWith("pricing", "Wency");
+    expect(recallMemoryMock).not.toHaveBeenCalledWith("pricing", "Jeanette");
+  });
+
+  it("fails closed when there is no verified session principal", async () => {
+    const out = await executeTool("recall_memory", { query: "pricing", principal: "Jeanette" }, null, undefined);
+    const parsed = JSON.parse(out);
+    expect(parsed.error).toBe("no verified principal in session");
+    expect(recallMemoryMock).not.toHaveBeenCalled();
   });
 });

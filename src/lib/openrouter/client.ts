@@ -331,7 +331,10 @@ export async function streamChatWithTools(
       } catch {
         // Malformed arguments — tell the model.
       }
-      const result = await executeTool(tc.function.name, args);
+      // Identity for principal-scoped tools (e.g. recall_memory) is taken from
+      // the HMAC-verified session, NEVER from the model's tool-call arguments —
+      // otherwise the model could be steered to read another principal's data.
+      const result = await executeTool(tc.function.name, args, null, opts.identity);
       history.push({
         role: "tool",
         content: result,

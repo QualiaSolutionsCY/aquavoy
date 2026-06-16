@@ -228,7 +228,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "recall_memory",
       description:
-        "Search through past conversation history to recall what was discussed before. Use this when the user references previous conversations or asks what was talked about earlier.",
+        "Search through past conversation history to recall what was discussed before. Use this when the user references previous conversations or asks what was talked about earlier. Memory is automatically scoped to the current operator — you do not specify whose history to search.",
       parameters: {
         type: "object",
         properties: {
@@ -236,12 +236,8 @@ export const TOOL_DEFINITIONS = [
             type: "string",
             description: "Search term to find in past messages.",
           },
-          principal: {
-            type: "string",
-            description: "The name of the person whose history to search (Wency or Jeanette).",
-          },
         },
-        required: ["query", "principal"],
+        required: ["query"],
         additionalProperties: false,
       },
     },
@@ -572,6 +568,7 @@ export async function executeTool(
   name: string,
   args: Record<string, unknown>,
   connectionId?: string | null,
+  sessionPrincipal?: string | null,
 ): Promise<string> {
   try {
     // OneDrive tools need a connection; others don't.
@@ -665,10 +662,14 @@ export async function executeTool(
       // ── Memory recall ──
       case "recall_memory": {
         const query = typeof args.query === "string" ? args.query : "";
-        const principal = typeof args.principal === "string" ? args.principal : "";
-        if (!query || !principal)
-          return JSON.stringify({ error: "query and principal are required" });
-        return await recallMemory(query, principal);
+        // Principal is pinned to the HMAC-verified session identity passed in by
+        // the caller — NEVER args.principal. The model cannot read another
+        // operator's memory by naming them in the tool call (REQ-3 / ADR-001).
+        // Fail closed if there is no verified session principal.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
+        if (!query) return JSON.stringify({ error: "query is required" });
+        return await recallMemory(query, sessionPrincipal);
       }
 
       // ── Send email ──

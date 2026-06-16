@@ -16,6 +16,10 @@
 - **Recipient / crew** — a saved contact for the Prep page's 1:1 email drafting (`recipients`). *Avoid:* "Mail Account".
 - **Prep** — the page/flow for composing a 1:1 email to a recipient via `draftEmail`. *Avoid:* "compose" (that's the chat composer).
 - **Seam / adapter** — the single file that owns one external vendor's wire format (graph.ts, imap.ts, smtp.ts, tavily.ts, client.ts). *Avoid:* "wrapper", "service" (overloaded).
+- **Memory fact** — a discrete extracted decision/fact from a conversation, embedded for semantic recall (`memory_facts`, M2-P1, ADR-002). *Avoid:* "summary" (that's the thread container), "message" (raw row).
+- **Session summary** — a thread-level recap that contains a session's memory facts. *Avoid:* "memory" (overloaded — use the specific term).
+- **Hybrid recall** — the ranking blend that surfaces memory: semantic similarity ⊕ keyword ⊕ recency decay ⊕ importance (M2-P1). *Avoid:* unqualified "search" or "recall".
+- **Embedding adapter** — the seam (`lib/embeddings/`) owning the embedding provider's wire format; the only file that names a provider. *Avoid:* calling an embedding provider directly from feature code.
 
 ## Flagged ambiguities
 

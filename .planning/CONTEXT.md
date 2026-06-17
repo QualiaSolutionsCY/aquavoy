@@ -20,6 +20,10 @@
 - **Session summary** — a thread-level recap that contains a session's memory facts. *Avoid:* "memory" (overloaded — use the specific term).
 - **Hybrid recall** — the ranking blend that surfaces memory: semantic similarity ⊕ keyword ⊕ recency decay ⊕ importance (M2-P1). *Avoid:* unqualified "search" or "recall".
 - **Embedding adapter** — the seam (`lib/embeddings/`) owning the embedding provider's wire format; the only file that names a provider. *Avoid:* calling an embedding provider directly from feature code.
+- **Destructive tool** — a tool with an irreversible/outbound side-effect that is gated by enforced confirmation: send_email, schedule_email, delete_item, move_item, rename_item (M2-P3, ADR-003). *Avoid:* "mutating tool" (create_folder mutates but is not gated).
+- **Pending action** — a staged-but-not-executed destructive tool call awaiting human confirmation (`pending_actions`, status pending→confirmed/cancelled/undone/failed). *Avoid:* "queued" (collides with scheduled email).
+- **Confirm / undo** — the human-triggered `/api/actions/*` endpoints that execute (confirm) or reverse (undo) a pending/confirmed action; the model has no path to execute a destructive side-effect. *Avoid:* "approval" (no multi-party approval here — it's the session principal).
+- **Action audit** — the `pending_actions` row history (who=principal, what=tool+args+summary, when=timestamps, outcome=status/result) — the auditable record of destructive actions. *Avoid:* a separate "log" — the table IS the audit.
 
 ## Flagged ambiguities
 

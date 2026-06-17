@@ -1,14 +1,14 @@
 {
   "ok": true,
   "phase": 1,
-  "goal": "Every agent turn writes a structured trace record to the database (model, provider, tool calls with names/args/result shape, latency per call, token counts); the chat UI surfaces a collapsible 'what ran' panel per response.",
-  "checked": 16,
+  "goal": "A developer or operator arriving at the repo cold can understand the architecture, operate the agent, and run a local dev environment using only the README, operator runbook, env-var reference, and ADR index — all accurate to the real code.",
+  "checked": 20,
   "failed": 0,
-  "generated_at": "2026-06-17T11:42:30.889Z",
+  "generated_at": "2026-06-17T12:50:05.420Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "agent_traces migration + trace persistence library",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 0,
       "type": "file-exists",
       "ok": true,
@@ -16,7 +16,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "agent_traces migration + trace persistence library",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,7 +24,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "agent_traces migration + trace persistence library",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -32,7 +32,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "agent_traces migration + trace persistence library",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 3,
       "type": "grep-match",
       "ok": true,
@@ -40,23 +40,26 @@
     },
     {
       "task_id": "T1",
-      "task_title": "agent_traces migration + trace persistence library",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 4,
-      "type": "grep-match",
+      "type": "command-exit",
       "ok": true,
-      "detail": ""
+      "detail": "",
+      "duration_ms": 5,
+      "stdout": "",
+      "stderr": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "task_title": "Write the operator runbook",
       "index": 0,
-      "type": "grep-match",
+      "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "task_title": "Write the operator runbook",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -64,7 +67,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "task_title": "Write the operator runbook",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -72,7 +75,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "task_title": "Write the operator runbook",
       "index": 3,
       "type": "grep-match",
       "ok": true,
@@ -80,7 +83,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "task_title": "Write the operator runbook",
       "index": 4,
       "type": "grep-match",
       "ok": true,
@@ -88,26 +91,26 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "task_title": "Write the operator runbook",
       "index": 5,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 3815,
+      "duration_ms": 4,
       "stdout": "",
       "stderr": ""
     },
     {
       "task_id": "T3",
-      "task_title": "Chat disclosure row + expandable per-tool trace panel",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
       "index": 0,
-      "type": "grep-match",
+      "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T3",
-      "task_title": "Chat disclosure row + expandable per-tool trace panel",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -115,7 +118,7 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Chat disclosure row + expandable per-tool trace panel",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -123,7 +126,7 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Chat disclosure row + expandable per-tool trace panel",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
       "index": 3,
       "type": "grep-match",
       "ok": true,
@@ -131,12 +134,44 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Chat disclosure row + expandable per-tool trace panel",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
       "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 5,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 6,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 7,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 8,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 3960,
+      "duration_ms": 5,
       "stdout": "",
       "stderr": ""
     }

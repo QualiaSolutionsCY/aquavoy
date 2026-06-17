@@ -42,7 +42,10 @@ export async function GET(req: NextRequest) {
     const { data: rows, error } = await db
       .from("chat_messages")
       .select("principal, session_id, role, content, created_at")
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      // Bound the scan so one cron run can't pull unbounded rows (OOM/scaling guard);
+      // 2000 messages comfortably covers recent activity for a small-operator tool.
+      .limit(2000);
 
     if (error) return fail(error.message, 500);
     if (!rows || rows.length === 0) return ok({ processed: 0, failed: 0 });

@@ -56,10 +56,11 @@ describe("GET /api/memory/sweep", () => {
       { principal: "Wency", session_id: "new", role: "user", content: "hello again", created_at: "2026-06-15T10:00:00.000Z" },
     ];
 
-    // First .from("chat_messages") → select().order() resolves to all rows.
+    // First .from("chat_messages") → select().order().limit() resolves to all rows.
     const chatChain = {
       select: vi.fn(() => chatChain),
-      order: vi.fn(async () => ({ data: chatRows, error: null })),
+      order: vi.fn(() => chatChain),
+      limit: vi.fn(async () => ({ data: chatRows, error: null })),
     };
 
     // .from("memory_facts") → select().eq().limit() → empty (no facts yet).

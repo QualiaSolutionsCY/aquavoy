@@ -152,7 +152,7 @@ export async function streamChat(
   };
   withFallbacks(provider, payload);
 
-  const res = await fetch(provider.url, {
+  const res = await fetchStreamWithTimeout(provider.url, {
     method: "POST",
     headers: buildHeaders(provider.key),
     body: JSON.stringify(payload),
@@ -179,7 +179,7 @@ export async function complete(messages: ChatMessage[], opts: ChatOptions & { we
   if (opts.web && provider.openrouter) payload.plugins = [{ id: "web", max_results: 5 }];
   withFallbacks(provider, payload);
 
-  const res = await fetch(provider.url, {
+  const res = await fetchWithTimeout(provider.url, {
     method: "POST",
     headers: buildHeaders(provider.key),
     body: JSON.stringify(payload),
@@ -193,6 +193,59 @@ export async function complete(messages: ChatMessage[], opts: ChatOptions & { we
 }
 
 // ── Shared helpers ──────────────────────────────────────────
+
+/** Non-streaming request timeout: a hung upstream must not pin the function. */
+const FETCH_TIMEOUT_MS = 30_000;
+/**
+ * Streaming header timeout. We only abort if the upstream never sends RESPONSE
+ * HEADERS — once fetch resolves (headers received) we clear the timer, so a long
+ * SSE body is never cut. Use a generous ceiling for slow tool-laden first byte.
+ */
+const STREAM_HEADER_TIMEOUT_MS = 120_000;
+
+/**
+ * fetch with a hard abort after FETCH_TIMEOUT_MS. For NON-streaming calls only,
+ * where we read the whole body — aborting kills the request and any in-flight body.
+ */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`OpenRouter request timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * fetch for STREAMING calls. The timeout guards only the time-to-headers; once
+ * the response object (headers) arrives, the timer is cleared so the SSE body
+ * can stream for as long as the model keeps producing tokens. This protects
+ * against a hung upstream that never responds, without truncating long replies.
+ */
+async function fetchStreamWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), STREAM_HEADER_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    // Headers received — stop the clock so the body stream runs unbounded.
+    clearTimeout(t);
+    return res;
+  } catch (err) {
+    clearTimeout(t);
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `OpenRouter stream did not respond within ${STREAM_HEADER_TIMEOUT_MS / 1000}s`,
+      );
+    }
+    throw err;
+  }
+}
 
 function buildHeaders(apiKey: string): Record<string, string> {
   return {
@@ -311,7 +364,7 @@ export async function streamChatWithTools(
       };
       withFallbacks(provider, payload);
 
-      const res = await fetch(provider.url, {
+      const res = await fetchWithTimeout(provider.url, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
@@ -366,7 +419,17 @@ export async function streamChatWithTools(
         // the HMAC-verified session, NEVER from the model's tool-call arguments —
         // otherwise the model could be steered to read another principal's data.
         const tStart = Date.now();
-        const result = await executeTool(tc.function.name, args, null, opts.identity);
+        // executeTool is contracted to never throw, but a thrown error here (a
+        // bug, an unexpected rejection type) must not 502 the whole turn — feed
+        // the model an {error} tool-result so it can recover and continue.
+        let result: string;
+        try {
+          result = await executeTool(tc.function.name, args, null, opts.identity);
+        } catch (err) {
+          result = JSON.stringify({
+            error: `Tool ${tc.function.name} failed: ${err instanceof Error ? err.message : "unknown"}`,
+          });
+        }
         const latencyMs = Date.now() - tStart;
 
         toolTraces.push(summarizeToolCall(tc.function.name, args, result, latencyMs));
@@ -392,7 +455,7 @@ export async function streamChatWithTools(
     };
     withFallbacks(provider, finalPayload);
 
-    const finalRes = await fetch(provider.url, {
+    const finalRes = await fetchStreamWithTimeout(provider.url, {
       method: "POST",
       headers,
       body: JSON.stringify(finalPayload),

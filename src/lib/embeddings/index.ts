@@ -26,17 +26,31 @@ export async function embedText(text: string): Promise<number[]> {
   const env = getEmbeddingsEnv();
   const url = `${GEMINI_BASE}/${env.EMBEDDING_MODEL}:embedContent`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": env.GOOGLE_API_KEY,
-    },
-    body: JSON.stringify({
-      content: { parts: [{ text }] },
-      output_dimensionality: env.EMBEDDING_DIM,
-    }),
-  });
+  // 30s timeout: a hung embedding upstream must not pin the serverless function.
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": env.GOOGLE_API_KEY,
+      },
+      body: JSON.stringify({
+        content: { parts: [{ text }] },
+        output_dimensionality: env.EMBEDDING_DIM,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("Embedding failed: request timed out after 30s");
+    }
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");

@@ -34,12 +34,26 @@ async function rawFetch(accessToken: string, req: GraphRequest): Promise<Respons
     Authorization: `Bearer ${accessToken}`,
     ...req.headers,
   };
-  const res = await fetch(`${GRAPH_BASE}${req.path}`, {
-    method: req.method ?? "GET",
-    headers,
-    body: req.body ?? undefined,
-    cache: "no-store",
-  });
+  // 30s timeout: a hung Graph upstream must not pin the serverless function.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(`${GRAPH_BASE}${req.path}`, {
+      method: req.method ?? "GET",
+      headers,
+      body: req.body ?? undefined,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new GraphError(504, "timeout", "Microsoft Graph request timed out after 30s");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) {
     let code = String(res.status);
     let message = res.statusText;

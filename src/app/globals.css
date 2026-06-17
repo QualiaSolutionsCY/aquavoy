@@ -635,9 +635,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   color: var(--text);
 }
 .trace-row:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .trace-caret {
   color: var(--text-muted);

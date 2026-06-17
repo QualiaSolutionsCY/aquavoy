@@ -2,13 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { handle, ok, fail } from "@/lib/http";
 import { scheduleEmail, listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
+import { getPrincipal } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** List scheduled emails (most recent 50). */
-export function GET(): Promise<NextResponse> {
-  return handle(async () => ok(await listScheduled()));
+/** List scheduled emails (most recent 50) for the verified principal. */
+export function GET(req: NextRequest): Promise<NextResponse> {
+  return handle(async () => {
+    const principal = getPrincipal(req);
+    if (!principal) return fail("Unauthorized", 401);
+    return ok(await listScheduled(principal));
+  });
 }
 
 const scheduleSchema = z.object({
@@ -30,6 +35,8 @@ const scheduleSchema = z.object({
 /** Schedule an email for future delivery. */
 export function POST(req: NextRequest): Promise<NextResponse> {
   return handle(async () => {
+    const principal = getPrincipal(req);
+    if (!principal) return fail("Unauthorized", 401);
     const parsed = scheduleSchema.safeParse(await req.json());
     if (!parsed.success) {
       const issues = parsed.error.issues
@@ -44,7 +51,7 @@ export function POST(req: NextRequest): Promise<NextResponse> {
       subject,
       body,
       scheduledAt,
-      createdBy: "api",
+      createdBy: principal,
     });
     return ok(row);
   });
@@ -53,9 +60,11 @@ export function POST(req: NextRequest): Promise<NextResponse> {
 /** Cancel a scheduled email (must still be pending). */
 export function DELETE(req: NextRequest): Promise<NextResponse> {
   return handle(async () => {
+    const principal = getPrincipal(req);
+    if (!principal) return fail("Unauthorized", 401);
     const id = req.nextUrl.searchParams.get("id");
     if (!id) return fail("Missing ?id query parameter", 400);
-    const row = await cancelScheduled(id);
+    const row = await cancelScheduled(id, principal);
     return ok(row);
   });
 }

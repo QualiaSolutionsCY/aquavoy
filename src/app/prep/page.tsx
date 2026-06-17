@@ -35,6 +35,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 export default function Prep() {
   const [crew, setCrew] = useState<Recipient[]>([]);
+  const [crewLoading, setCrewLoading] = useState(true);
   const [selected, setSelected] = useState<Recipient | null>(null);
   const [crewError, setCrewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +83,7 @@ export default function Prep() {
   }, []);
 
   async function loadCrew() {
+    setCrewLoading(true);
     try {
       setCrew(await api<Recipient[]>("/api/recipients"));
       setCrewError(null);
@@ -89,6 +91,8 @@ export default function Prep() {
       setCrewError(
         `${(e as Error).message} — recipients need Supabase configured. Add the creds and redeploy.`,
       );
+    } finally {
+      setCrewLoading(false);
     }
   }
 
@@ -195,10 +199,37 @@ export default function Prep() {
         {/* -- Crew column -- */}
         <section className="panel">
           <h2 className="panel-h">Crew</h2>
-          {crewError && <div className="notice err">{crewError}</div>}
+          {crewError && (
+            <div className="notice err" role="alert">
+              <div>
+                <strong>Could not load — Retry</strong>{" "}
+                <button
+                  className="btn ghost sm"
+                  onClick={() => {
+                    setCrewError(null);
+                    loadCrew();
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+              <div className="empty-hint">{crewError}</div>
+            </div>
+          )}
+          {crewLoading ? (
+            <div className="crew-list" aria-busy="true" aria-label="Loading crew">
+              {[0, 1, 2, 3].map((i) => (
+                <div className="skeleton-row" key={i}>
+                  <span className="skeleton icon" />
+                  <span className="skeleton" style={{ width: `${72 - i * 9}%` }} />
+                  <span className="skeleton meta" />
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="crew-list">
             {crew.length === 0 && !crewError ? (
-              <div className="empty">No recipients yet. Add one below.</div>
+              <div className="empty">Add a recipient to get started</div>
             ) : (
               crew.map((r) => (
                 <div
@@ -227,6 +258,7 @@ export default function Prep() {
               ))
             )}
           </div>
+          )}
 
           <div className="add-form">
             <input

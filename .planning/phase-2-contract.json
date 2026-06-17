@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "phase": 2,
+  "goal": "The agent reads and reasons over a OneDrive document within a single turn.",
+  "why": "Operators expect single-turn document answers (e.g. summarize the latest invoice). Per phase-2-context.md the capability is ALREADY shipped (read_file + extractText, wired into registry + system prompt); the real deliverable is closing the verification + automated-test gap so it cannot silently regress. No redundant read_document tool is added (MVP/locality).",
+  "generated_at": "2026-06-16T12:15:00Z",
+  "generated_by": "manual",
+  "source_plan_hash": "sha256:27a15b47a1e45f522086b5a29bef747948196d2c340e1d6f7e03d4fc7627774a",
+  "success_criteria": [
+    "A tool fetches a drive item, extracts Word/PDF/Excel/text, and returns content the agent reasons over in the same turn.",
+    "Size/type guards: large files truncated with a note; unsupported types reported cleanly.",
+    "Wired into the tool registry and the system-prompt capability list.",
+    "Automated extraction test net exists and passes; tsc 0, full suite green."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Verify pre-existing document-read capability + add extraction test net",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/onedriveTools.test.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "read_file over a stubbed text download returns { fileName, content } with the decoded text.",
+        "When the download response has no content-disposition, the filename falls back to getItem(...).name.",
+        "An unsupported binary extension returns the clean 'Cannot extract text' message, not a crash.",
+        "Content longer than the 12000-char cap is truncated and ends with '(truncated)'.",
+        "Missing itemId returns { error: 'itemId is required' } with no download attempted.",
+        ".docx/.pdf/.xlsx filenames route to the matching parser branch, verified with the parser modules mocked.",
+        "npx tsc --noEmit exits 0; npx vitest run passes."
+      ],
+      "action": "Add vi.mock for mammoth/pdf-parse/xlsx, a fileResponse helper, and a read_file describe block covering AC1-AC6 via executeTool('read_file', { itemId }, 'conn-1') with the download mock configured per case. Test OUR extraction dispatch, not the vendor libraries.",
+      "context_files": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/onedriveTools.test.ts",
+        "src/lib/openrouter/client.ts",
+        ".planning/phase-2-context.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "name: \"read_file\"",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "read_file",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.test.ts",
+          "pattern": "read_file — inline document understanding",
+          "expect": "present"
+        }
+      ]
+    }
+  ]
+}

@@ -23,6 +23,19 @@ vi.mock("@/lib/microsoft/connections", () => ({
 vi.mock("@/lib/agents/tavily", () => ({ tavilySearch: vi.fn() }));
 vi.mock("@/lib/agents/memoryTools", () => ({ recallMemory: vi.fn() }));
 
+// Parser libs are mocked: we test OUR extraction dispatch + read_file wiring,
+// not the vendor libraries themselves (rules/architecture.md §6).
+vi.mock("mammoth", () => ({ extractRawText: vi.fn(async () => ({ value: "DOCX TEXT" })) }));
+vi.mock("pdf-parse", () => ({
+  PDFParse: class {
+    getText = async () => ({ text: "PDF TEXT" });
+  },
+}));
+vi.mock("xlsx", () => ({
+  read: vi.fn(() => ({ SheetNames: ["Sheet1"], Sheets: { Sheet1: {} } })),
+  utils: { sheet_to_csv: vi.fn(() => "a,b\n1,2") },
+}));
+
 vi.mock("@/lib/mail/scheduled", () => ({
   scheduleEmail: vi.fn(),
   listScheduled: vi.fn(),
@@ -50,8 +63,18 @@ vi.mock("@/lib/mail/accounts", () => ({
 
 import { executeTool } from "./onedriveTools";
 import { recallMemory } from "@/lib/agents/memoryTools";
+import { downloadContent, getItem } from "@/lib/microsoft/onedrive";
 
 const recallMemoryMock = vi.mocked(recallMemory);
+const downloadContentMock = vi.mocked(downloadContent);
+const getItemMock = vi.mocked(getItem);
+
+/** Build a fetch Response with optional content-disposition filename. */
+function fileResponse(body: string, fileName?: string): Response {
+  const headers = new Headers();
+  if (fileName) headers.set("content-disposition", `attachment; filename="${fileName}"`);
+  return new Response(body, { headers });
+}
 
 const account = {
   id: "acct-1",
@@ -132,5 +155,74 @@ describe("agents/onedriveTools recall_memory principal pinning (REQ-3)", () => {
     const parsed = JSON.parse(out);
     expect(parsed.error).toBe("no verified principal in session");
     expect(recallMemoryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("agents/onedriveTools read_file — inline document understanding (M2-P2)", () => {
+  beforeEach(() => {
+    downloadContentMock.mockReset();
+    getItemMock.mockReset();
+  });
+
+  it("AC1: extracts text content from a downloaded text file", async () => {
+    downloadContentMock.mockResolvedValueOnce(fileResponse("hello from notes", "notes.txt"));
+    const out = await executeTool("read_file", { itemId: "item-1" }, "conn-1");
+    const parsed = JSON.parse(out);
+    expect(parsed.fileName).toBe("notes.txt");
+    expect(parsed.content).toBe("hello from notes");
+  });
+
+  it("AC2: falls back to getItem for the filename when content-disposition is absent", async () => {
+    downloadContentMock.mockResolvedValueOnce(fileResponse("body text")); // no filename header
+    getItemMock.mockResolvedValueOnce({ name: "fallback.txt" } as Awaited<ReturnType<typeof getItem>>);
+    const out = await executeTool("read_file", { itemId: "item-2" }, "conn-1");
+    const parsed = JSON.parse(out);
+    expect(getItemMock).toHaveBeenCalledTimes(1);
+    expect(parsed.fileName).toBe("fallback.txt");
+    expect(parsed.content).toBe("body text");
+  });
+
+  it("AC3: returns a clean message for unsupported binary types instead of crashing", async () => {
+    downloadContentMock.mockResolvedValueOnce(fileResponse("\x89PNG\r\n", "logo.png"));
+    const out = await executeTool("read_file", { itemId: "item-3" }, "conn-1");
+    const parsed = JSON.parse(out);
+    expect(parsed.fileName).toBe("logo.png");
+    expect(parsed.content).toContain("Cannot extract text");
+  });
+
+  it("AC4: truncates content longer than the 12000-char cap with a note", async () => {
+    const big = "x".repeat(13_000);
+    downloadContentMock.mockResolvedValueOnce(fileResponse(big, "big.txt"));
+    const out = await executeTool("read_file", { itemId: "item-4" }, "conn-1");
+    const parsed = JSON.parse(out);
+    expect(parsed.content.endsWith("(truncated)")).toBe(true);
+    expect(parsed.content.length).toBeLessThan(big.length);
+  });
+
+  it("AC5: returns an error when itemId is missing, without downloading", async () => {
+    const out = await executeTool("read_file", {}, "conn-1");
+    const parsed = JSON.parse(out);
+    expect(parsed.error).toBe("itemId is required");
+    expect(downloadContentMock).not.toHaveBeenCalled();
+  });
+
+  it("AC6: dispatches .docx to the mammoth branch", async () => {
+    downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "report.docx"));
+    const out = await executeTool("read_file", { itemId: "item-5" }, "conn-1");
+    expect(JSON.parse(out).content).toBe("DOCX TEXT");
+  });
+
+  it("AC6: dispatches .pdf to the pdf-parse branch", async () => {
+    downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "report.pdf"));
+    const out = await executeTool("read_file", { itemId: "item-6" }, "conn-1");
+    expect(JSON.parse(out).content).toBe("PDF TEXT");
+  });
+
+  it("AC6: dispatches .xlsx to the xlsx branch (CSV per sheet)", async () => {
+    downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "data.xlsx"));
+    const out = await executeTool("read_file", { itemId: "item-7" }, "conn-1");
+    const content = JSON.parse(out).content;
+    expect(content).toContain("Sheet: Sheet1");
+    expect(content).toContain("a,b");
   });
 });

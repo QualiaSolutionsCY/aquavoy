@@ -1,10 +1,10 @@
-# Roadmap · Milestone 3 · Operations Polish
+# Roadmap · Milestone 4 · Handoff
 
 **Project:** Aquavoy
-**Milestone:** 3 of 4 (CURRENT)
+**Milestone:** 4 of 4 (CURRENT — FINAL)
 **Created:** 2026-06-17
-**Phases:** 3
-**Requirements covered:** REQ-12, REQ-13, REQ-14, REQ-15, REQ-16, REQ-17, REQ-18
+**Phases:** 4
+**Requirements covered:** REQ-19, REQ-20, REQ-21, REQ-22
 
 See `JOURNEY.md` for the full project arc. This file is ONLY the current milestone's phases.
 
@@ -12,9 +12,10 @@ See `JOURNEY.md` for the full project arc. This file is ONLY the current milesto
 
 What "shipped" means for this milestone:
 
-- Every agent turn persists a structured trace (model, provider, tool calls, latency, token counts) readable from the database; operators can see which tools ran and who answered without opening the network tab.
-- The two-mail-stack question is resolved: either the dual stack is formally documented as an intentional two-owner architecture with a clear adapter contract per stack, or one stack is removed — decision recorded in `.planning/decisions/ADR-004-mail-stack.md`.
-- Emails, Files, and Prep pages have full loading / error / empty states and pass a mobile layout check at 375 px; no blank screen on slow network or failed fetch.
+- A new maintainer can orient themselves from the repo and docs alone — README, operator runbook, env-var reference, and ADR index all in place with no undocumented gaps.
+- Vercel prod config, cron, env vars, and all 12 Supabase migrations (0001–0012) are confirmed applied and documented; RLS is on for every table; no secret sits client-side.
+- End-to-end QA pass confirms all headline flows (auth, agent chat with tool trace, confirm/undo, mail send/schedule, OneDrive file ops, mobile layout on each management page) are verified with a pass/fail checklist.
+- Client holds all credentials and access needed to own the system independently; written acceptance sign-off obtained.
 
 ---
 
@@ -22,65 +23,81 @@ What "shipped" means for this milestone:
 
 | # | Phase | Goal | Requirements | Status |
 |---|-------|------|--------------|--------|
-| 1 | Observability | Instrument the agent loop and surface structured per-turn traces | REQ-12, REQ-13, REQ-14 | ready |
-| 2 | Mail Stack Decision | Audit the dual stack, decide keep-both vs converge, implement the outcome | REQ-15, REQ-16 | — |
-| 3 | UX Refinement | Polish Emails / Files / Prep with complete UI states and mobile layout | REQ-17, REQ-18 | — |
+| 1 | Documentation Pass | Write the repo-level docs a maintainer or operator needs to get oriented from scratch | REQ-19 | ready |
+| 2 | Deployment Hardening + Monitoring | Confirm and document the production deployment configuration; verify schema and security posture | REQ-20 | — |
+| 3 | Final QA | End-to-end verification of all headline flows across M1–M3; produce a signed-off pass/fail checklist | REQ-21 | — |
+| 4 | Knowledge Transfer + Acceptance | Operator walkthrough, credential handover, and written client acceptance sign-off | REQ-22 | — |
 
 ## Phase Details
 
-### Phase 1: Observability
+### Phase 1: Documentation Pass
 
-**Goal:** Every agent turn writes a structured trace record to the database (model chosen, provider that answered, all tool calls with names / args / result shape, latency per call, total token counts); the chat UI surfaces a collapsible "what ran" panel for each response.
+**Goal:** A developer or operator arriving at the repo cold can understand the app's architecture, operate the agent, and get a local dev environment running — without asking anyone — because the README, runbook, env-var reference, and ADR index are all accurate and complete.
 
 **Requirements covered:**
-- REQ-12: Operator can see which model and provider answered each agent turn
-- REQ-13: Operator can expand a per-turn tool-call trace (tool name, arguments, result summary, latency)
-- REQ-14: Token-usage and latency metrics are stored per turn and queryable from the database
+- REQ-19: Maintainer/operator can orient from repo and docs alone — README, runbook, env-var reference, ADR index all present and accurate
 
 **Success criteria** (observable behaviors):
-1. After any agent response, the chat shows a disclosure row (e.g. "3 tools · Gemini Flash · 1.2 s") that expands to a per-tool trace with name, argument summary, and latency — no network tab or log-tailing required.
-2. The `agent_traces` table (or equivalent) in Supabase has one row per turn with `model`, `provider`, `tool_calls` (JSONB array), `latency_ms`, `prompt_tokens`, and `completion_tokens` populated and non-null for every completed turn.
-3. A slow or failed tool call is represented in the trace with its actual latency and an `error` field — the trace record is never silently omitted, even when the agent loop itself errors mid-turn.
-4. The observability layer adds zero new runtime dependencies to the client bundle — all writes happen server-side inside the existing SSE route, not in a new background worker.
+1. `README.md` at repo root covers: what Aquavoy is, local dev setup (clone → env pull → `npm run dev`), the four pages (Chat / Emails / Files / Prep), and pointers to the operator runbook and ADR index — a developer with Next.js experience can run the app locally following only the README.
+2. An operator runbook exists (e.g. `docs/operator-runbook.md`) covering: how to start and drive the agent chat, what the confirm/undo flow does and when it fires, how to read the tool-trace disclosure row, how to manage the 12 mailboxes from the Emails page, and how the OneDrive connection works (OAuth, what to do if the token expires).
+3. An env-var reference exists listing every environment variable the app reads, its purpose, where the value comes from, and whether it is required or optional — no variable is undocumented.
+4. `.planning/decisions/` contains ADR-001 through ADR-004; a short index in the README or a `docs/architecture.md` links to each ADR with a one-line summary so a reader knows what each decision covers without opening each file.
+5. No "TODO", "FIXME", or placeholder text remains in any doc file introduced or updated during this phase.
 
-**Depends on:** M2 shipped (agent loop, confirm/undo, memory all stable).
+**Depends on:** M3 shipped (all features stable before docs are written as final).
 
 ---
 
-### Phase 2: Mail Stack Decision
+### Phase 2: Deployment Hardening + Monitoring
 
-**Goal:** The dual-stack (Graph/Outlook for delegated-OAuth mail + IMAP/SMTP for the 12-mailbox fleet) is either formally documented as an intentional two-owner architecture with a single adapter contract per stack, or converged to one stack with the unused path removed and the rationale recorded as an ADR.
+**Goal:** The production deployment is fully documented and verified: Vercel config and cron are correct, all 12 Supabase migrations are applied to prod, RLS is confirmed on every table, no secret is reachable from client code, and there is a documented monitoring approach so an incident does not go unnoticed.
 
 **Requirements covered:**
-- REQ-15: The mail architecture decision (dual-stack vs converge) is recorded as an ADR in `.planning/decisions/` with rationale and the chosen path implemented
-- REQ-16: Whichever stack is authoritative for each mailbox is discoverable at runtime — no silent fallback from one stack to the other; errors surface clearly to the operator
+- REQ-20: Production deployment verified and documented — Vercel + cron config, all 12 migrations applied, RLS on every table, no secret client-side, monitoring approach documented
 
 **Success criteria** (observable behaviors):
-1. `.planning/decisions/ADR-004-mail-stack.md` exists, is dated, names the chosen path (keep-both / converge-to-Graph / converge-to-IMAP), and states the rationale tied to VAL-5 (12-mailbox IMAP fleet) and VAL-4 (Graph delegated OAuth for Wence/Jeanette mailboxes).
-2. If keep-both: each adapter (`lib/mail/*` and `lib/microsoft/mail.ts`) has a clear ownership comment and a single exported interface per operation; no route calls both stacks for the same send/read operation.
-3. If converge: the removed stack's code is deleted (not commented out), any orphaned config columns are dropped via a Supabase migration, and the surviving path is smoke-tested against a real mailbox in staging before merge.
-4. The chat agent's mail tools return a consistent, human-readable error message regardless of which stack handles the call — operators see "Could not send from accounts@aquavoy.com" rather than a raw IMAP exception or a Graph SDK stack trace.
+1. `vercel.json` cron entry for the scheduled-email drain (`/api/cron/send-scheduled`) is present and the cron fires on schedule in production — confirmed by checking Vercel Dashboard cron logs for at least one successful run or by a `curl` triggering the endpoint with the correct `CRON_SECRET` and getting HTTP 200.
+2. `npx supabase db diff --linked` against the production database returns no schema drift — all 12 migrations (0001_onedrive_connections through 0012_mail_stack) are applied and the live schema matches the migration files on disk.
+3. Every table in production has RLS enabled — confirmed by `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public'` returning `rowsecurity = true` for all rows.
+4. A grep of the client bundle (`NEXT_PUBLIC_` variables and any files under `src/app/` or `src/components/`) finds zero references to `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `IMAP_*`, or `SMTP_*` — secrets are server-only.
+5. A monitoring approach is documented: at minimum, the UptimeRobot monitor URL (`https://stats.uptimerobot.com/bKudHy1pLs`) is recorded in the README or runbook with instructions for the client to check it; any additional Vercel error alerts or log-drain config is noted.
 
-**Depends on:** Phase 1 (traces confirm which mail tool path actually fires in production before we remove one).
+**Depends on:** Phase 1 (docs in place before the deployment verification is recorded against them).
 
 ---
 
-### Phase 3: UX Refinement
+### Phase 3: Final QA
 
-**Goal:** The Emails, Files, and Prep management pages have complete UI state coverage (loading skeleton, error boundary with retry, empty state with a call-to-action) and pass a basic mobile layout check at 375 px — operators on a phone or slow connection never see a blank or broken page.
+**Goal:** Every headline user flow introduced across M1–M3 is manually exercised on the production URL and marked pass or fail on a written checklist; all items pass before the milestone closes.
 
 **Requirements covered:**
-- REQ-17: Emails / Files / Prep pages each show a skeleton loader while data is in-flight and an inline error with retry on fetch failure — no blank screen or unhandled JS error
-- REQ-18: All three management pages are usable at 375 px viewport width (no horizontal overflow, tap targets ≥ 44 px, readable type)
+- REQ-21: End-to-end QA checklist produced and all items verified pass on production — covering auth, agent chat with tool trace, confirm/undo, mail send/schedule, OneDrive file ops, and mobile layout on each management page
 
 **Success criteria** (observable behaviors):
-1. On a throttled (Slow 3G) connection, each of the three pages shows a skeleton or placeholder immediately on load — visible in Chrome DevTools Network throttling before any data arrives.
-2. When the backing API returns a 5xx error (simulated via DevTools or a temporary stub), the affected page section shows an inline "Could not load — Retry" message; no blank section, no unhandled JS error in the console.
-3. At 375 px viewport width, no page content overflows horizontally — verified by setting `body { overflow: hidden }` at 375 px and confirming no horizontal scrollbar appears on any of the three pages.
-4. All interactive elements on the three pages (buttons, links, input fields) have a minimum touch target area of 44 × 44 px at 375 px width — verified by inspecting computed height/width in DevTools.
-5. Each page has a non-empty empty state: when no emails / files / prep recipients exist, a short prompt is shown ("Ask the agent to list your emails" / "Search for a file in the chat" / "Add a recipient to get started") rather than a blank container.
+1. A QA checklist document exists (e.g. `docs/qa-checklist.md`) with one row per flow covering: auth gate (login / wrong credentials rejected / logout), agent chat round-trip with a tool that calls OneDrive or mail and produces a visible tool-trace row, confirm/undo a destructive action (send or delete), send an email from a named mailbox, schedule an email and verify it drains via cron, list and download a OneDrive file, navigate each of the three management pages (Emails / Files / Prep) at 375 px without overflow.
+2. Every row in the QA checklist has a "Pass" or "Fail" result and a tester name + date — no row is blank or left as "TBD".
+3. All checklist items are marked Pass before this phase closes — any Fail must be resolved and re-tested within this milestone.
+4. The QA checklist is committed to the repo so the client and future maintainers have a record of what was verified at handoff.
 
-**Depends on:** Phase 2 (mail stack is stable before polishing the Emails page that renders from it).
+**Depends on:** Phase 2 (deployment verified before final QA runs against production).
+
+---
+
+### Phase 4: Knowledge Transfer + Acceptance
+
+**Goal:** Wency and Jeanette can operate the system without Qualia assistance; the client holds every credential and access token needed to own the system; written acceptance sign-off is obtained tying back to the JOURNEY.md exit criteria.
+
+**Requirements covered:**
+- REQ-22: Operator walkthrough delivered, all credentials and ownership transferred to client, written acceptance sign-off obtained
+
+**Success criteria** (observable behaviors):
+1. A walkthrough session is held with Wency and Jeanette (or documented asynchronously) covering: logging in, starting a chat, reading the tool-trace row, using confirm/undo, managing the Emails page, searching OneDrive from the Files page, and using the Prep page to draft an email — a walkthrough summary or checklist exists confirming the session occurred.
+2. A credential handover checklist exists and is completed, confirming the client holds: Supabase project credentials (URL + service role key), Vercel project access, Microsoft Azure app registration (client ID + secret for OneDrive OAuth), all 12 mailbox IMAP/SMTP credentials, OpenRouter API key, Gemini API key (if used directly), and Tavily API key.
+3. The client has Vercel project ownership (is added as a team member or owner) and can independently trigger a `vercel --prod` deployment without Qualia.
+4. A written acceptance sign-off document exists — signed (or explicitly acknowledged) by the client — stating that the delivered system meets the JOURNEY.md exit criteria for M1 (auth + encryption + migration integrity), M2 (memory + document understanding + confirm/undo), and M3 (observability + mail stack decision + mobile UX).
+5. Qualia's own access tokens and developer accounts are removed or downgraded to read-only after handover is confirmed — no lingering developer-level write access to production data.
+
+**Depends on:** Phase 3 (QA pass confirms the product is ready to hand off).
 
 ---
 
@@ -90,25 +107,22 @@ Every requirement in this milestone maps to exactly one phase.
 
 | Requirement | Phase | Covered? |
 |-------------|-------|----------|
-| REQ-12 | Phase 1 | ✓ |
-| REQ-13 | Phase 1 | ✓ |
-| REQ-14 | Phase 1 | ✓ |
-| REQ-15 | Phase 2 | ✓ |
-| REQ-16 | Phase 2 | ✓ |
-| REQ-17 | Phase 3 | ✓ |
-| REQ-18 | Phase 3 | ✓ |
+| REQ-19 | Phase 1 | ✓ |
+| REQ-20 | Phase 2 | ✓ |
+| REQ-21 | Phase 3 | ✓ |
+| REQ-22 | Phase 4 | ✓ |
 
 ---
 
 ## When This Milestone Closes
 
-Triggered by `/qualia-milestone` after `/qualia-verify` passes on Phase 3:
+This is the final milestone. On close:
 
-1. All phase artifacts are archived to `.planning/archive/milestone-3-operations-polish/`
+1. All phase artifacts are archived to `.planning/archive/milestone-4-handoff/`
 2. `tracking.json` `milestones[]` gets a summary entry (num, name, phases_completed, shipped_url, closed_at)
-3. REQUIREMENTS.md marks M3 requirements as **Complete**
-4. M4 (Handoff) opens — roadmapper regenerates this ROADMAP.md for Milestone 4
-5. `state.js init --force --milestone_name "Handoff"` resets current-phase fields, preserves lifetime + milestones[] history
+3. REQUIREMENTS.md marks M4 requirements as **Complete**
+4. Client acceptance sign-off document is committed to `.planning/archive/` or `docs/`
+5. Project is marked complete in `tracking.json`
 
 ---
 

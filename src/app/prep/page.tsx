@@ -245,7 +245,7 @@ export default function Prep() {
                   <div className="meta">{r.email}</div>
                   {r.role && <div className="meta">{r.role}</div>}
                   <button
-                    className="btn danger sm"
+                    className="btn danger close"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeRecipient(r.id);

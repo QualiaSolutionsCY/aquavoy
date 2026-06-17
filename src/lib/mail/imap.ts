@@ -17,6 +17,7 @@ import {
  * credentials from Supabase, connects via IMAP TLS, performs a read-only
  * operation, and disconnects.
  */
+// ADR-004: authoritative stack for this operation — IMAP/SMTP owns company mailboxes
 
 const BODY_CAP = 12_000;
 const DEFAULT_COUNT = 15;

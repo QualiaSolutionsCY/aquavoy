@@ -23,6 +23,8 @@ export interface MailAccount {
   imapPort: number | null;
   username: string;
   verifiedAt: string | null;
+  /** Authoritative stack that owns this mailbox (ADR-004 / REQ-16). */
+  mailStack: 'imap' | 'outlook';
 }
 
 /** Internal shape with the secret, used only for sending. */
@@ -41,6 +43,7 @@ interface AccountRow {
   username: string;
   password: string;
   verified_at: string | null;
+  mail_stack: string | null;
 }
 
 function toMailAccount(row: AccountRow): MailAccount {
@@ -54,6 +57,7 @@ function toMailAccount(row: AccountRow): MailAccount {
     imapPort: row.imap_port,
     username: row.username,
     verifiedAt: row.verified_at,
+    mailStack: row.mail_stack === 'outlook' ? 'outlook' : 'imap',
   };
 }
 
@@ -108,7 +112,7 @@ export async function listAccounts(): Promise<MailAccount[]> {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from(TABLE)
-    .select("id, email, display_name, smtp_host, smtp_port, imap_host, imap_port, username, verified_at")
+    .select("id, email, display_name, smtp_host, smtp_port, imap_host, imap_port, username, verified_at, mail_stack")
     .order("updated_at", { ascending: false });
   if (error) throw new Error(`Failed to list mail accounts: ${error.message}`);
   return (data as AccountRow[]).map(toMailAccount);

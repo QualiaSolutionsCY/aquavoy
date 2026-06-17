@@ -37,6 +37,7 @@ const account: MailAccountWithSecret = {
   username: "info@aquavoy.com",
   password: "decrypted-secret",
   verifiedAt: null,
+  mailStack: "imap",
 };
 
 describe("mail/smtp send adapter", () => {

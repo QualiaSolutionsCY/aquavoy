@@ -33,8 +33,7 @@ function str(args: Record<string, unknown>, key: string): string {
 export async function executeConfirmedAction(
   tool: string,
   args: Record<string, unknown>,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _principal: string,
+  principal: string,
 ): Promise<ConfirmedOutcome> {
   switch (tool) {
     case "move_item": {
@@ -136,7 +135,9 @@ export async function executeConfirmedAction(
         subject,
         body,
         scheduledAt: sendAt,
-        createdBy: "agent",
+        // Own the scheduled email by the verified principal so REQ-3-scoped
+        // list/cancel can find it (and only its owner can cancel it).
+        createdBy: principal,
       });
       return {
         result: {

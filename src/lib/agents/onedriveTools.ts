@@ -700,7 +700,10 @@ export async function executeTool(
       }
 
       case "list_scheduled_emails": {
-        const emails = await listScheduled();
+        // Principal isolation (REQ-3): only the session principal's own queue.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
+        const emails = await listScheduled(sessionPrincipal);
         const summary = emails.map((e) => ({
           id: e.id,
           from: e.fromEmail,
@@ -715,9 +718,12 @@ export async function executeTool(
       }
 
       case "cancel_scheduled_email": {
+        // Principal isolation (REQ-3): an operator can only cancel their own.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
         const id = typeof args.id === "string" ? args.id : "";
         if (!id) return JSON.stringify({ error: "id is required" });
-        const row = await cancelScheduled(id);
+        const row = await cancelScheduled(id, sessionPrincipal);
         return JSON.stringify({ cancelled: true, id: row.id, status: row.status });
       }
 

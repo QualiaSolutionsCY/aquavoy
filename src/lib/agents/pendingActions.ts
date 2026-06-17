@@ -150,50 +150,50 @@ export async function confirmAction(
   principal: string,
 ): Promise<PendingAction | null> {
   const db = supabaseAdmin();
-  const pending = await getPendingAction(id, principal);
-  if (!pending) return null;
-  if (pending.status !== "pending") return pending;
 
-  let outcome;
-  try {
-    outcome = await executeConfirmedAction(pending.tool, pending.args, principal);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Action failed";
-    const { data } = await db
-      .from(TABLE)
-      .update({
-        status: "failed",
-        resolved_at: new Date().toISOString(),
-        result: { error: message },
-      })
-      .eq("id", id)
-      .eq("principal", principal)
-      .eq("status", "pending")
-      .select(COLUMNS)
-      .maybeSingle();
-    if (data) return toPendingAction(data as PendingRow);
-    // Lost the race (already resolved) — return the current row.
-    return getPendingAction(id, principal);
-  }
-
-  const { data, error } = await db
+  // Atomic claim FIRST (adversarial MEDIUM-2): flip pending→confirmed in one
+  // guarded UPDATE. Postgres serializes concurrent UPDATEs on the same row, so
+  // only ONE confirm wins the `status='pending'` predicate — the loser updates
+  // 0 rows. executeConfirmedAction therefore runs at most once, even if two
+  // requests confirm the same id simultaneously (no duplicate send/delete).
+  const { data: claimedRow, error: claimErr } = await db
     .from(TABLE)
-    .update({
-      status: "confirmed",
-      resolved_at: new Date().toISOString(),
-      result: outcome.result as Record<string, unknown>,
-      undo_data: outcome.undo_data,
-    })
+    .update({ status: "confirmed", resolved_at: new Date().toISOString() })
     .eq("id", id)
     .eq("principal", principal)
     .eq("status", "pending")
     .select(COLUMNS)
     .maybeSingle();
 
-  if (error) throw new Error(`Failed to record confirmation: ${error.message}`);
-  // 0 rows → another request already confirmed it; return the current state.
-  if (!data) return getPendingAction(id, principal);
-  return toPendingAction(data as PendingRow);
+  if (claimErr) throw new Error(`Failed to claim action: ${claimErr.message}`);
+  // Not found / wrong principal / already resolved → return current state (null if absent).
+  if (!claimedRow) return getPendingAction(id, principal);
+
+  const claimed = toPendingAction(claimedRow as PendingRow);
+
+  // We exclusively own the action now — run the side-effect exactly once.
+  try {
+    const outcome = await executeConfirmedAction(claimed.tool, claimed.args, principal);
+    const { data } = await db
+      .from(TABLE)
+      .update({
+        result: outcome.result as Record<string, unknown>,
+        undo_data: outcome.undo_data,
+      })
+      .eq("id", id)
+      .select(COLUMNS)
+      .maybeSingle();
+    return data ? toPendingAction(data as PendingRow) : claimed;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Action failed";
+    const { data } = await db
+      .from(TABLE)
+      .update({ status: "failed", result: { error: message } })
+      .eq("id", id)
+      .select(COLUMNS)
+      .maybeSingle();
+    return data ? toPendingAction(data as PendingRow) : claimed;
+  }
 }
 
 // ── Cancel ───────────────────────────────────────────────────
@@ -285,7 +285,7 @@ export async function undoAction(
         return { action, undone: false, reason: "scheduled id unavailable" };
       }
       try {
-        await cancelScheduled(scheduledId);
+        await cancelScheduled(scheduledId, principal);
       } catch {
         return { action, undone: false, reason: "scheduled email already sent or cancelled" };
       }

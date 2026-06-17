@@ -101,13 +101,17 @@ export async function scheduleEmail(input: ScheduleInput): Promise<ScheduledEmai
 // ── List ────────────────────────────────────────────────────
 
 /** Most recent 50 scheduled emails, all statuses. */
-export async function listScheduled(): Promise<ScheduledEmail[]> {
+export async function listScheduled(principal?: string): Promise<ScheduledEmail[]> {
   const db = supabaseAdmin();
-  const { data, error } = await db
+  let query = db
     .from(TABLE)
     .select("id, from_email, to_email, subject, body, scheduled_at, status, sent_at, error, created_by, created_at")
     .order("created_at", { ascending: false })
     .limit(50);
+  // Principal isolation (REQ-3): when a principal is given, scope to their own
+  // scheduled emails so one operator never sees another's queue.
+  if (principal) query = query.eq("created_by", principal);
+  const { data, error } = await query;
 
   if (error) throw new Error(`Failed to list scheduled emails: ${error.message}`);
   return (data as ScheduledRow[]).map(toScheduledEmail);
@@ -116,15 +120,16 @@ export async function listScheduled(): Promise<ScheduledEmail[]> {
 // ── Cancel ──────────────────────────────────────────────────
 
 /** Cancel a scheduled email — only if it's still pending. */
-export async function cancelScheduled(id: string): Promise<ScheduledEmail> {
+export async function cancelScheduled(id: string, principal?: string): Promise<ScheduledEmail> {
   const db = supabaseAdmin();
-  const { data, error } = await db
+  let query = db
     .from(TABLE)
     .update({ status: "cancelled" })
     .eq("id", id)
-    .eq("status", "pending")
-    .select()
-    .single();
+    .eq("status", "pending");
+  // Principal isolation (REQ-3): an operator can only cancel their own emails.
+  if (principal) query = query.eq("created_by", principal);
+  const { data, error } = await query.select().single();
 
   if (error) {
     throw new Error(

@@ -17,17 +17,27 @@ All REQ-1…8 verified and live. See `.planning/archive/milestone-1-trust-and-ha
 | REQ-7 | `mail_accounts` email-uniqueness constraints reconciled to one source of truth | MED-3 | 3 |
 | REQ-8 | Test framework configured; seam tests for Graph/IMAP/SMTP adapters + route-level auth/tool-dispatch | HIGH-3 | 3 |
 
-## M2 — Agent Depth *(sketched — REQ-IDs assigned when milestone opens)*
+## M2 — Agent Depth ✓ COMPLETE (shipped 2026-06-17 → https://aquavoy.vercel.app)
 
-- Richer memory: conversation summarization / semantic recall beyond keyword grep
-- Inline document understanding (read + summarize a drive file within a turn)
-- Stronger confirm / undo affordances for destructive tool calls
+All REQ-9…11 verified and live. See `.planning/archive/milestone-2-agent-depth/`.
 
-## M3 — Operations Polish *(sketched)*
+| ID | Requirement | Phase |
+|---|---|---|
+| REQ-9 | Durable memory: conversation summarization / semantic recall beyond keyword grep, with a server-side memory store and sweep | 1 |
+| REQ-10 | Inline document understanding — read + summarize a drive file within a single agent turn | 2 |
+| REQ-11 | Confirm/Undo affordances for destructive tool calls — pending-action staging, human Confirm/Cancel/Undo, scheduled-email isolation | 3 |
 
-- Observability: log model + tool-call traces; surface which provider answered
-- Two-mail-stack decision (Graph/Outlook vs IMAP/SMTP)
-- UX refinement across Emails / Files / Prep
+## M3 — Operations Polish *(CURRENT)*
+
+| ID | Requirement | Source | Phase |
+|---|---|---|---|
+| REQ-12 | Operator can see which model and provider answered each agent turn — surfaced in the chat UI per response | JOURNEY.md §M3 — observability | 1 |
+| REQ-13 | Operator can expand a per-turn tool-call trace showing tool name, argument summary, result summary, and latency — no network tab required | JOURNEY.md §M3 — observability | 1 |
+| REQ-14 | Token-usage and latency metrics are stored per agent turn in the database and are queryable (model, provider, tool_calls JSONB, latency_ms, prompt_tokens, completion_tokens) | JOURNEY.md §M3 — observability | 1 |
+| REQ-15 | The mail architecture decision (dual-stack vs converge) is recorded as an ADR in `.planning/decisions/` with rationale and the chosen path implemented in code | JOURNEY.md §M3 — two-mail-stack decision | 2 |
+| REQ-16 | Whichever stack is authoritative for each mailbox is discoverable at runtime — no silent fallback from one stack to the other; errors surface a human-readable message to the operator | JOURNEY.md §M3 — two-mail-stack decision | 2 |
+| REQ-17 | Emails / Files / Prep pages each show a skeleton loader while data is in-flight and an inline error with retry on fetch failure — no blank screen or unhandled JS error | JOURNEY.md §M3 — UX refinement | 3 |
+| REQ-18 | All three management pages are usable at 375 px viewport width: no horizontal overflow, tap targets ≥ 44 px, readable type, and a non-empty empty state on each page | JOURNEY.md §M3 — UX refinement | 3 |
 
 ## M4 — Handoff *(standard)*
 

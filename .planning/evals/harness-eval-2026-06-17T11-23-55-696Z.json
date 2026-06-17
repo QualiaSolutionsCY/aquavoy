@@ -1,0 +1,100 @@
+{
+  "ok": true,
+  "status": "WARN",
+  "score": 82,
+  "phase": 1,
+  "generated_at": "2026-06-17T11:23:55.696Z",
+  "checks": [
+    {
+      "name": "planning_state",
+      "weight": 15,
+      "status": "pass",
+      "score": 15,
+      "evidence": "state.js check returned ok",
+      "state": {
+        "ok": true,
+        "phase": 1,
+        "phase_name": "Observability",
+        "total_phases": 3,
+        "status": "built",
+        "assigned_to": "Profile: standard",
+        "profile": "standard",
+        "milestone": 3,
+        "milestone_name": "Operations Polish",
+        "milestones": [
+          {
+            "num": 2,
+            "name": "Agent Depth",
+            "total_phases": 3,
+            "phases_completed": 3,
+            "tasks_completed": 5,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-17T10:42:43.999Z"
+          }
+        ],
+        "lifetime": {
+          "tasks_completed": 5,
+          "phases_completed": 3,
+          "milestones_completed": 1,
+          "total_phases": 3,
+          "last_closed_milestone": 2
+        },
+        "verification": "pending",
+        "gap_cycles": 0,
+        "gap_cycle_limit": 2,
+        "tasks_done": 3,
+        "tasks_total": 3,
+        "deployed_url": "https://aquavoy.vercel.app",
+        "next_command": "/qualia-verify 1"
+      }
+    },
+    {
+      "name": "state_ledger",
+      "weight": 10,
+      "status": "pass",
+      "score": 10,
+      "evidence": "38 hash-chained event(s)"
+    },
+    {
+      "name": "plan_contract",
+      "weight": 20,
+      "status": "pass",
+      "score": 20,
+      "evidence": ".planning/phase-1-contract.json valid and in sync",
+      "contract": ".planning/phase-1-contract.json"
+    },
+    {
+      "name": "machine_evidence",
+      "weight": 20,
+      "status": "pass",
+      "score": 20,
+      "evidence": ".planning/evidence/phase-1-contract-run.json passed 16 check(s)"
+    },
+    {
+      "name": "verification_report",
+      "weight": 15,
+      "status": "warn",
+      "score": 7,
+      "evidence": ".planning/phase-1-verification.md verdict=fail"
+    },
+    {
+      "name": "framework_trust_score",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "trust-score=87/100 status=DEGRADED",
+      "trust_score": 87
+    },
+    {
+      "name": "erp_linkage",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "project key exists, ERP UUID missing"
+    }
+  ],
+  "artifacts": {
+    "json": ".planning/evals/harness-eval-2026-06-17T11-23-55-696Z.json",
+    "markdown": ".planning/evals/harness-eval-2026-06-17T11-23-55-696Z.md"
+  }
+}

@@ -1,107 +1,138 @@
 {
   "version": 1,
   "phase": 1,
-  "goal": "Recall is reliable across long histories, not just keyword-grep over recent messages.",
-  "why": "autoRecall greps chat_messages for >=5-char word overlaps and recallMemory does ilike %query% (memoryTools.ts:20-100) -- both miss paraphrases and drown in long histories. Replace substring recall with memory formation (extracted facts) + a 3-signal hybrid ranker per ADR-002, preserving the dual-path model and REQ-3 principal isolation.",
-  "generated_at": "2026-06-16T11:42:58Z",
+  "goal": "Every agent turn writes a structured trace record to the database (model, provider, tool calls with names/args/result shape, latency per call, token counts); the chat UI surfaces a collapsible 'what ran' panel per response.",
+  "why": "Operators currently fly blind -- they cannot see which model answered, which tools ran, or how long a turn took without tailing server logs. Phase 2 also depends on traces to confirm which mail path fires before one is removed.",
+  "generated_at": "2026-06-17T10:50:31Z",
   "generated_by": "planner",
-  "source_plan_hash": "sha256:b852a7183fd2a7647425d77cbdce71663fe1ce6bb0b2326907a249d0670d264e",
+  "source_plan_hash": "sha256:f218543bc049164e5c7e4bbfbc51c4a127401e44d7d2e9b0bbe4feb7d7276597",
   "success_criteria": [
-    "Conversations are reduced to durable extracted facts (memory_facts), embedded and principal-scoped, that the agent recalls -- not raw message substrings.",
-    "Recall ranks by salience + recency (cosine + lexical + recency-decay + importance) and surfaces a paraphrased fact an ilike keyword match would miss.",
-    "The dual-path model is preserved: both autoRecall and recall_memory route through hybridRecall; the recall_memory tool input/output contract is unchanged and onedriveTools.test.ts still passes.",
-    "Memory is scoped to the session principal: every memory_facts query filters on principal; cross-principal recall returns nothing (REQ-3).",
-    "Fact extraction is idempotent (upsert on (session_id, fact)), runs on session close and via a 5-min cron sweep, with per-session error isolation.",
-    "npx tsc --noEmit exits 0 and npx vitest run passes (existing + new suites).",
-    "Migration 0009 enables pgvector and creates memory_facts with RLS on, no policies, and a principal check constraint."
+    "After any agent response, the chat shows a disclosure row (e.g. '3 tools · Gemini Flash · 1.2 s') that expands to a per-tool trace with name, argument summary, and latency -- no network tab or log-tailing required.",
+    "public.agent_traces has one row per turn with model, provider, tool_calls (JSONB array), latency_ms, prompt_tokens, completion_tokens populated and non-null for every completed turn.",
+    "A slow or failed tool call is represented in the trace with its actual latency and an error field; the trace record is never silently omitted, even when the loop errors mid-turn.",
+    "The observability layer adds zero new runtime dependencies to the client bundle -- all writes happen server-side inside the existing SSE route."
   ],
   "tasks": [
     {
       "id": "T1",
-      "title": "Migration 0009: pgvector + memory_facts table",
+      "title": "agent_traces migration + trace persistence library",
       "wave": 1,
       "depends_on": [],
       "persona": "backend",
       "files_modify": [],
       "files_create": [
-        "supabase/migrations/0009_memory_facts.sql"
+        "supabase/migrations/0011_agent_traces.sql",
+        "src/lib/agents/traces.ts"
       ],
       "files_delete": [],
       "acceptance_criteria": [
-        "supabase/migrations/0009_memory_facts.sql exists, numbered after 0008.",
-        "Migration runs 'create extension if not exists vector;' to enable pgvector.",
-        "Creates public.memory_facts with principal check (Wency, Jeanette), session_id, fact, summary, embedding vector(768), importance int 1..5, created_at.",
-        "Unique constraint memory_facts_session_fact_uniq (session_id, fact) supports idempotent upsert.",
-        "RLS enabled with NO policies; principal check constraint present.",
-        "Btree index on (principal, created_at) and a cosine ANN index on embedding."
+        "Migration 0011_agent_traces.sql creates public.agent_traces with id, principal (check Wency/Jeanette), model, provider (check openrouter/gemini), tool_calls jsonb, latency_ms, prompt_tokens, completion_tokens, error, created_at.",
+        "Migration enables RLS and declares NO policies (service-role lockdown matching 0010_pending_actions.sql).",
+        "Migration adds an index on (principal, created_at).",
+        "traces.ts exports insertTrace(input) returning the new row id, and getTrace(id) mapping snake_case to camelCase AgentTrace.",
+        "ToolCallTrace is { name, argsSummary, resultSummary, latencyMs, error }."
       ],
-      "action": "Mirror 0004_chat_messages.sql and 0007_scheduled_emails.sql comment/RLS pattern. Enable pgvector, create memory_facts with the listed columns/constraints/indexes, add the (session_id, fact) unique constraint, enable RLS with no policies, use vector(768) to match the adapter output_dimensionality.",
+      "action": "Write the migration in the comment+structure style of 0010_pending_actions.sql (header comment, create table if not exists, comment on table, index, enable row level security, no policies). In traces.ts import supabaseAdmin from @/lib/supabase/server; insertTrace inserts via .from('agent_traces').insert().select('id').single() and returns id; getTrace selects by id and maps to camelCase AgentTrace. Apply locally via npx supabase migration up -- never hand-apply to remote.",
       "context_files": [
-        "supabase/migrations/0004_chat_messages.sql",
-        "supabase/migrations/0007_scheduled_emails.sql",
-        ".planning/decisions/ADR-002-durable-memory-architecture.md",
-        ".planning/phase-1-context.md"
+        "supabase/migrations/0010_pending_actions.sql",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/supabase/server.ts",
+        "src/lib/openrouter/client.ts",
+        ".planning/PROJECT.md"
       ],
       "verification": [
         {
           "type": "file-exists",
-          "path": "supabase/migrations/0009_memory_facts.sql"
+          "path": "supabase/migrations/0011_agent_traces.sql"
         },
         {
           "type": "grep-match",
-          "path": "supabase/migrations/0009_memory_facts.sql",
-          "pattern": "create extension if not exists vector",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "supabase/migrations/0009_memory_facts.sql",
+          "path": "supabase/migrations/0011_agent_traces.sql",
           "pattern": "enable row level security",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "supabase/migrations/0009_memory_facts.sql",
+          "path": "supabase/migrations/0011_agent_traces.sql",
           "pattern": "create policy",
           "expect": "absent"
         },
         {
           "type": "grep-match",
-          "path": "supabase/migrations/0009_memory_facts.sql",
-          "pattern": "vector\\(768\\)",
+          "path": "src/lib/agents/traces.ts",
+          "pattern": "export async function insertTrace",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/traces.ts",
+          "pattern": "export async function getTrace",
           "expect": "present"
         }
       ]
     },
     {
       "id": "T2",
-      "title": "Embedding adapter (src/lib/embeddings/) + env block",
-      "wave": 1,
-      "depends_on": [],
-      "persona": "architect",
+      "title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "backend",
       "files_modify": [
-        "src/lib/env.ts"
+        "src/lib/openrouter/client.ts",
+        "src/app/api/chat/route.ts"
       ],
       "files_create": [
-        "src/lib/embeddings/index.ts",
-        "src/lib/embeddings/index.test.ts"
+        "src/app/api/traces/[id]/route.ts"
       ],
       "files_delete": [],
       "acceptance_criteria": [
-        "src/lib/embeddings/index.ts exports embedText(text): Promise<number[]> returning a 768-length vector.",
-        "Provider resolved by config (GOOGLE_API_KEY -> Gemini gemini-embedding-001 embedContent), model overridable via EMBEDDING_MODEL, dim via config -- never hardcoded in callers.",
-        "src/lib/env.ts gains lazy getEmbeddingsEnv() following the getTavilyEnv/getCryptoEnv pattern.",
-        "Adapter unit-testable without a network call: test mocks fetch, asserts returned vector and correct request shape (embedContent URL, content.parts[0].text).",
-        "npx tsc --noEmit exits 0; new test passes."
+        "Every completed turn writes exactly one agent_traces row with non-null model, provider, tool_calls (one entry per tool with name/argsSummary/resultSummary/latencyMs/error), latency_ms, prompt_tokens, completion_tokens.",
+        "A slow or failed tool call appears in tool_calls with measured latencyMs and a non-null error string on failure.",
+        "If the loop throws mid-turn, a trace row is still written with error set and partial tool calls -- never silently omitted.",
+        "The final SSE stream is unchanged plus one trailing data: {aquavoy_trace_id:<uuid>} line before data: [DONE]; the existing client parser ignores it.",
+        "GET /api/traces/<uuid> returns { ok:true, data: AgentTrace }; unknown id 404; missing principal 401 via getPrincipal."
       ],
-      "action": "Mirror client.ts:182-239 Gemini-via-env resolution and env.ts:95-126 lazy-cached Zod pattern. Implement embedText posting to the Gemini models/${model}:embedContent endpoint with x-goog-api-key header and body { content: { parts: [{ text }] }, output_dimensionality: dim }; parse embedding.values; throw on non-2xx or wrong length. Add a vitest stubbing global.fetch.",
+      "action": "In streamChatWithTools capture model+providerName from chatProvider(), time the turn, wrap executeTool for per-tool latencyMs/argsSummary/resultSummary/error, accumulate usage tokens (stream_options.include_usage). Wrap the final stream to pass chunks through, insertTrace before [DONE], emit data:{aquavoy_trace_id}. try/catch writes a trace on throw then re-throws. Add principal to ChatOptions; route passes getPrincipal. New GET /api/traces/[id]: getPrincipal gate, getTrace, 404 or {ok,data}.",
       "context_files": [
         "src/lib/openrouter/client.ts",
-        "src/lib/env.ts",
-        "src/lib/agents/onedriveTools.test.ts",
-        ".planning/decisions/ADR-002-durable-memory-architecture.md"
+        "src/app/api/chat/route.ts",
+        "src/lib/agents/traces.ts",
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/auth/session.ts"
       ],
       "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "insertTrace",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "stream_options",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "aquavoy_trace_id",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/traces/[id]/route.ts",
+          "pattern": "getTrace",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/traces/[id]/route.ts",
+          "pattern": "getPrincipal",
+          "expect": "present"
+        },
         {
           "type": "command-exit",
           "command": "npx",
@@ -110,208 +141,69 @@
             "--noEmit"
           ],
           "expected_exit": 0
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/embeddings/index.ts",
-          "pattern": "export async function embedText",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/env.ts",
-          "pattern": "getEmbeddingsEnv",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/embeddings/index.ts",
-          "pattern": ":embedContent",
-          "expect": "present"
-        },
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "vitest",
-            "run",
-            "src/lib/embeddings/index.test.ts"
-          ],
-          "expected_exit": 0
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/agents/memoryStore.ts",
-          "pattern": "from.*@/lib/embeddings",
-          "expect": "present"
         }
       ]
     },
     {
       "id": "T3",
-      "title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
-      "wave": 2,
-      "depends_on": [
-        "T1",
-        "T2"
-      ],
-      "persona": "backend",
-      "files_modify": [
-        "src/lib/agents/memoryTools.ts"
-      ],
-      "files_create": [
-        "src/lib/agents/memoryStore.ts",
-        "src/lib/agents/memoryStore.test.ts"
-      ],
-      "files_delete": [],
-      "acceptance_criteria": [
-        "memoryStore.ts exports extractFacts (LLM-extract + embed + upsert keyed on (session_id, fact)), rankFacts (pure, deterministic score = w_sim*cosine + w_lex*lexical + w_rec*recencyDecay + w_imp*importanceNorm), hybridRecall (embed query, fetch principal-scoped candidates, rank, top-K).",
-        "recallMemory(query, principal) calls hybridRecall and returns the SAME JSON string shape; signature unchanged (AC3).",
-        "autoRecall(principal, userText) calls hybridRecall and still returns string | null (AC3).",
-        "Every memory_facts query filters .eq('principal', principal) (AC4 / REQ-3).",
-        "Existing onedriveTools.test.ts passes unchanged; new memoryStore.test.ts covers AC1 paraphrase, AC2 deterministic order, AC4 isolation, AC5 idempotency.",
-        "npx tsc --noEmit exits 0; npx vitest run passes."
-      ],
-      "action": "Create memoryStore.ts importing supabaseAdmin and embedText. rankFacts (pure): cosine + >=5-char lexical hit (reuse memoryTools.ts:67-75) + exp(-ageHours/halfLife) recency + importance/5; weights sim.5 lex.2 rec.2 imp.1; ties by created_at. hybridRecall: embed query, select principal-scoped facts, rank, slice. extractFacts: openrouter chat extracts facts+importance, embed, upsert onConflict 'session_id,fact'. Rewire recallMemory+autoRecall to hybridRecall, remove ilike. Add memoryStore.test.ts.",
-      "context_files": [
-        "src/lib/agents/memoryTools.ts",
-        "src/lib/agents/onedriveTools.ts",
-        "src/lib/agents/onedriveTools.test.ts",
-        "src/app/api/chat/route.ts",
-        "src/lib/openrouter/client.ts",
-        "src/lib/supabase/server.ts",
-        ".planning/decisions/ADR-002-durable-memory-architecture.md",
-        ".planning/phase-1-context.md"
-      ],
-      "verification": [
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "tsc",
-            "--noEmit"
-          ],
-          "expected_exit": 0
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/agents/memoryTools.ts",
-          "pattern": "hybridRecall",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/agents/memoryTools.ts",
-          "pattern": "ilike",
-          "expect": "absent"
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/agents/memoryStore.ts",
-          "pattern": "onConflict",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/agents/memoryStore.ts",
-          "pattern": "eq\\(\"principal\"",
-          "expect": "present"
-        },
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "vitest",
-            "run",
-            "src/lib/agents/onedriveTools.test.ts"
-          ],
-          "expected_exit": 0
-        },
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "vitest",
-            "run",
-            "src/lib/agents/memoryStore.test.ts"
-          ],
-          "expected_exit": 0
-        }
-      ]
-    },
-    {
-      "id": "T4",
-      "title": "Build cadence: cron sweep route for fact extraction",
+      "title": "Chat disclosure row + expandable per-tool trace panel",
       "wave": 3,
       "depends_on": [
-        "T3"
+        "T2"
       ],
-      "persona": "backend",
+      "persona": "frontend",
       "files_modify": [
-        "vercel.json"
+        "src/app/page.tsx",
+        "src/app/globals.css"
       ],
-      "files_create": [
-        "src/app/api/memory/sweep/route.ts",
-        "src/app/api/memory/sweep/route.test.ts"
-      ],
+      "files_create": [],
       "files_delete": [],
       "acceptance_criteria": [
-        "src/app/api/memory/sweep/route.ts exports a GET handler guarded by CRON_SECRET bearer (exact pattern of mail/scheduled/run/route.ts); 401 without the matching bearer.",
-        "Handler finds stragglers: closed sessions (not the principal's latest) with no memory_facts rows, runs extractFacts per session with per-session try/catch (mirrors runDue).",
-        "vercel.json gains { path: /api/memory/sweep, schedule: */5 * * * * }; existing mail cron preserved.",
-        "Running the sweep twice does not duplicate facts (carried by T3's (session_id, fact) upsert).",
-        "npx tsc --noEmit exits 0; sweep route test passes (auth guard + straggler selection mocked)."
+        "After an assistant reply, a disclosure row renders under the bubble showing tool count, friendly provider/model label, and total latency in seconds (e.g. '3 tools · Gemini Flash · 1.2 s').",
+        "Clicking the row (a button with aria-expanded) toggles a panel listing each tool call's name, argsSummary, resultSummary, and per-tool latency; error tool calls render with --danger.",
+        "Row is keyboard-operable and screen-reader labeled; panel uses region semantics consistent with the existing history panel.",
+        "Metadata renders in --font-mono; surfaces use surface-step tokens; no hardcoded hex, no #000/#fff.",
+        "If the trace fetch fails or no trace id arrives, the bubble renders as today (row absent).",
+        "Works at 375px and 1440px; interactive targets >= 44px."
       ],
-      "action": "Copy the CRON_SECRET bearer guard and runtime/dynamic exports from mail/scheduled/run/route.ts. Query chat_messages for (principal, session_id) groups, exclude each principal latest session, skip sessions already having a memory_facts row, call extractFacts per remaining session in try/catch tallying processed/failed. Add the sweep cron to vercel.json keeping the mail entry. Add a vitest: 401 without bearer (extractFacts not called); correct bearer over a straggler -> extractFacts called once.",
+      "action": "Extend Msg with trace?: AgentTrace. In send() SSE parsing capture aquavoy_trace_id, then fetch /api/traces/<id> and set the assistant message's trace (silent try/catch). Add friendlyModel(). Render a trace-row button (aria-expanded/aria-controls) with count/model/seconds and a conditional trace-panel region listing trace.toolCalls; open state per index in a Set. Add globals.css trace-row/panel/tool rules: OKLCH tokens, mono, 44px, reduced-motion. Run slop-detect.",
       "context_files": [
-        "src/app/api/mail/scheduled/run/route.ts",
-        "src/lib/mail/scheduled.ts",
-        "vercel.json",
-        "src/lib/agents/memoryStore.ts",
-        "src/app/api/chat/history/route.ts",
-        ".planning/decisions/ADR-002-durable-memory-architecture.md"
+        "src/app/page.tsx",
+        "src/app/globals.css",
+        "src/lib/agents/traces.ts",
+        ".planning/DESIGN.md"
       ],
       "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "aquavoy_trace_id",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "/api/traces/",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "trace-row",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "aria-expanded",
+          "expect": "present"
+        },
         {
           "type": "command-exit",
           "command": "npx",
           "args": [
             "tsc",
             "--noEmit"
-          ],
-          "expected_exit": 0
-        },
-        {
-          "type": "grep-match",
-          "path": "src/app/api/memory/sweep/route.ts",
-          "pattern": "CRON_SECRET",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "src/app/api/memory/sweep/route.ts",
-          "pattern": "extractFacts",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "vercel.json",
-          "pattern": "/api/memory/sweep",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "vercel.json",
-          "pattern": "/api/mail/scheduled/run",
-          "expect": "present"
-        },
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "vitest",
-            "run",
-            "src/app/api/memory/sweep/route.test.ts"
           ],
           "expected_exit": 0
         }

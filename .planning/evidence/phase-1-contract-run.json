@@ -1,14 +1,14 @@
 {
   "ok": true,
   "phase": 1,
-  "goal": "Recall is reliable across long histories, not just keyword-grep over recent messages.",
-  "checked": 24,
+  "goal": "Every agent turn writes a structured trace record to the database (model, provider, tool calls with names/args/result shape, latency per call, token counts); the chat UI surfaces a collapsible 'what ran' panel per response.",
+  "checked": 16,
   "failed": 0,
-  "generated_at": "2026-06-16T12:23:40.340Z",
+  "generated_at": "2026-06-17T11:42:30.889Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Migration 0009: pgvector + memory_facts table",
+      "task_title": "agent_traces migration + trace persistence library",
       "index": 0,
       "type": "file-exists",
       "ok": true,
@@ -16,7 +16,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Migration 0009: pgvector + memory_facts table",
+      "task_title": "agent_traces migration + trace persistence library",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,7 +24,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Migration 0009: pgvector + memory_facts table",
+      "task_title": "agent_traces migration + trace persistence library",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -32,7 +32,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Migration 0009: pgvector + memory_facts table",
+      "task_title": "agent_traces migration + trace persistence library",
       "index": 3,
       "type": "grep-match",
       "ok": true,
@@ -40,7 +40,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Migration 0009: pgvector + memory_facts table",
+      "task_title": "agent_traces migration + trace persistence library",
       "index": 4,
       "type": "grep-match",
       "ok": true,
@@ -48,18 +48,15 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Embedding adapter (src/lib/embeddings/) + env block",
+      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
       "index": 0,
-      "type": "command-exit",
+      "type": "grep-match",
       "ok": true,
-      "detail": "",
-      "duration_ms": 4161,
-      "stdout": "",
-      "stderr": ""
+      "detail": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Embedding adapter (src/lib/embeddings/) + env block",
+      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -67,7 +64,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Embedding adapter (src/lib/embeddings/) + env block",
+      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -75,7 +72,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Embedding adapter (src/lib/embeddings/) + env block",
+      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
       "index": 3,
       "type": "grep-match",
       "ok": true,
@@ -83,37 +80,34 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Embedding adapter (src/lib/embeddings/) + env block",
+      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
       "index": 4,
-      "type": "command-exit",
+      "type": "grep-match",
       "ok": true,
-      "detail": "",
-      "duration_ms": 2462,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  3 passed (3)\n   Start at  15:23:21\n   Duration  842ms (transform 143ms, setup 60ms, import 157ms, tests 143ms, environment 0ms)\n\n",
-      "stderr": ""
+      "detail": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Embedding adapter (src/lib/embeddings/) + env block",
+      "task_title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
       "index": 5,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 3815,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Chat disclosure row + expandable per-tool trace panel",
+      "index": 0,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T3",
-      "task_title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
-      "index": 0,
-      "type": "command-exit",
-      "ok": true,
-      "detail": "",
-      "duration_ms": 5425,
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
+      "task_title": "Chat disclosure row + expandable per-tool trace panel",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -121,7 +115,7 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
+      "task_title": "Chat disclosure row + expandable per-tool trace panel",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -129,7 +123,7 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
+      "task_title": "Chat disclosure row + expandable per-tool trace panel",
       "index": 3,
       "type": "grep-match",
       "ok": true,
@@ -137,86 +131,13 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
+      "task_title": "Chat disclosure row + expandable per-tool trace panel",
       "index": 4,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
-      "index": 5,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 2869,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  6 passed (6)\n   Start at  15:23:30\n   Duration  823ms (transform 176ms, setup 51ms, import 191ms, tests 21ms, environment 0ms)\n\n",
-      "stderr": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Memory store: fact extraction + hybrid ranker + rewire both recall paths",
-      "index": 6,
-      "type": "command-exit",
-      "ok": true,
-      "detail": "",
-      "duration_ms": 2525,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  15:23:32\n   Duration  713ms (transform 163ms, setup 67ms, import 173ms, tests 29ms, environment 0ms)\n\n",
-      "stderr": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Build cadence: cron sweep route for fact extraction",
-      "index": 0,
-      "type": "command-exit",
-      "ok": true,
-      "detail": "",
-      "duration_ms": 4035,
+      "duration_ms": 3960,
       "stdout": "",
-      "stderr": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Build cadence: cron sweep route for fact extraction",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Build cadence: cron sweep route for fact extraction",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Build cadence: cron sweep route for fact extraction",
-      "index": 3,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Build cadence: cron sweep route for fact extraction",
-      "index": 4,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Build cadence: cron sweep route for fact extraction",
-      "index": 5,
-      "type": "command-exit",
-      "ok": true,
-      "detail": "",
-      "duration_ms": 2654,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  3 passed (3)\n   Start at  15:23:39\n   Duration  983ms (transform 253ms, setup 63ms, import 439ms, tests 33ms, environment 0ms)\n\n",
       "stderr": ""
     }
   ]

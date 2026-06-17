@@ -41,7 +41,9 @@ All REQ-12…18 verified and live. See `.planning/archive/milestone-3-operations
 | REQ-17 | Emails / Files / Prep pages each show a skeleton loader while data is in-flight and an inline error with retry on fetch failure — no blank screen or unhandled JS error | JOURNEY.md §M3 — UX refinement | 3 |
 | REQ-18 | All three management pages are usable at 375 px viewport width: no horizontal overflow, tap targets ≥ 44 px, readable type, and a non-empty empty state on each page | JOURNEY.md §M3 — UX refinement | 3 |
 
-## M4 — Handoff `[CURRENT]`
+## M4 — Handoff ✓ ENGINEERING DELIVERABLES COMPLETE (verified 2026-06-17) · human handover ceremony pending
+
+REQ-19 + REQ-20 fully delivered (docs + deployment/security audit). REQ-21 (QA checklist) and REQ-22 (handover artifacts) are **document-ready** — the prepared checklists are committed, but the live-production QA execution, the client's written acceptance sign-off, the credential ownership transfer, and the removal of Qualia access are **human/business actions performed off-repo** and are intentionally NOT recorded as done. See `.planning/archive/milestone-4-handoff/` and `docs/handover/`.
 
 | ID | Requirement | Source | Phase |
 |---|---|---|---|

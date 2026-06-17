@@ -2,7 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { PendingAction } from "@/lib/agents/pendingActions";
+
 type Principal = "Wency" | "Jeanette";
+
+/* Tools whose confirmed effect can be reversed (ADR-003 §5). `send_email`
+   is excluded — a sent message cannot be recalled. */
+const REVERSIBLE_TOOLS = new Set([
+  "move_item",
+  "rename_item",
+  "delete_item",
+  "schedule_email",
+]);
 const PRINCIPALS: Principal[] = ["Wency", "Jeanette"];
 
 interface Msg {
@@ -80,6 +91,12 @@ export default function Chat() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyPanelRef = useRef<HTMLDivElement>(null);
+
+  // ── Pending destructive actions (ADR-003) ──
+  // Staged confirm/cancel/undo cards rendered above the composer.
+  const [pending, setPending] = useState<PendingAction[]>([]);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -209,6 +226,66 @@ export default function Chat() {
     setMessages([greeting(identity)]);
   }
 
+  /** Refresh the list of staged destructive actions for this principal. */
+  async function loadPending() {
+    try {
+      const res = await fetch("/api/actions");
+      const json = await res.json();
+      setPending(json.data?.actions ?? []);
+    } catch (e) {
+      console.warn("pending-actions load failed", e);
+    }
+  }
+
+  /**
+   * POST to an action lifecycle route. `confirm` keeps the card visible in its
+   * new (`confirmed`) state so the Undo affordance can render; `cancel` and a
+   * successful `undo` drop the card. The returned action is merged into local
+   * state by id so the transition is immediate, then `loadPending` reconciles.
+   */
+  async function runAction(id: string, route: string, drop: boolean) {
+    setActionError(null);
+    setActionBusy(id);
+    try {
+      const res = await fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error ?? `Action failed (${res.status})`);
+      }
+
+      // Undo can be declined by the server (e.g. already sent) — surface why.
+      const undoDeclined = route.endsWith("/undo") && json.data?.undone === false;
+      if (undoDeclined && json.data?.reason) {
+        setActionError(json.data.reason);
+      }
+
+      const updated = json.data?.action as PendingAction | undefined;
+      setPending((prev) => {
+        if (drop && !undoDeclined) return prev.filter((a) => a.id !== id);
+        if (updated) return prev.map((a) => (a.id === id ? updated : a));
+        return prev;
+      });
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  function confirm(id: string) {
+    return runAction(id, "/api/actions/confirm", false);
+  }
+  function cancelAction(id: string) {
+    return runAction(id, "/api/actions/cancel", true);
+  }
+  function undo(id: string) {
+    return runAction(id, "/api/actions/undo", true);
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || busy || !identity) return;
@@ -285,6 +362,8 @@ export default function Chat() {
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setBusy(false);
+      // The turn may have staged a destructive action — refresh the cards.
+      loadPending();
     }
   }
 
@@ -304,6 +383,7 @@ export default function Chat() {
         const principal = json?.data?.principal as Principal | undefined;
         if (json.ok && principal) {
           pick(principal);
+          loadPending();
         } else {
           window.location.href = "/login";
         }
@@ -469,6 +549,75 @@ export default function Chat() {
           </div>
         ))}
       </div>
+
+      {pending.length > 0 && (
+        <div className="action-stack" role="region" aria-label="Pending actions">
+          {actionError && (
+            <div className="notice err" role="alert">
+              {actionError}
+            </div>
+          )}
+          {pending.map((a) => {
+            const busy = actionBusy === a.id;
+            const confirmed = a.status === "confirmed";
+            const reversible = REVERSIBLE_TOOLS.has(a.tool);
+            return (
+              <div
+                key={a.id}
+                className={`action-card${confirmed ? " confirmed" : ""}`}
+                role="group"
+                aria-label={`Pending action: ${a.summary}`}
+              >
+                <div className="action-head">
+                  <span className="action-tag">
+                    {confirmed ? "Confirmed" : "Confirm needed"}
+                  </span>
+                  <span className="action-tool">{a.tool}</span>
+                </div>
+                <p className="action-summary">{a.summary}</p>
+                <span className="action-id">id {a.id}</span>
+                <div className="action-actions">
+                  {!confirmed && (
+                    <>
+                      <button
+                        className="btn"
+                        onClick={() => confirm(a.id)}
+                        disabled={busy}
+                        aria-label={`Confirm: ${a.summary}`}
+                      >
+                        {busy ? <span className="spinner" aria-hidden="true" /> : "Confirm"}
+                      </button>
+                      <button
+                        className="btn ghost"
+                        onClick={() => cancelAction(a.id)}
+                        disabled={busy}
+                        aria-label={`Cancel: ${a.summary}`}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                  {confirmed && reversible && (
+                    <button
+                      className="btn danger"
+                      onClick={() => undo(a.id)}
+                      disabled={busy}
+                      aria-label={`Undo: ${a.summary}`}
+                    >
+                      {busy ? <span className="spinner" aria-hidden="true" /> : "Undo"}
+                    </button>
+                  )}
+                  {confirmed && !reversible && (
+                    <span className="action-note" role="status">
+                      sent — cannot undo
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="composer">
         <textarea

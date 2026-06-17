@@ -741,6 +741,84 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   }
 }
 
+/* ── Pending-action cards (ADR-003: enforced confirm/undo) ── */
+.action-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+.action-stack .notice {
+  margin-bottom: 0;
+}
+.action-card {
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-subtle);
+  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  transition: border-color var(--transition-base), background var(--transition-base);
+  animation: bubble-in 200ms var(--ease-out) both;
+}
+.action-card.confirmed {
+  border-color: var(--success);
+  background: var(--success-subtle);
+}
+.action-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.action-tag {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: oklch(0.82 0.10 25);
+}
+.action-card.confirmed .action-tag {
+  color: oklch(0.82 0.10 160);
+}
+.action-tool {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+.action-summary {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+.action-id {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  word-break: break-all;
+}
+.action-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-top: var(--sp-1);
+}
+.action-note {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  letter-spacing: 0.02em;
+}
+
 /* ── Web toggle ── */
 .web-toggle {
   background: transparent;

@@ -251,7 +251,30 @@ export default function Emails() {
       {notice && <div className="notice ok" role="status">{notice}</div>}
 
       {loading ? (
-        <div className="empty">Loading accounts&hellip;</div>
+        <div className="list" aria-busy="true" aria-label="Loading mail accounts">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <div className="skeleton-row" key={i}>
+              <span className="skeleton icon" />
+              <span className="skeleton" style={{ width: `${72 - i * 8}%` }} />
+              <span className="skeleton meta" />
+            </div>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="empty">
+          <div>Could not load — Retry</div>
+          <button
+            className="btn ghost sm"
+            style={{ marginTop: "var(--sp-3)" }}
+            onClick={() => {
+              setError(null);
+              setLoading(true);
+              fetchAccounts();
+            }}
+          >
+            Retry
+          </button>
+        </div>
       ) : (
         GROUPS.map((group) => (
           <section key={group} style={{ marginBottom: "2rem" }}>
@@ -297,8 +320,7 @@ export default function Emails() {
                           </span>
                           <div className="row" style={{ gap: "0.35rem" }}>
                             <button
-                              className="btn ghost"
-                              style={{ fontSize: "0.8125rem", minHeight: "36px", padding: "0.25rem 0.6rem" }}
+                              className="btn ghost sm"
                               onClick={() => openConnectForm(mailbox.address, mailbox.group)}
                             >
                               Re-verify
@@ -306,15 +328,13 @@ export default function Emails() {
                             {confirmDisconnect === mailbox.address ? (
                               <div className="row" style={{ gap: "0.25rem" }}>
                                 <button
-                                  className="btn danger"
-                                  style={{ fontSize: "0.8125rem", minHeight: "36px", padding: "0.25rem 0.6rem" }}
+                                  className="btn danger sm"
                                   onClick={() => disconnect(acct.id, acct.email)}
                                 >
                                   Confirm
                                 </button>
                                 <button
-                                  className="btn ghost"
-                                  style={{ fontSize: "0.8125rem", minHeight: "36px", padding: "0.25rem 0.6rem" }}
+                                  className="btn ghost sm"
                                   onClick={() => setConfirmDisconnect(null)}
                                 >
                                   Cancel
@@ -322,8 +342,7 @@ export default function Emails() {
                               </div>
                             ) : (
                               <button
-                                className="btn danger"
-                                style={{ fontSize: "0.8125rem", minHeight: "36px", padding: "0.25rem 0.6rem" }}
+                                className="btn danger sm"
                                 onClick={() => setConfirmDisconnect(mailbox.address)}
                               >
                                 Disconnect
@@ -346,8 +365,7 @@ export default function Emails() {
                             Not connected
                           </span>
                           <button
-                            className="btn"
-                            style={{ fontSize: "0.8125rem", minHeight: "36px", padding: "0.25rem 0.75rem" }}
+                            className="btn sm"
                             onClick={() =>
                               isFormOpen
                                 ? closeForm()
@@ -526,14 +544,33 @@ export default function Emails() {
       <section className="panel" style={{ marginTop: "2rem" }}>
         <h2 className="panel-h">Scheduled Emails</h2>
 
-        {scheduledError && (
-          <div className="notice err" role="alert">{scheduledError}</div>
-        )}
-
         {scheduledLoading ? (
-          <div className="empty">Loading scheduled emails&hellip;</div>
+          <div className="list" aria-busy="true" aria-label="Loading scheduled emails">
+            {[0, 1, 2, 3].map((i) => (
+              <div className="skeleton-row" key={i}>
+                <span className="skeleton icon" />
+                <span className="skeleton" style={{ width: `${70 - i * 9}%` }} />
+                <span className="skeleton meta" />
+              </div>
+            ))}
+          </div>
+        ) : scheduledError ? (
+          <div className="empty">
+            <div>Could not load — Retry</div>
+            <button
+              className="btn ghost sm"
+              style={{ marginTop: "var(--sp-3)" }}
+              onClick={() => {
+                setScheduledError(null);
+                setScheduledLoading(true);
+                fetchScheduled();
+              }}
+            >
+              Retry
+            </button>
+          </div>
         ) : scheduled.length === 0 ? (
-          <div className="empty">No scheduled emails yet.</div>
+          <div className="empty">Ask the agent to list your emails</div>
         ) : (
           <div className="list">
             {scheduled.map((item) => (

@@ -22,7 +22,7 @@ export async function GET(
   }
 
   const { id } = await params;
-  const trace = await getTrace(id);
+  const trace = await getTrace(id, principal);
   if (!trace) {
     return NextResponse.json({ ok: false }, { status: 404 });
   }

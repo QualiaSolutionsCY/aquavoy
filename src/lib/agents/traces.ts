@@ -97,13 +97,21 @@ export async function insertTrace(input: AgentTraceInput): Promise<string> {
   return (data as { id: string }).id;
 }
 
-/** Fetch a single trace by id, mapped to camelCase. Null when absent. */
-export async function getTrace(id: string): Promise<AgentTrace | null> {
+/**
+ * Fetch a single trace by id, scoped to the principal (REQ-3). Returns null
+ * when it does not exist OR belongs to a different principal — the caller
+ * cannot distinguish the two, which is the point.
+ */
+export async function getTrace(
+  id: string,
+  principal: string,
+): Promise<AgentTrace | null> {
   const db = supabaseAdmin();
   const { data, error } = await db
     .from(TABLE)
     .select(COLUMNS)
     .eq("id", id)
+    .eq("principal", principal)
     .maybeSingle();
 
   if (error) throw new Error(`Failed to load agent trace: ${error.message}`);

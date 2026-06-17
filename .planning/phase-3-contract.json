@@ -1,317 +1,205 @@
 {
   "version": 1,
   "phase": 3,
-  "goal": "Destructive tool calls are gated by a HARD enforced confirmation (not prose), with undo where the platform allows and a principal-scoped auditable record.",
-  "why": "Today destructive side-effects run immediately inside the tool loop guarded only by system-prompt prose; a prompt-injected document or email could steer the model to delete OneDrive files or send company mail with no human in the loop. Stage-and-confirm makes the confirmation structural (ADR-003).",
-  "generated_at": "2026-06-17T09:27:00Z",
+  "goal": "Emails, Files, and Prep pages get complete UI state coverage (loading skeleton, error with retry, empty state with CTA) and pass a mobile layout check at 375px",
+  "why": "Operators run the back office from a phone or a slow connection; a blank screen on slow load or a 5xx is the most common 'tool is broken' report. Closes REQ-17, REQ-18, and the last open M3 exit criterion.",
+  "generated_at": "2026-06-17T12:03:28Z",
   "generated_by": "planner",
-  "source_plan_hash": "sha256:26b1adea077b43f642c888a378fbd6ad216a78c56cdd522985d331c741d4b48f",
+  "source_plan_hash": "sha256:bae60de1a47ee9e824c901ccbf72a3d7fbf7f62ec9004b056d6a16a57617356c",
   "success_criteria": [
-    "AC1 — executeTool for any destructive tool returns confirmation_required and calls NO adapter side-effect",
-    "AC2 — Staging persists a principal-scoped pending_actions row (status pending)",
-    "AC3 — POST /api/actions/confirm runs executeConfirmedAction, sets confirmed, records resolved_at/result",
-    "AC4 — All /api/actions routes 401 without a session; principal isolation prevents cross-principal confirm/cancel/undo",
-    "AC5 — Undo reverses move_item/rename_item via updateItem from undo_data; send_email reports no-undo",
-    "AC6 — Confirming an already-resolved action does not re-execute",
-    "AC7 — Chat surfaces pending actions with Confirm/Cancel (and Undo after reversible confirm), token-driven, loading/error/empty states, passes slop-detect",
-    "AC8 — npx tsc --noEmit 0; npx vitest run passes"
+    "On a throttled (Slow 3G) connection, each of the three pages shows a skeleton/placeholder immediately on load before data arrives",
+    "When the backing API returns a 5xx, the affected section shows an inline 'Could not load — Retry' message — no blank section, no unhandled JS error",
+    "At 375px viewport width, no page content overflows horizontally on any of the three pages",
+    "All interactive elements on the three pages have a tap target >= 44x44px at 375px",
+    "Each page has a non-empty empty state with its CTA: Emails 'Ask the agent to list your emails', Files 'Search for a file in the chat', Prep 'Add a recipient to get started'"
   ],
   "tasks": [
     {
       "id": "T1",
-      "title": "Migration: pending_actions table",
+      "title": "Fix touch-target floors and add empty-CTA helper in globals.css",
       "wave": 1,
       "depends_on": [],
-      "persona": "backend",
-      "files_modify": [],
-      "files_create": [
-        "supabase/migrations/0010_pending_actions.sql"
+      "persona": "frontend",
+      "files_modify": [
+        "src/app/globals.css"
       ],
+      "files_create": [],
       "files_delete": [],
       "acceptance_criteria": [
-        "public.pending_actions table with id, principal (check Wency/Jeanette), tool, args jsonb, summary, status (check pending/confirmed/cancelled/undone/failed), undo_data jsonb, result jsonb, created_at, resolved_at",
-        "RLS enabled with NO policies (service-role only), matching 0009_memory_facts.sql",
-        "Index idx_pending_actions_principal_status_created on (principal, status, created_at)"
+        ".btn.sm computes >= 44px tap height at 375px",
+        "Mobile .item .btn.danger:not(.sm) override no longer drops below 44px",
+        "Reusable .empty .empty-hint helper exists for empty-state CTA secondary copy",
+        "No #000/#fff; new color via existing OKLCH tokens only"
       ],
-      "action": "Mirror 0009_memory_facts.sql structure exactly (table -> comment -> indexes -> enable row level security). Copy the principal check verbatim. No create policy statements. status enum check lists all five states. args/undo_data/result are jsonb.",
+      "action": "Edit .btn.sm (globals.css:324-330) min-height 28px -> 44px. Edit mobile override (globals.css:1162-1172) .item .btn.danger:not(.sm) min-height 32px -> 44px. Add .empty .empty-hint rule under .empty (globals.css:467-473) using --font-mono, --text-muted, --sp-2. Do not touch .skeleton/.skeleton-row/sonar-sweep.",
       "context_files": [
-        "supabase/migrations/0009_memory_facts.sql",
-        "supabase/migrations/0004_chat_messages.sql",
-        ".planning/decisions/ADR-003-enforced-confirm-undo.md"
+        "src/app/globals.css",
+        ".planning/DESIGN.md"
       ],
       "verification": [
         {
-          "type": "file-exists",
-          "path": "supabase/migrations/0010_pending_actions.sql"
-        },
-        {
           "type": "grep-match",
-          "path": "supabase/migrations/0010_pending_actions.sql",
-          "pattern": "enable row level security",
-          "expect": "present"
-        },
-        {
-          "type": "grep-match",
-          "path": "supabase/migrations/0010_pending_actions.sql",
-          "pattern": "create policy",
+          "path": "src/app/globals.css",
+          "pattern": "min-height: 28px",
           "expect": "absent"
         },
         {
           "type": "grep-match",
-          "path": "supabase/migrations/0010_pending_actions.sql",
-          "pattern": "'pending', ?'confirmed', ?'cancelled', ?'undone', ?'failed'",
+          "path": "src/app/globals.css",
+          "pattern": "empty-hint",
           "expect": "present"
         }
       ]
     },
     {
       "id": "T2",
-      "title": "Stage destructive tools + extract executeConfirmedAction",
-      "wave": 1,
-      "depends_on": [],
-      "persona": "security",
+      "title": "Emails page: skeleton, inline error+retry, empty CTAs, 375px fixes",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "frontend",
       "files_modify": [
-        "src/lib/agents/onedriveTools.ts",
-        "src/lib/microsoft/onedrive.ts",
-        "src/lib/microsoft/types.ts"
+        "src/app/emails/page.tsx"
       ],
-      "files_create": [
-        "src/lib/agents/pendingActions.ts",
-        "src/lib/agents/executeConfirmedAction.ts"
-      ],
+      "files_create": [],
       "files_delete": [],
       "acceptance_criteria": [
-        "executeTool for delete_item/send_email/move_item/rename_item/schedule_email stages a pending_actions row (principal from session) and returns {status:'confirmation_required', action_id, summary}; no adapter side-effect runs",
-        "Destructive tool with no sessionPrincipal returns {error:'no verified principal in session'} and stages nothing (fail-closed)",
-        "create_folder and read-only tools unchanged (still execute inline)",
-        "executeConfirmedAction captures prior parentId/name for move/rename undo_data before updateItem; send_email is undoable:false; schedule_email stores queued id",
-        "npx tsc --noEmit exits 0"
+        "Accounts region shows .skeleton-row sonar-sweep skeleton while loading, not bare text",
+        "5xx on /api/mail/accounts or /api/mail/scheduled shows inline 'Could not load — Retry' with a working Retry button",
+        "Scheduled empty state reads 'Ask the agent to list your emails'",
+        "At 375px no horizontal overflow and every button tap area >= 44x44px"
       ],
-      "action": "Add parentId?:string to DriveItem (types.ts), map raw.parentReference?.id (onedrive.ts). Create pendingActions.ts (stage/list/get/confirm/cancel/undo) over supabaseAdmin pending_actions, mirroring scheduled.ts; confirm/cancel/undo principal-scoped + status-guarded. Create executeConfirmedAction.ts with the moved move/rename/delete/send/schedule bodies capturing undo_data. In executeTool gate the DESTRUCTIVE set: fail-closed without principal, stagePendingAction, return confirmation_required.",
+      "action": "Replace loading text branch (emails/page.tsx:253-254) with 6 .skeleton-row blocks mirroring files/page.tsx:206-214. Add Retry button to accounts error (re-run fetchAccounts, reset loading) and scheduled error (re-run fetchScheduled, reset scheduledLoading). Change scheduled empty copy (emails/page.tsx:536) to 'Ask the agent to list your emails'. Remove inline minHeight:36px from buttons (emails/page.tsx:301,310,317,326,350); use btn/btn ghost/btn danger + sm.",
       "context_files": [
-        "src/lib/agents/onedriveTools.ts",
-        "src/lib/mail/scheduled.ts",
-        "src/lib/supabase/server.ts",
-        "src/lib/microsoft/onedrive.ts",
-        "src/lib/microsoft/types.ts",
-        ".planning/decisions/ADR-003-enforced-confirm-undo.md"
+        "src/app/emails/page.tsx",
+        "src/app/files/page.tsx",
+        "src/app/globals.css",
+        ".planning/DESIGN.md"
       ],
       "verification": [
         {
           "type": "grep-match",
-          "path": "src/lib/agents/onedriveTools.ts",
-          "pattern": "confirmation_required",
+          "path": "src/app/emails/page.tsx",
+          "pattern": "skeleton-row",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/lib/agents/executeConfirmedAction.ts",
-          "pattern": "export async function executeConfirmedAction",
+          "path": "src/app/emails/page.tsx",
+          "pattern": "Could not load — Retry",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/lib/agents/onedriveTools.ts",
-          "pattern": "stagePendingAction",
+          "path": "src/app/emails/page.tsx",
+          "pattern": "Ask the agent to list your emails",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/lib/agents/onedriveTools.ts",
-          "pattern": "deleteItemOnDrive",
+          "path": "src/app/emails/page.tsx",
+          "pattern": "36px",
           "expect": "absent"
-        },
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "tsc",
-            "--noEmit"
-          ],
-          "expected_exit": 0,
-          "timeout_ms": 180000
         }
       ]
     },
     {
       "id": "T3",
-      "title": "/api/actions endpoints (list/confirm/cancel/undo)",
+      "title": "Files page: add error retry + align empty copy, confirm 375px",
       "wave": 2,
       "depends_on": [
-        "T2"
+        "T1"
       ],
-      "persona": "backend",
-      "files_modify": [],
-      "files_create": [
-        "src/app/api/actions/route.ts",
-        "src/app/api/actions/confirm/route.ts",
-        "src/app/api/actions/cancel/route.ts",
-        "src/app/api/actions/undo/route.ts"
+      "persona": "frontend",
+      "files_modify": [
+        "src/app/files/page.tsx"
       ],
+      "files_create": [],
       "files_delete": [],
       "acceptance_criteria": [
-        "All four routes 401 when getPrincipal is null (mirror chat/route.ts)",
-        "GET /api/actions returns only the session principal's pending rows",
-        "POST /api/actions/confirm runs confirmAction -> executeConfirmedAction, records result/resolved_at/status confirmed; re-confirm of a resolved id is a no-op (409)",
-        "POST /api/actions/cancel sets cancelled, no side-effect; POST /api/actions/undo reverses reversible confirmed actions; send_email reports no-undo",
-        "Acting on another principal's id returns 404",
-        "npx tsc --noEmit exits 0"
+        "5xx on /api/onedrive/connections or /api/onedrive/files shows inline 'Could not load — Retry' with a working Retry button",
+        "Folder empty state includes CTA copy 'Search for a file in the chat'",
+        "At 375px no horizontal overflow and Delete button tap area >= 44x44px",
+        "Existing skeleton on initial load and folder navigation still renders"
       ],
-      "action": "Each route: runtime nodejs + dynamic force-dynamic; getPrincipal guard -> 401; POST routes parse {id} with try/catch -> 400; call the matching pendingActions function with (id, principal); null/0-row -> 404; already-resolved confirm -> 409; side-effect throw -> 502. Use NextRequest/NextResponse, getPrincipal from @/lib/auth/session.",
+      "action": "Add Retry button to error notice (files/page.tsx:194-198): re-run loadFolder(activeConn,currentFolderId) or loadConnections+loadFolder if no active conn. Update folder empty state (files/page.tsx:288-291) to append <span class=empty-hint>Search for a file in the chat.</span>. Do not change skeleton blocks (files/page.tsx:206-214,280-287). Delete button governed by T1 mobile floor.",
       "context_files": [
-        "src/app/api/chat/route.ts",
-        "src/lib/auth/session.ts",
-        "src/lib/agents/pendingActions.ts",
-        ".planning/decisions/ADR-003-enforced-confirm-undo.md"
+        "src/app/files/page.tsx",
+        "src/app/globals.css",
+        ".planning/DESIGN.md"
       ],
       "verification": [
         {
           "type": "grep-match",
-          "path": "src/app/api/actions/route.ts",
-          "pattern": "getPrincipal",
+          "path": "src/app/files/page.tsx",
+          "pattern": "Could not load — Retry",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/app/api/actions/confirm/route.ts",
-          "pattern": "confirmAction",
+          "path": "src/app/files/page.tsx",
+          "pattern": "Search for a file in the chat",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/app/api/actions/undo/route.ts",
-          "pattern": "undoAction",
+          "path": "src/app/files/page.tsx",
+          "pattern": "skeleton-row",
           "expect": "present"
-        },
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "tsc",
-            "--noEmit"
-          ],
-          "expected_exit": 0,
-          "timeout_ms": 180000
         }
       ]
     },
     {
       "id": "T4",
-      "title": "Chat pending-action card (Confirm/Cancel/Undo)",
+      "title": "Prep page: crew skeleton, error retry, empty CTA, 375px fixes",
       "wave": 2,
       "depends_on": [
-        "T2"
+        "T1"
       ],
       "persona": "frontend",
       "files_modify": [
-        "src/app/page.tsx",
-        "src/app/globals.css"
+        "src/app/prep/page.tsx"
       ],
       "files_create": [],
       "files_delete": [],
       "acceptance_criteria": [
-        "After model reply and on identity mount, chat fetches GET /api/actions and renders a card per pending action with summary + Confirm + Cancel",
-        "Confirm -> POST confirm; on success shows confirmed state, Undo button for reversible tools; send_email shows sent-cannot-undo",
-        "Cancel -> POST cancel; card disappears. Undo -> POST undo; undone/error states",
-        "Card has loading/error/empty states; uses OKLCH tokens (no raw hex); SSE parse loop unchanged",
-        "npx tsc --noEmit exits 0"
+        "Crew panel shows .skeleton-row sonar-sweep skeletons while crew fetch is in-flight",
+        "5xx on /api/recipients shows inline 'Could not load — Retry' with a working Retry button re-running loadCrew",
+        "Crew empty state reads 'Add a recipient to get started'",
+        "At 375px prep-grid stacks one column with no horizontal overflow and the X remove button tap area >= 44x44px"
       ],
-      "action": "Add pending + actionBusy state; loadPending() fetches /api/actions at end of send() and in identity useEffect; confirm/cancel/undo handlers POST and reload. Render card list after .thread, before composer, reusing .btn/.btn.ghost/.btn.danger/spinner. Add .action-card styles in globals.css with existing tokens. Do not touch the streaming reader.",
+      "action": "Add crewLoading state (default true); set true at start and false in finally of loadCrew (prep/page.tsx:84-93). In crew panel render (prep/page.tsx:199-229) branch on crewLoading first -> render .crew-list of 4 .skeleton-row blocks. Add Retry button to crewError notice (prep/page.tsx:198) calling loadCrew. Change empty copy (prep/page.tsx:201) to 'Add a recipient to get started'. X button keeps btn danger sm (T1 floors at 44px).",
       "context_files": [
-        "src/app/page.tsx",
+        "src/app/prep/page.tsx",
+        "src/app/files/page.tsx",
         "src/app/globals.css",
-        ".planning/DESIGN.md",
-        "src/lib/agents/pendingActions.ts"
+        ".planning/DESIGN.md"
       ],
       "verification": [
         {
           "type": "grep-match",
-          "path": "src/app/page.tsx",
-          "pattern": "action-card",
+          "path": "src/app/prep/page.tsx",
+          "pattern": "crewLoading",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/app/page.tsx",
-          "pattern": "/api/actions",
+          "path": "src/app/prep/page.tsx",
+          "pattern": "skeleton-row",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/app/globals.css",
-          "pattern": "action-card",
-          "expect": "present"
-        },
-        {
-          "type": "command-exit",
-          "command": "node",
-          "args": [
-            "/home/moayad-qualia/.claude/bin/slop-detect.mjs",
-            "src/app/page.tsx"
-          ],
-          "expected_exit": 0,
-          "timeout_ms": 60000
-        }
-      ]
-    },
-    {
-      "id": "T5",
-      "title": "System prompt update + seam/route tests",
-      "wave": 3,
-      "depends_on": [
-        "T2",
-        "T3"
-      ],
-      "persona": "backend",
-      "files_modify": [
-        "src/lib/openrouter/client.ts",
-        "src/lib/agents/onedriveTools.test.ts"
-      ],
-      "files_create": [
-        "src/app/api/actions/confirm/route.test.ts"
-      ],
-      "files_delete": [],
-      "acceptance_criteria": [
-        "System prompt no longer says wait-for-confirmation-then-call; states destructive tools are auto-staged for confirmation, model proposes/calls once/relays summary, does not re-call after yes",
-        "Seam test: executeTool delete_item returns confirmation_required, mocked deleteItem NOT called, stagePendingAction called with principal Wency",
-        "Route test for confirm: 401 without principal, 404 cross-principal, confirm runs executeConfirmedAction sets confirmed, second confirm no-op",
-        "npx vitest run passes; npx tsc --noEmit exits 0"
-      ],
-      "action": "Rewrite client.ts system-prompt items 4/5b/6 to staged-for-confirmation language. Add staging assertions to onedriveTools.test.ts (mock pendingActions). Create confirm route.test.ts mocking getPrincipal + pendingActions, fake NextRequest, asserting the four cases.",
-      "context_files": [
-        "src/lib/openrouter/client.ts",
-        "src/lib/agents/onedriveTools.test.ts",
-        "src/lib/agents/pendingActions.ts",
-        "src/app/api/actions/confirm/route.ts"
-      ],
-      "verification": [
-        {
-          "type": "grep-match",
-          "path": "src/lib/openrouter/client.ts",
-          "pattern": "wait for their EXPLICIT confirmation",
-          "expect": "absent"
-        },
-        {
-          "type": "grep-match",
-          "path": "src/lib/openrouter/client.ts",
-          "pattern": "staged",
+          "path": "src/app/prep/page.tsx",
+          "pattern": "Could not load — Retry",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/lib/agents/onedriveTools.test.ts",
-          "pattern": "confirmation_required",
+          "path": "src/app/prep/page.tsx",
+          "pattern": "Add a recipient to get started",
           "expect": "present"
-        },
-        {
-          "type": "command-exit",
-          "command": "npx",
-          "args": [
-            "vitest",
-            "run"
-          ],
-          "expected_exit": 0,
-          "timeout_ms": 300000
         }
       ]
     }

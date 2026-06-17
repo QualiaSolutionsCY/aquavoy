@@ -49,10 +49,11 @@ vi.mock("@/lib/mail/imap", () => ({
   searchEmails: vi.fn(),
 }));
 
-const { sendMailMock, loadAccountMock, listAccountsMock } = vi.hoisted(() => ({
+const { sendMailMock, loadAccountMock, listAccountsMock, stageMock } = vi.hoisted(() => ({
   sendMailMock: vi.fn(async () => undefined),
   loadAccountMock: vi.fn(),
   listAccountsMock: vi.fn(async () => [] as Array<{ email: string }>),
+  stageMock: vi.fn(async () => ({ id: "pa-1", summary: "Send email to x" })),
 }));
 
 vi.mock("@/lib/mail/smtp", () => ({ sendMail: sendMailMock }));
@@ -61,13 +62,18 @@ vi.mock("@/lib/mail/accounts", () => ({
   listAccounts: listAccountsMock,
 }));
 
+// Destructive tools are STAGED, never executed in the model loop (ADR-003).
+// The pendingActions seam is mocked so executeTool's gate is tested in isolation.
+vi.mock("@/lib/agents/pendingActions", () => ({ stagePendingAction: stageMock }));
+
 import { executeTool } from "./onedriveTools";
 import { recallMemory } from "@/lib/agents/memoryTools";
-import { downloadContent, getItem } from "@/lib/microsoft/onedrive";
+import { downloadContent, getItem, deleteItem } from "@/lib/microsoft/onedrive";
 
 const recallMemoryMock = vi.mocked(recallMemory);
 const downloadContentMock = vi.mocked(downloadContent);
 const getItemMock = vi.mocked(getItem);
+const deleteItemMock = vi.mocked(deleteItem);
 
 /** Build a fetch Response with optional content-disposition filename. */
 function fileResponse(body: string, fileName?: string): Response {
@@ -94,40 +100,69 @@ describe("agents/onedriveTools executeTool", () => {
     sendMailMock.mockClear();
     loadAccountMock.mockReset();
     listAccountsMock.mockClear();
+    stageMock.mockClear();
   });
 
-  it("send_email with valid args returns success JSON", async () => {
-    loadAccountMock.mockResolvedValueOnce(account);
-    const out = await executeTool("send_email", {
-      from: "info@aquavoy.com",
-      to: "client@example.com",
-      subject: "Hello",
-      body: "Body text",
-    });
+  // send_email is a DESTRUCTIVE tool (ADR-003): executeTool no longer sends
+  // inline. It STAGES a pending_actions row and returns confirmation_required;
+  // the actual SMTP send runs later via the confirm endpoint. The three cases
+  // below assert the NEW staged behavior — the SMTP seam (sendMailMock) is never
+  // touched here.
+
+  it("send_email stages a pending action and returns confirmation_required (no inline send)", async () => {
+    const out = await executeTool(
+      "send_email",
+      {
+        from: "info@aquavoy.com",
+        to: "client@example.com",
+        subject: "Hello",
+        body: "Body text",
+      },
+      null,
+      "Wency",
+    );
     const parsed = JSON.parse(out);
-    expect(parsed).toMatchObject({ sent: true, from: "info@aquavoy.com", to: "client@example.com" });
-    expect(sendMailMock).toHaveBeenCalledTimes(1);
+    expect(parsed.status).toBe("confirmation_required");
+    expect(parsed.action_id).toBe("pa-1");
+    expect(typeof parsed.summary).toBe("string");
+    // The gate runs BEFORE any side-effect: SMTP is never called.
+    expect(sendMailMock).not.toHaveBeenCalled();
+    // The staged row is owned by the verified session principal.
+    expect(stageMock).toHaveBeenCalledTimes(1);
+    expect(stageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ principal: "Wency", tool: "send_email" }),
+    );
   });
 
-  it("send_email with empty fields returns a validation-error JSON without sending", async () => {
-    const out = await executeTool("send_email", { from: "x", to: "", subject: "", body: "" });
+  it("send_email stages even with empty fields — validation defers to confirm, nothing is sent", async () => {
+    const out = await executeTool(
+      "send_email",
+      { from: "x", to: "", subject: "", body: "" },
+      null,
+      "Wency",
+    );
     const parsed = JSON.parse(out);
-    expect(parsed.error).toBe("from, to, subject, and body are all required");
+    expect(parsed.status).toBe("confirmation_required");
+    expect(parsed.action_id).toBe("pa-1");
     expect(sendMailMock).not.toHaveBeenCalled();
   });
 
-  it("send_email with no connected account returns a helpful error JSON", async () => {
-    loadAccountMock.mockResolvedValueOnce(null);
-    listAccountsMock.mockResolvedValueOnce([{ email: "other@aquavoy.com" }]);
-    const out = await executeTool("send_email", {
-      from: "ghost@aquavoy.com",
-      to: "client@example.com",
-      subject: "Hi",
-      body: "Body",
-    });
+  it("send_email fails closed without a verified session principal and never stages or sends", async () => {
+    const out = await executeTool(
+      "send_email",
+      {
+        from: "ghost@aquavoy.com",
+        to: "client@example.com",
+        subject: "Hi",
+        body: "Body",
+      },
+      null,
+      // no sessionPrincipal — the staged row must be owned by a verified identity
+      undefined,
+    );
     const parsed = JSON.parse(out);
-    expect(parsed.error).toContain("No connected mail account");
-    expect(parsed.connected_addresses).toEqual(["other@aquavoy.com"]);
+    expect(parsed.error).toBe("no verified principal in session");
+    expect(stageMock).not.toHaveBeenCalled();
     expect(sendMailMock).not.toHaveBeenCalled();
   });
 
@@ -155,6 +190,37 @@ describe("agents/onedriveTools recall_memory principal pinning (REQ-3)", () => {
     const parsed = JSON.parse(out);
     expect(parsed.error).toBe("no verified principal in session");
     expect(recallMemoryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("agents/onedriveTools destructive gating (ADR-003)", () => {
+  beforeEach(() => {
+    stageMock.mockClear();
+    deleteItemMock.mockReset();
+  });
+
+  it("AC1: delete_item is staged, not executed — the OneDrive deleteItem side-effect never runs", async () => {
+    const out = await executeTool("delete_item", { itemId: "x" }, null, "Wency");
+    const parsed = JSON.parse(out);
+    expect(parsed.status).toBe("confirmation_required");
+    expect(parsed.action_id).toBe("pa-1");
+    // The gate returns before any switch case — the destructive Graph call is never reached.
+    expect(deleteItemMock).not.toHaveBeenCalled();
+  });
+
+  it("AC2: the staged row is owned by the verified session principal (Wency)", async () => {
+    await executeTool("delete_item", { itemId: "x" }, null, "Wency");
+    expect(stageMock).toHaveBeenCalledTimes(1);
+    expect(stageMock).toHaveBeenCalledWith(
+      expect.objectContaining({ principal: "Wency", tool: "delete_item", args: { itemId: "x" } }),
+    );
+  });
+
+  it("fails closed without a verified principal — delete_item is neither staged nor executed", async () => {
+    const out = await executeTool("delete_item", { itemId: "x" }, null, undefined);
+    expect(JSON.parse(out).error).toBe("no verified principal in session");
+    expect(stageMock).not.toHaveBeenCalled();
+    expect(deleteItemMock).not.toHaveBeenCalled();
   });
 });
 

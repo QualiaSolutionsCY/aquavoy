@@ -1,22 +1,22 @@
 {
   "ok": true,
   "phase": 2,
-  "goal": "The agent reads and reasons over a OneDrive document within a single turn.",
-  "checked": 3,
+  "goal": "The dual mail stack is formally documented as an intentional two-owner architecture with a single adapter contract per stack (keep-both), and REQ-16 (no silent fallback, runtime-discoverable authoritative stack) is implemented.",
+  "checked": 17,
   "failed": 0,
-  "generated_at": "2026-06-17T09:19:16.652Z",
+  "generated_at": "2026-06-17T12:02:15.621Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Verify pre-existing document-read capability + add extraction test net",
+      "task_title": "Record ADR-004 (the keep-both decision)",
       "index": 0,
-      "type": "grep-match",
+      "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T1",
-      "task_title": "Verify pre-existing document-read capability + add extraction test net",
+      "task_title": "Record ADR-004 (the keep-both decision)",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,11 +24,129 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Verify pre-existing document-read capability + add extraction test net",
+      "task_title": "Record ADR-004 (the keep-both decision)",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Record ADR-004 (the keep-both decision)",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 5,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 6,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
+      "index": 7,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 3664,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Enforce REQ-16: agent send/schedule asserts 'imap', no silent fallback",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Enforce REQ-16: agent send/schedule asserts 'imap', no silent fallback",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Enforce REQ-16: agent send/schedule asserts 'imap', no silent fallback",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Enforce REQ-16: agent send/schedule asserts 'imap', no silent fallback",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Enforce REQ-16: agent send/schedule asserts 'imap', no silent fallback",
+      "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 3619,
+      "stdout": "",
+      "stderr": ""
     }
   ]
 }

@@ -1,63 +1,222 @@
 {
   "version": 1,
   "phase": 2,
-  "goal": "The agent reads and reasons over a OneDrive document within a single turn.",
-  "why": "Operators expect single-turn document answers (e.g. summarize the latest invoice). Per phase-2-context.md the capability is ALREADY shipped (read_file + extractText, wired into registry + system prompt); the real deliverable is closing the verification + automated-test gap so it cannot silently regress. No redundant read_document tool is added (MVP/locality).",
-  "generated_at": "2026-06-16T12:15:00Z",
-  "generated_by": "manual",
-  "source_plan_hash": "sha256:27a15b47a1e45f522086b5a29bef747948196d2c340e1d6f7e03d4fc7627774a",
+  "goal": "The dual mail stack is formally documented as an intentional two-owner architecture with a single adapter contract per stack (keep-both), and REQ-16 (no silent fallback, runtime-discoverable authoritative stack) is implemented.",
+  "why": "REQ-16 today is an architectural risk, not a live bug — mail_accounts records no stack discriminator. This phase makes the two-owner boundary explicit and enforced so a future change cannot silently route company mail through the wrong stack.",
+  "generated_at": "2026-06-17T11:46:26Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:a3c8313ccb9cbc359dab66b3366e053f1766c0044c9c96fd4d272fb517be9d1d",
   "success_criteria": [
-    "A tool fetches a drive item, extracts Word/PDF/Excel/text, and returns content the agent reasons over in the same turn.",
-    "Size/type guards: large files truncated with a note; unsupported types reported cleanly.",
-    "Wired into the tool registry and the system-prompt capability list.",
-    "Automated extraction test net exists and passes; tsc 0, full suite green."
+    "ADR-004 exists, is dated, names keep-both, and ties rationale to VAL-4 and VAL-5 (REQ-15).",
+    "mail_accounts has a mail_stack discriminator column ('imap'|'outlook', default 'imap') applied via an additive tracked migration; the authoritative stack is discoverable at runtime (REQ-16).",
+    "Each mail stack has one ownership-annotated adapter contract (ADR-004 comment on smtp.ts, imap.ts, outlook.ts).",
+    "The agent send and schedule paths assert the resolved account's stack is 'imap' and return a human-readable error otherwise — no silent cross-stack fallback (REQ-16).",
+    "No route calls both stacks for the same operation.",
+    "npx tsc --noEmit passes and existing mail/agent tests pass."
   ],
   "tasks": [
     {
       "id": "T1",
-      "title": "Verify pre-existing document-read capability + add extraction test net",
+      "title": "Record ADR-004 (the keep-both decision)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "architect",
+      "files_modify": [],
+      "files_create": [
+        ".planning/decisions/ADR-004-mail-stack.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "ADR-004-mail-stack.md exists, dated 2026-06-17, Phase 2, Status Accepted.",
+        "Names the chosen path explicitly as keep-both (not converge-to-Graph, not converge-to-IMAP).",
+        "Context/Decision cite VAL-5 (12-mailbox IMAP fleet, mailboxes.ts:31-47) and VAL-4 (Graph delegated OAuth) as why neither stack can be deleted autonomously.",
+        "Declares two owners: IMAP/SMTP authoritative for company mailboxes; Outlook user-personal drafting/send only (D-02).",
+        "Alternatives considered rejects converge-to-Graph and converge-to-IMAP honestly.",
+        "Notes/Consequences state REQ-16 is enforced by the mail_stack column (Task 2) and the assertion (Task 3)."
+      ],
+      "action": "Copy the structure of .planning/decisions/_template.md and match the prose density of ADR-003. State the decision as one declarative sentence first, then expand. Pull cited facts from phase-2-scout.md and phase-2-context.md; every cited path must already exist in the repo.",
+      "context_files": [
+        ".planning/decisions/_template.md",
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md",
+        ".planning/phase-2-scout.md",
+        ".planning/phase-2-context.md",
+        ".planning/PROJECT.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": ".planning/decisions/ADR-004-mail-stack.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": ".planning/decisions/ADR-004-mail-stack.md",
+          "pattern": "keep-both|keep both",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": ".planning/decisions/ADR-004-mail-stack.md",
+          "pattern": "VAL-5|VAL-4",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": ".planning/decisions/ADR-004-mail-stack.md",
+          "pattern": "2026-06-17",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Add the mail_stack discriminator (migration + plumb-through + ownership comments)",
       "wave": 1,
       "depends_on": [],
       "persona": "backend",
       "files_modify": [
-        "src/lib/agents/onedriveTools.test.ts"
+        "src/lib/mail/accounts.ts",
+        "src/lib/mail/smtp.ts",
+        "src/lib/mail/imap.ts",
+        "src/lib/microsoft/outlook.ts"
+      ],
+      "files_create": [
+        "supabase/migrations/0012_mail_stack.sql"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "0012_mail_stack.sql adds mail_stack text not null default 'imap' to mail_accounts with a check constraint in ('imap','outlook'), using add column if not exists (idempotent).",
+        "Migration is independently re-runnable and applied via Supabase/CI flow, never hand-applied (constitution, D-05).",
+        "MailAccount interface gains mailStack: 'imap' | 'outlook'; AccountRow gains mail_stack: string; toMailAccount maps row.mail_stack to mailStack defaulting to 'imap'.",
+        "smtp.ts, imap.ts, and outlook.ts each carry an ADR-004 authoritative-stack ownership comment.",
+        "npx tsc --noEmit passes."
+      ],
+      "action": "Write 0012_mail_stack.sql mirroring the header-comment and RLS style of 0011_agent_traces.sql; add the column idempotently and a guarded check constraint via a do-block that swallows duplicate_object. In accounts.ts add the mailStack field to MailAccount, mail_stack to AccountRow, map it in toMailAccount, and add mail_stack to the listAccounts select list. Add ADR-004 ownership comments to smtp.ts/imap.ts (imap) and outlook.ts (outlook, user-personal only).",
+      "context_files": [
+        "supabase/migrations/0003_mail_accounts.sql",
+        "supabase/migrations/0011_agent_traces.sql",
+        "src/lib/mail/accounts.ts",
+        "src/lib/mail/smtp.ts",
+        "src/lib/mail/imap.ts",
+        "src/lib/microsoft/outlook.ts",
+        ".planning/phase-2-context.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0012_mail_stack.sql",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0012_mail_stack.sql",
+          "pattern": "add column if not exists",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0012_mail_stack.sql",
+          "pattern": "mail_stack[^;]*check",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/accounts.ts",
+          "pattern": "mailStack",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/smtp.ts",
+          "pattern": "ADR-004",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/imap.ts",
+          "pattern": "ADR-004",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/microsoft/outlook.ts",
+          "pattern": "ADR-004",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "expected_exit": 0,
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "timeout_ms": 120000
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Enforce REQ-16: agent send/schedule asserts 'imap', no silent fallback",
+      "wave": 2,
+      "depends_on": [
+        "T2"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/mail/scheduled.ts"
       ],
       "files_create": [],
       "files_delete": [],
       "acceptance_criteria": [
-        "read_file over a stubbed text download returns { fileName, content } with the decoded text.",
-        "When the download response has no content-disposition, the filename falls back to getItem(...).name.",
-        "An unsupported binary extension returns the clean 'Cannot extract text' message, not a crash.",
-        "Content longer than the 12000-char cap is truncated and ends with '(truncated)'.",
-        "Missing itemId returns { error: 'itemId is required' } with no download attempted.",
-        ".docx/.pdf/.xlsx filenames route to the matching parser branch, verified with the parser modules mocked.",
-        "npx tsc --noEmit exits 0; npx vitest run passes."
+        "In executeConfirmedAction send_email case, after the non-null account check, if account.mailStack !== 'imap' it throws a human-readable Error naming the mailbox and does not fall back to any other send path.",
+        "scheduleEmail in scheduled.ts applies the same assertion right after its existing null-check, protecting all callers.",
+        "Thrown errors are operator-readable sentences with no raw IMAP/Graph exception leakage.",
+        "executeConfirmedAction imports sendMail only from @/lib/mail/smtp, never from @/lib/microsoft/outlook.",
+        "npx tsc --noEmit passes and existing mail/agent test suites pass."
       ],
-      "action": "Add vi.mock for mammoth/pdf-parse/xlsx, a fileResponse helper, and a read_file describe block covering AC1-AC6 via executeTool('read_file', { itemId }, 'conn-1') with the download mock configured per case. Test OUR extraction dispatch, not the vendor libraries.",
+      "action": "Add an account.mailStack !== 'imap' guard with a human-readable throw in the send_email case of executeConfirmedAction.ts and inside scheduleEmail in scheduled.ts. Add an ADR-004 / REQ-16 comment above each guard. Do not touch the IMAP read tools.",
       "context_files": [
-        "src/lib/agents/onedriveTools.ts",
-        "src/lib/agents/onedriveTools.test.ts",
-        "src/lib/openrouter/client.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/mail/scheduled.ts",
+        "src/lib/mail/accounts.ts",
         ".planning/phase-2-context.md"
       ],
       "verification": [
         {
           "type": "grep-match",
-          "path": "src/lib/agents/onedriveTools.ts",
-          "pattern": "name: \"read_file\"",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "mailStack",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/lib/openrouter/client.ts",
-          "pattern": "read_file",
+          "path": "src/lib/mail/scheduled.ts",
+          "pattern": "mailStack",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "src/lib/agents/onedriveTools.test.ts",
-          "pattern": "read_file — inline document understanding",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "REQ-16|ADR-004",
           "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "microsoft/outlook",
+          "expect": "absent"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "expected_exit": 0,
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "timeout_ms": 120000
         }
       ]
     }

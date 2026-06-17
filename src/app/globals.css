@@ -595,6 +595,130 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-sm);
 }
 
+/* ── Trace disclosure (per-turn observability, REQ-12/13) ── */
+.trace-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  margin-top: var(--sp-1);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.trace-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text);
+}
+.trace-row:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.trace-caret {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.trace-summary {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trace-panel {
+  margin-top: var(--sp-1);
+  padding: var(--sp-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  animation: trace-slide 200ms var(--ease-out) both;
+}
+@keyframes trace-slide {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.trace-tools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.trace-tool {
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--accent);
+}
+.trace-tool.error {
+  border-left-color: var(--danger);
+}
+.trace-tool-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.trace-tool-name {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text);
+  word-break: break-word;
+}
+.trace-tool-latency {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.trace-tool-args,
+.trace-tool-result {
+  margin-top: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+.trace-tool-result {
+  color: var(--text-muted);
+}
+.trace-tool-error {
+  margin-top: var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--danger);
+  word-break: break-word;
+}
+.trace-empty {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.trace-tokens {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+
 /* ── Composer ── */
 .composer {
   display: flex;

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { PendingAction } from "@/lib/agents/pendingActions";
+import type { AgentTrace, Provider } from "@/lib/agents/traces";
 
 type Principal = "Wency" | "Jeanette";
 
@@ -19,6 +20,10 @@ const PRINCIPALS: Principal[] = ["Wency", "Jeanette"];
 interface Msg {
   role: "user" | "assistant";
   content: string;
+  /* Per-turn observability (REQ-12/13). Populated after the stream completes
+     when the SSE delivered a trailing `aquavoy_trace_id`. Absent on failure —
+     the bubble renders exactly as before. */
+  trace?: AgentTrace;
 }
 
 interface SessionSummary {
@@ -74,6 +79,17 @@ function renderMarkdown(text: string): React.ReactNode {
   });
 }
 
+/* Human-readable model label for the trace disclosure row (REQ-13).
+   Gemini Flash collapses the long slug; OpenRouter shows the model's last
+   path segment (e.g. "anthropic/claude-3.5" → "claude-3.5"). */
+function friendlyModel(provider: Provider, model: string): string {
+  if (provider === "gemini") {
+    return model.toLowerCase().includes("flash") ? "Gemini Flash" : "Gemini";
+  }
+  const slug = model.split("/").pop() ?? model;
+  return slug || "OpenRouter";
+}
+
 export default function Chat() {
   const [identity, setIdentity] = useState<Principal | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -91,6 +107,20 @@ export default function Chat() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyPanelRef = useRef<HTMLDivElement>(null);
+
+  // ── Trace disclosure state ──
+  // Which assistant bubbles have their per-tool trace panel expanded,
+  // tracked by message index (mirrors the historyOpen disclosure pattern).
+  const [traceOpen, setTraceOpen] = useState<Set<number>>(new Set());
+
+  function toggleTrace(i: number) {
+    setTraceOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
 
   // ── Pending destructive actions (ADR-003) ──
   // Staged confirm/cancel/undo cards rendered above the composer.
@@ -319,6 +349,8 @@ export default function Chat() {
       const decoder = new TextDecoder();
       let buffer = "";
       let acc = "";
+      // Trailing trace id from the stream (REQ-12) — fetched after [DONE].
+      let traceId: string | null = null;
 
       // Parse OpenRouter's SSE: lines of `data: {json}` ending with `data: [DONE]`.
       for (;;) {
@@ -333,7 +365,14 @@ export default function Chat() {
           const data = trimmed.slice(5).trim();
           if (data === "[DONE]") continue;
           try {
-            const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+            const parsed = JSON.parse(data);
+            // The agent loop appends one trailing frame carrying the trace id.
+            // It has no `choices[0].delta.content`, so it never reaches `acc`.
+            if (typeof parsed?.aquavoy_trace_id === "string") {
+              traceId = parsed.aquavoy_trace_id;
+              continue;
+            }
+            const delta = parsed?.choices?.[0]?.delta?.content;
             if (typeof delta === "string") {
               acc += delta;
               setMessages((prev) => {
@@ -350,6 +389,26 @@ export default function Chat() {
       if (acc) {
         // Fire-and-forget: persist the assistant reply.
         persist(identity, "assistant", acc);
+        // Observability enhancement: hydrate the trace, never block the reply.
+        if (traceId) {
+          try {
+            const tr = await fetch(`/api/traces/${traceId}`);
+            const tj = await tr.json();
+            if (tj.ok && tj.data) {
+              const trace = tj.data as AgentTrace;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next.length - 1;
+                if (next[last]?.role === "assistant") {
+                  next[last] = { ...next[last], trace };
+                }
+                return next;
+              });
+            }
+          } catch {
+            /* observability is an enhancement, not a blocker */
+          }
+        }
       } else {
         setMessages((prev) => {
           const next = [...prev];
@@ -526,28 +585,97 @@ export default function Chat() {
       )}
 
       <div className="thread" ref={scrollRef} role="log" aria-label="Chat messages">
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble ${m.role}`}>
-            <span className="who">{m.role === "user" ? identity : "Aquavoy"}</span>
-            <div className="text">
-              {m.content ? (
-                m.role === "assistant" ? (
-                  renderMarkdown(m.content)
+        {messages.map((m, i) => {
+          const trace = m.trace;
+          const open = traceOpen.has(i);
+          const panelId = `trace-panel-${i}`;
+          const toolCount = trace?.toolCalls.length ?? 0;
+          return (
+            <div key={i} className={`bubble ${m.role}`}>
+              <span className="who">{m.role === "user" ? identity : "Aquavoy"}</span>
+              <div className="text">
+                {m.content ? (
+                  m.role === "assistant" ? (
+                    renderMarkdown(m.content)
+                  ) : (
+                    m.content
+                  )
+                ) : busy && i === messages.length - 1 ? (
+                  <span className="typing-dots" role="status" aria-label="Aquavoy is thinking">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
                 ) : (
-                  m.content
-                )
-              ) : busy && i === messages.length - 1 ? (
-                <span className="typing-dots" role="status" aria-label="Aquavoy is thinking">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              ) : (
-                ""
+                  ""
+                )}
+              </div>
+              {trace && (
+                <>
+                  <button
+                    type="button"
+                    className="trace-row"
+                    onClick={() => toggleTrace(i)}
+                    aria-expanded={open}
+                    aria-controls={panelId}
+                    aria-label={`${open ? "Hide" : "Show"} agent trace: ${toolCount} tool${
+                      toolCount !== 1 ? "s" : ""
+                    }, ${friendlyModel(trace.provider, trace.model)}, ${(
+                      trace.latencyMs / 1000
+                    ).toFixed(1)} seconds`}
+                  >
+                    <span className="trace-caret" aria-hidden="true">
+                      {open ? "▾" : "▸"}
+                    </span>
+                    <span className="trace-summary">
+                      {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                      {" · "}
+                      {friendlyModel(trace.provider, trace.model)}
+                      {" · "}
+                      {(trace.latencyMs / 1000).toFixed(1)} s
+                    </span>
+                  </button>
+                  {open && (
+                    <div className="trace-panel" role="region" id={panelId} aria-label="Agent trace detail">
+                      {toolCount === 0 ? (
+                        <p className="trace-empty">No tools were called this turn.</p>
+                      ) : (
+                        <ul className="trace-tools">
+                          {trace.toolCalls.map((tc, ti) => (
+                            <li
+                              key={ti}
+                              className={`trace-tool${tc.error ? " error" : ""}`}
+                            >
+                              <div className="trace-tool-head">
+                                <span className="trace-tool-name">{tc.name}</span>
+                                <span className="trace-tool-latency">
+                                  {(tc.latencyMs / 1000).toFixed(2)} s
+                                </span>
+                              </div>
+                              <div className="trace-tool-args">{tc.argsSummary}</div>
+                              {tc.error ? (
+                                <div className="trace-tool-error" role="alert">
+                                  {tc.error}
+                                </div>
+                              ) : (
+                                <div className="trace-tool-result">{tc.resultSummary}</div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="trace-tokens">
+                        {trace.promptTokens + trace.completionTokens} tokens
+                        {" · "}
+                        {trace.promptTokens} in / {trace.completionTokens} out
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {pending.length > 0 && (

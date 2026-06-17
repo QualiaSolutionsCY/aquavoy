@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const upstream = await streamChatWithTools(messages, { identity });
+    const upstream = await streamChatWithTools(messages, { identity, principal: identity });
     return new Response(upstream.body, {
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",

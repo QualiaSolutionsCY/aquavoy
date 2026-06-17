@@ -1,5 +1,6 @@
 import { getOpenRouterEnv } from "@/lib/env";
 import { TOOL_DEFINITIONS, executeTool } from "@/lib/agents/onedriveTools";
+import { insertTrace, type ToolCallTrace } from "@/lib/agents/traces";
 
 /**
  * Adapter over the OpenRouter chat-completions API. The rest of the app calls
@@ -46,6 +47,12 @@ export type Principal = (typeof PRINCIPALS)[number];
 export interface ChatOptions {
   /** Personalizes the system prompt to a named principal. */
   identity?: Principal;
+  /**
+   * The HMAC-verified session principal that owns the persisted trace row.
+   * Passed by the route from getPrincipal — NEVER from the request body.
+   * Falls back to "unknown" only if the route omits it.
+   */
+  principal?: string;
 }
 
 /**
@@ -275,100 +282,343 @@ export async function streamChatWithTools(
   const headers = buildHeaders(provider.key);
   const system = buildSystemContent(opts);
 
-  // Working message history — starts with system + user messages.
-  const history: ChatMessage[] = [
-    { role: "system", content: system },
-    ...messages,
-  ];
+  // ── Trace instrumentation (REQ-12/13/14) ──────────────────
+  // Capture model/provider/per-tool latency/token usage for this whole turn.
+  // The trace row is owned by the HMAC-verified session principal (opts.principal),
+  // never a value the model supplied.
+  const turnStart = Date.now();
+  const providerName: "openrouter" | "gemini" = provider.openrouter ? "openrouter" : "gemini";
+  const tracePrincipal = opts.principal ?? "unknown";
+  const toolTraces: ToolCallTrace[] = [];
+  let promptTokens = 0;
+  let completionTokens = 0;
 
-  // ── Tool loop (non-streaming) ──────────────────────────────
-  let iterations = 0;
-  while (iterations < MAX_TOOL_ITERATIONS) {
-    const payload: Record<string, unknown> = {
+  try {
+    // Working message history — starts with system + user messages.
+    const history: ChatMessage[] = [
+      { role: "system", content: system },
+      ...messages,
+    ];
+
+    // ── Tool loop (non-streaming) ────────────────────────────
+    let iterations = 0;
+    while (iterations < MAX_TOOL_ITERATIONS) {
+      const payload: Record<string, unknown> = {
+        model: provider.model,
+        stream: false,
+        messages: history,
+        tools: TOOL_DEFINITIONS,
+      };
+      withFallbacks(provider, payload);
+
+      const res = await fetch(provider.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => res.statusText);
+        throw new Error(`OpenRouter error ${res.status}: ${detail.slice(0, 300)}`);
+      }
+
+      const json = (await res.json()) as {
+        choices?: NonStreamingChoice[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      promptTokens += json.usage?.prompt_tokens ?? 0;
+      completionTokens += json.usage?.completion_tokens ?? 0;
+
+      const choice = json.choices?.[0];
+      if (!choice) throw new Error("OpenRouter returned no choices");
+
+      const msg = choice.message;
+      const toolCalls = msg.tool_calls;
+
+      // If no tool calls, the model is done reasoning — break to final stream.
+      if (!toolCalls || toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
+        // Append the assistant's final text answer so context is complete for
+        // the streaming call.
+        if (msg.content) {
+          history.push({ role: "assistant", content: msg.content });
+        }
+        break;
+      }
+
+      // Append the assistant message that contains the tool_calls.
+      // OpenAI format: the assistant message holds tool_calls; content may be null.
+      history.push({
+        role: "assistant",
+        content: msg.content ?? "",
+        // Stash tool_calls on the message for the next API call.
+        ...({ tool_calls: toolCalls } as Record<string, unknown>),
+      } as ChatMessage);
+
+      // Execute each tool and append results.
+      for (const tc of toolCalls) {
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        } catch {
+          // Malformed arguments — tell the model.
+        }
+        // Identity for principal-scoped tools (e.g. recall_memory) is taken from
+        // the HMAC-verified session, NEVER from the model's tool-call arguments —
+        // otherwise the model could be steered to read another principal's data.
+        const tStart = Date.now();
+        const result = await executeTool(tc.function.name, args, null, opts.identity);
+        const latencyMs = Date.now() - tStart;
+
+        toolTraces.push(summarizeToolCall(tc.function.name, args, result, latencyMs));
+
+        history.push({
+          role: "tool",
+          content: result,
+          tool_call_id: tc.id,
+        });
+      }
+
+      iterations++;
+    }
+
+    // ── Final streaming call ─────────────────────────────────
+    // Drop tool definitions on the final call so the model just answers.
+    // include_usage makes the terminal SSE chunk carry token counts.
+    const finalPayload: Record<string, unknown> = {
       model: provider.model,
-      stream: false,
+      stream: true,
       messages: history,
-      tools: TOOL_DEFINITIONS,
+      stream_options: { include_usage: true },
     };
-    withFallbacks(provider, payload);
+    withFallbacks(provider, finalPayload);
 
-    const res = await fetch(provider.url, {
+    const finalRes = await fetch(provider.url, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(finalPayload),
     });
 
-    if (!res.ok) {
-      const detail = await res.text().catch(() => res.statusText);
-      throw new Error(`OpenRouter error ${res.status}: ${detail.slice(0, 300)}`);
+    if (!finalRes.ok || !finalRes.body) {
+      const detail = await finalRes.text().catch(() => finalRes.statusText);
+      throw new Error(`OpenRouter error ${finalRes.status}: ${detail.slice(0, 300)}`);
     }
 
-    const json = (await res.json()) as { choices?: NonStreamingChoice[] };
-    const choice = json.choices?.[0];
-    if (!choice) throw new Error("OpenRouter returned no choices");
+    // Wrap the upstream SSE body: pass every chunk through byte-for-byte, sniff
+    // `data:` lines for terminal usage, and — just before forwarding upstream
+    // `data: [DONE]` — persist the trace and emit one trailing trace-id line.
+    const wrapped = wrapStreamWithTrace(finalRes.body, {
+      principal: tracePrincipal,
+      model: provider.model,
+      provider: providerName,
+      toolTraces,
+      turnStart,
+      basePromptTokens: promptTokens,
+      baseCompletionTokens: completionTokens,
+    });
 
-    const msg = choice.message;
-    const toolCalls = msg.tool_calls;
-
-    // If no tool calls, the model is done reasoning — break to final stream.
-    if (!toolCalls || toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
-      // Append the assistant's final text answer so context is complete for
-      // the streaming call.
-      if (msg.content) {
-        history.push({ role: "assistant", content: msg.content });
-      }
-      break;
-    }
-
-    // Append the assistant message that contains the tool_calls.
-    // OpenAI format: the assistant message holds tool_calls; content may be null.
-    history.push({
-      role: "assistant",
-      content: msg.content ?? "",
-      // Stash tool_calls on the message for the next API call.
-      ...({ tool_calls: toolCalls } as Record<string, unknown>),
-    } as ChatMessage);
-
-    // Execute each tool and append results.
-    for (const tc of toolCalls) {
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
-      } catch {
-        // Malformed arguments — tell the model.
-      }
-      // Identity for principal-scoped tools (e.g. recall_memory) is taken from
-      // the HMAC-verified session, NEVER from the model's tool-call arguments —
-      // otherwise the model could be steered to read another principal's data.
-      const result = await executeTool(tc.function.name, args, null, opts.identity);
-      history.push({
-        role: "tool",
-        content: result,
-        tool_call_id: tc.id,
-      });
-    }
-
-    iterations++;
+    return new Response(wrapped, {
+      status: finalRes.status,
+      headers: finalRes.headers,
+    });
+  } catch (err) {
+    // Criterion 3: even when the loop throws mid-turn (e.g. upstream 502), still
+    // persist a trace with the thrown message + whatever tool calls completed,
+    // then re-throw so route.ts keeps its 502 behavior.
+    const message = err instanceof Error ? err.message : "Chat turn failed";
+    await insertTrace({
+      principal: tracePrincipal,
+      model: provider.model,
+      provider: providerName,
+      toolCalls: toolTraces,
+      latencyMs: Date.now() - turnStart,
+      promptTokens,
+      completionTokens,
+      error: message,
+    }).catch(() => {
+      // Trace persistence must never mask the original upstream error.
+    });
+    throw err;
   }
+}
 
-  // ── Final streaming call ───────────────────────────────────
-  // Drop tool definitions on the final call so the model just answers.
-  const finalPayload: Record<string, unknown> = {
-    model: provider.model,
-    stream: true,
-    messages: history,
+/** Compact one-line JSON of args, capped ~200 chars. */
+function compactArgs(args: Record<string, unknown>): string {
+  let s: string;
+  try {
+    s = JSON.stringify(args);
+  } catch {
+    s = "{}";
+  }
+  return s.length > 200 ? s.slice(0, 200) : s;
+}
+
+/**
+ * Build a ToolCallTrace from an executeTool result. executeTool returns a JSON
+ * string; error tools return `{"error": "..."}`. When that shape is present we
+ * populate `error` and reflect the failure in `resultSummary`.
+ */
+function summarizeToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  result: string,
+  latencyMs: number,
+): ToolCallTrace {
+  let error: string | null = null;
+  try {
+    const parsed = JSON.parse(result) as { error?: unknown };
+    if (typeof parsed.error === "string") error = parsed.error;
+  } catch {
+    // Non-JSON result (e.g. the no-connection plain-text message) — no error field.
+  }
+  const resultSummary = result.length > 200 ? result.slice(0, 200) : result;
+  return {
+    name,
+    argsSummary: compactArgs(args),
+    resultSummary,
+    latencyMs,
+    error,
   };
-  withFallbacks(provider, finalPayload);
+}
 
-  const finalRes = await fetch(provider.url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(finalPayload),
+interface StreamTraceContext {
+  principal: string;
+  model: string;
+  provider: "openrouter" | "gemini";
+  toolTraces: ToolCallTrace[];
+  turnStart: number;
+  basePromptTokens: number;
+  baseCompletionTokens: number;
+}
+
+/**
+ * Wrap an upstream OpenRouter SSE body so the bytes reach the browser unchanged,
+ * while we (a) sniff the terminal `usage` chunk for token counts, and (b) just
+ * before forwarding `data: [DONE]`, persist the turn's trace and emit one extra
+ * `data: {"aquavoy_trace_id":"<id>"}` line. Line-buffering preserves multibyte
+ * chunk boundaries; the original [DONE] is always forwarded.
+ */
+function wrapStreamWithTrace(
+  body: ReadableStream<Uint8Array>,
+  ctx: StreamTraceContext,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  const encoder = new TextEncoder();
+  // Line buffer used ONLY for sniffing token usage out of the text stream.
+  // Forwarded bytes are never reconstructed from this — raw chunks pass through
+  // untouched so the deltas remain byte-for-byte identical to OpenRouter's.
+  let sniffBuffer = "";
+  let promptTokens = ctx.basePromptTokens;
+  let completionTokens = ctx.baseCompletionTokens;
+  let tracePersisted = false;
+
+  /** Pull `usage` off a complete SSE data line if present. */
+  const sniffUsage = (line: string): void => {
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    try {
+      const obj = JSON.parse(payload) as {
+        usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+      };
+      if (obj.usage) {
+        if (typeof obj.usage.prompt_tokens === "number") promptTokens = obj.usage.prompt_tokens;
+        if (typeof obj.usage.completion_tokens === "number")
+          completionTokens = obj.usage.completion_tokens;
+      }
+    } catch {
+      // Not JSON (or a partial line not yet complete) — ignore.
+    }
+  };
+
+  /** Decode a chunk into complete lines for sniffing, keeping the partial tail. */
+  const sniffChunk = (chunk: Uint8Array): void => {
+    sniffBuffer += decoder.decode(chunk, { stream: true });
+    const lines = sniffBuffer.split("\n");
+    sniffBuffer = lines.pop() ?? "";
+    for (const line of lines) sniffUsage(line);
+  };
+
+  const persistTrace = async (): Promise<string> => {
+    if (tracePersisted) return "";
+    tracePersisted = true;
+    try {
+      return await insertTrace({
+        principal: ctx.principal,
+        model: ctx.model,
+        provider: ctx.provider,
+        toolCalls: ctx.toolTraces,
+        latencyMs: Date.now() - ctx.turnStart,
+        promptTokens,
+        completionTokens,
+        error: null,
+      });
+    } catch {
+      // Persistence failure must not break the stream the user is reading.
+      return "";
+    }
+  };
+
+  // Marker bytes for the terminal SSE event. OpenRouter emits `data: [DONE]`.
+  const DONE_MARKER = encoder.encode("data: [DONE]");
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        // Stream ended without us having seen an explicit [DONE] chunk — emit
+        // the trace-id line now (still before close) so it is never omitted.
+        const id = await persistTrace();
+        if (id) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ aquavoy_trace_id: id })}\n\n`),
+          );
+        }
+        controller.close();
+        return;
+      }
+
+      // Sniff token usage from this chunk's complete lines.
+      sniffChunk(value);
+
+      // Locate `data: [DONE]` inside the raw bytes. If present, split the chunk
+      // so the trace-id line lands BEFORE the terminal marker, byte-for-byte.
+      const idx = indexOfBytes(value, DONE_MARKER);
+      if (idx < 0) {
+        controller.enqueue(value);
+        return;
+      }
+
+      // Forward everything up to (not including) the [DONE] marker untouched.
+      if (idx > 0) controller.enqueue(value.subarray(0, idx));
+
+      // Persist + announce the trace before the [DONE] bytes.
+      const id = await persistTrace();
+      if (id) {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ aquavoy_trace_id: id })}\n\n`),
+        );
+      }
+
+      // Forward the [DONE] marker and any trailing bytes untouched.
+      controller.enqueue(value.subarray(idx));
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
   });
+}
 
-  if (!finalRes.ok || !finalRes.body) {
-    const detail = await finalRes.text().catch(() => finalRes.statusText);
-    throw new Error(`OpenRouter error ${finalRes.status}: ${detail.slice(0, 300)}`);
+/** Index of the first occurrence of `needle` in `haystack`, or -1. */
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  if (needle.length === 0 || haystack.length < needle.length) return -1;
+  const last = haystack.length - needle.length;
+  outer: for (let i = 0; i <= last; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    return i;
   }
-  return finalRes;
+  return -1;
 }

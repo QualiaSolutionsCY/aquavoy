@@ -20,18 +20,14 @@ const eslintConfig = [
   ...nextCoreWebVitals,
   ...nextTypescript,
   {
-    // Pragmatic gate for an internal tool: these two rules currently fire as
-    // hard errors on existing src/ code. Fixing them belongs to the owning
-    // feature builders (it requires editing src/, out of scope for the lint
-    // setup task), so they are downgraded to "warn" to keep the gate green
-    // while still surfacing every occurrence in lint output.
-    //   - react-hooks/set-state-in-effect: synchronous setState inside a
-    //     useEffect body (src/app/*/page.tsx). A real perf smell to address.
-    //   - @next/next/no-html-link-for-pages: <a> used for in-app navigation
-    //     instead of next/link (src/components/Nav.tsx).
+    // Both rules were source-fixed in the audit remediation (effects refactored
+    // to the inner-async pattern; in-app <a> converted to next/link), so they
+    // are enforced as hard errors going forward.
+    //   - react-hooks/set-state-in-effect: no synchronous setState in a useEffect body.
+    //   - @next/next/no-html-link-for-pages: use next/link for in-app navigation.
     rules: {
-      "react-hooks/set-state-in-effect": "warn",
-      "@next/next/no-html-link-for-pages": "warn",
+      "react-hooks/set-state-in-effect": "error",
+      "@next/next/no-html-link-for-pages": "error",
     },
   },
 ];

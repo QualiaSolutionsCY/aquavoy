@@ -76,19 +76,24 @@ export default function Home() {
 
   // Surface connect/error feedback from the OAuth redirect, then load state.
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const err = url.searchParams.get("error");
-    const connected = url.searchParams.get("connected");
-    if (err) setError(err);
-    if (connected) setNotice("OneDrive connected.");
-    if (err || connected) window.history.replaceState({}, "", url.pathname);
-    loadConnections()
-      .then((list) => {
+    async function init() {
+      const url = new URL(window.location.href);
+      const err = url.searchParams.get("error");
+      const connected = url.searchParams.get("connected");
+      if (err) setError(err);
+      if (connected) setNotice("OneDrive connected.");
+      if (err || connected) window.history.replaceState({}, "", url.pathname);
+      try {
+        const list = await loadConnections();
         const conn = connected || list[0]?.id;
         if (conn) loadFolder(conn);
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setInitializing(false));
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setInitializing(false);
+      }
+    }
+    init();
   }, [loadConnections, loadFolder]);
 
   const openFolder = (item: DriveItem) => {

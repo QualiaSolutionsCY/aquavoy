@@ -97,8 +97,10 @@ export default function Prep() {
   }
 
   useEffect(() => {
-    loadCrew();
-    fetchMailAccounts();
+    async function load() {
+      await Promise.all([loadCrew(), fetchMailAccounts()]);
+    }
+    load();
   }, [fetchMailAccounts]);
 
   async function addRecipient() {

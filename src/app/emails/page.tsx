@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { MAILBOXES, GROUPS, DOMAIN_DEFAULTS } from "@/lib/mailboxes";
 
 /* ── API types (contract with backend agent) ── */
@@ -157,8 +158,10 @@ export default function Emails() {
   }, []);
 
   useEffect(() => {
-    fetchAccounts();
-    fetchScheduled();
+    async function load() {
+      await Promise.all([fetchAccounts(), fetchScheduled()]);
+    }
+    load();
   }, [fetchAccounts, fetchScheduled]);
 
   function findAccount(address: string): MailAccount | undefined {
@@ -238,12 +241,12 @@ export default function Emails() {
           <div className="tag">Connect company mailboxes via IMAP / SMTP</div>
         </div>
         <div className="row">
-          <a className="btn ghost" href="/">
+          <Link className="btn ghost" href="/">
             &larr; Chat
-          </a>
-          <a className="btn ghost" href="/files">
+          </Link>
+          <Link className="btn ghost" href="/files">
             Files &rarr;
-          </a>
+          </Link>
         </div>
       </div>
 

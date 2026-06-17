@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
@@ -15,10 +16,10 @@ export default function Nav() {
   return (
     <nav className="nav" aria-label="Main navigation">
       <div className="nav-inner">
-        <a href="/" className="nav-brand" aria-label="Aquavoy home">
+        <Link href="/" className="nav-brand" aria-label="Aquavoy home">
           <img src="/logo.png" alt="" className="nav-logo-img" aria-hidden="true" />
           <span className="nav-wordmark">Aquavoy</span>
-        </a>
+        </Link>
         <div className="nav-links">
           {LINKS.map(({ href, label, short }) => {
             const active =
@@ -26,7 +27,7 @@ export default function Nav() {
                 ? pathname === "/"
                 : pathname.startsWith(href);
             return (
-              <a
+              <Link
                 key={href}
                 href={href}
                 className="nav-link"
@@ -34,7 +35,7 @@ export default function Nav() {
               >
                 <span className="nav-link-label">{label}</span>
                 <span className="nav-link-short">{short}</span>
-              </a>
+              </Link>
             );
           })}
         </div>

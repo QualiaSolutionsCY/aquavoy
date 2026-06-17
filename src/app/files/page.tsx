@@ -193,7 +193,25 @@ export default function Home() {
 
       {error && (
         <div className="notice err" role="alert">
-          {error}
+          Could not load — Retry{" "}
+          <button
+            className="btn ghost sm"
+            onClick={() => {
+              setError(null);
+              if (activeConn) {
+                loadFolder(activeConn, currentFolderId);
+              } else {
+                loadConnections()
+                  .then((list) => {
+                    const first = list[0]?.id;
+                    if (first) loadFolder(first);
+                  })
+                  .catch((e) => setError((e as Error).message));
+              }
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
       {notice && (
@@ -287,7 +305,8 @@ export default function Home() {
               ))
             ) : items.length === 0 ? (
               <div className="empty">
-                This folder is empty. Upload a file or create a folder to get started.
+                This folder is empty.
+                <span className="empty-hint">Search for a file in the chat.</span>
               </div>
             ) : (
               items.map((item) => {

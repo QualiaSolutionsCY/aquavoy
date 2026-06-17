@@ -79,6 +79,13 @@ export async function scheduleEmail(input: ScheduleInput): Promise<ScheduledEmai
     );
   }
 
+  // ADR-004 / REQ-16: no silent cross-stack fallback
+  if (account.mailStack !== "imap") {
+    throw new Error(
+      `Mailbox "${input.fromEmail}" is owned by the ${account.mailStack} stack; scheduled company mail is sent only through IMAP/SMTP. No silent fallback (ADR-004 / REQ-16).`,
+    );
+  }
+
   const db = supabaseAdmin();
   const { data, error } = await db
     .from(TABLE)

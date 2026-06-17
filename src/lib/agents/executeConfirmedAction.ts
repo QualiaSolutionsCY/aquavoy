@@ -106,6 +106,13 @@ export async function executeConfirmedAction(
         throw new Error(`No connected mail account for "${from}".`);
       }
 
+      // ADR-004 / REQ-16: no silent cross-stack fallback
+      if (account.mailStack !== "imap") {
+        throw new Error(
+          `Mailbox "${from}" is owned by the ${account.mailStack} stack; the agent only sends company mail through IMAP/SMTP. No silent fallback (ADR-004 / REQ-16).`,
+        );
+      }
+
       await sendMail({ account, to, subject, body });
       return {
         result: { sent: true, from: account.email, to, subject },

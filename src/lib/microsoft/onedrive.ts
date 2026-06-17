@@ -36,6 +36,7 @@ function map(raw: GraphDriveItem): DriveItem {
     lastModified: raw.lastModifiedDateTime ?? "",
     webUrl: raw.webUrl,
     path,
+    parentId: raw.parentReference?.id,
     thumbnailUrl,
   };
 }

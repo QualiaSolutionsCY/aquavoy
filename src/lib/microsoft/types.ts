@@ -21,6 +21,8 @@ export interface DriveItem {
   webUrl?: string;
   /** Path relative to the drive root, e.g. "/Documents/report.pdf". */
   path?: string;
+  /** Graph item ID of the parent folder. Used to capture prior location for undo. */
+  parentId?: string;
   /** Pre-authenticated thumbnail URL (short-lived, from Graph $expand=thumbnails). */
   thumbnailUrl?: string;
 }
@@ -49,7 +51,7 @@ export interface GraphDriveItem {
   lastModifiedDateTime?: string;
   folder?: { childCount?: number };
   file?: { mimeType?: string };
-  parentReference?: { path?: string };
+  parentReference?: { path?: string; id?: string };
   "@microsoft.graph.downloadUrl"?: string;
   thumbnails?: Array<{
     medium?: { url?: string };

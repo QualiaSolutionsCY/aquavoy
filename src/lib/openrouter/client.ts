@@ -582,8 +582,10 @@ function wrapStreamWithTrace(
       // Sniff token usage from this chunk's complete lines.
       sniffChunk(value);
 
-      // Locate `data: [DONE]` inside the raw bytes. If present, split the chunk
-      // so the trace-id line lands BEFORE the terminal marker, byte-for-byte.
+      // Locate `data: [DONE]` at an SSE line boundary inside the raw bytes. If
+      // present, split the chunk so the trace-id line lands BEFORE the terminal
+      // marker, byte-for-byte. A match mid-line (e.g. the literal `data: [DONE]`
+      // appearing inside a JSON string value) is ignored.
       const idx = indexOfBytes(value, DONE_MARKER);
       if (idx < 0) {
         controller.enqueue(value);
@@ -610,7 +612,13 @@ function wrapStreamWithTrace(
   });
 }
 
-/** Index of the first occurrence of `needle` in `haystack`, or -1. */
+/**
+ * Index of the first occurrence of `needle` in `haystack` that begins at an SSE
+ * line boundary, or -1. A line boundary is byte offset 0 of the haystack, or any
+ * offset immediately following a `\n` (0x0A) byte. SSE markers are only valid at
+ * the start of a line, so a needle appearing mid-line (e.g. the literal
+ * `data: [DONE]` inside a JSON string value) is skipped, not matched.
+ */
 function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
   if (needle.length === 0 || haystack.length < needle.length) return -1;
   const last = haystack.length - needle.length;
@@ -618,7 +626,8 @@ function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
     for (let j = 0; j < needle.length; j++) {
       if (haystack[i + j] !== needle[j]) continue outer;
     }
-    return i;
+    // Full-needle match at offset i — accept only at a true line boundary.
+    if (i === 0 || haystack[i - 1] === 0x0A) return i;
   }
   return -1;
 }

@@ -1,110 +1,76 @@
 {
   "ok": true,
   "phase": 3,
-  "goal": "Emails, Files, and Prep pages get complete UI state coverage (loading skeleton, error with retry, empty state with CTA) and pass a mobile layout check at 375px",
-  "checked": 13,
+  "goal": "A QA checklist is produced and committed covering the headline M1-M3 flows, each row with steps + expected result + a Status/Tester/Date column the operator fills on prod, and a code-evidence column citing the prior verification that already proves the invariant.",
+  "checked": 8,
   "failed": 0,
-  "generated_at": "2026-06-17T12:34:17.742Z",
+  "generated_at": "2026-06-17T13:10:56.388Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Fix touch-target floors and add empty-CTA helper in globals.css",
+      "task_title": "Author and commit the headline QA checklist",
       "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Author and commit the headline QA checklist",
+      "index": 1,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T1",
-      "task_title": "Fix touch-target floors and add empty-CTA helper in globals.css",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Emails page: skeleton, inline error+retry, empty CTAs, 375px fixes",
-      "index": 0,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Emails page: skeleton, inline error+retry, empty CTAs, 375px fixes",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Emails page: skeleton, inline error+retry, empty CTAs, 375px fixes",
+      "task_title": "Author and commit the headline QA checklist",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T2",
-      "task_title": "Emails page: skeleton, inline error+retry, empty CTAs, 375px fixes",
+      "task_id": "T1",
+      "task_title": "Author and commit the headline QA checklist",
       "index": 3,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Files page: add error retry + align empty copy, confirm 375px",
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
       "index": 0,
-      "type": "grep-match",
+      "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Files page: add error retry + align empty copy, confirm 375px",
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
       "index": 1,
-      "type": "grep-match",
+      "type": "command-exit",
       "ok": true,
-      "detail": ""
+      "detail": "",
+      "duration_ms": 3304,
+      "stdout": "\n> aquavoy@0.1.0 typecheck\n> tsc --noEmit\n\n",
+      "stderr": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Files page: add error retry + align empty copy, confirm 375px",
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
       "index": 2,
-      "type": "grep-match",
+      "type": "command-exit",
       "ok": true,
-      "detail": ""
+      "detail": "",
+      "duration_ms": 3141,
+      "stdout": "\n> aquavoy@0.1.0 test\n> vitest run\n\n\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  12 passed (12)\n      Tests  59 passed (59)\n   Start at  16:10:54\n   Duration  2.02s (transform 1.36s, setup 342ms, import 2.85s, tests 753ms, environment 6ms)\n\n",
+      "stderr": ""
     },
     {
-      "task_id": "T4",
-      "task_title": "Prep page: crew skeleton, error retry, empty CTA, 375px fixes",
-      "index": 0,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Prep page: crew skeleton, error retry, empty CTA, 375px fixes",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Prep page: crew skeleton, error retry, empty CTA, 375px fixes",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Prep page: crew skeleton, error retry, empty CTA, 375px fixes",
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
       "index": 3,
       "type": "grep-match",
       "ok": true,

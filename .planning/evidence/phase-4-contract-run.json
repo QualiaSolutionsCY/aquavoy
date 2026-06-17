@@ -1,0 +1,104 @@
+{
+  "ok": true,
+  "phase": 4,
+  "goal": "Deliver the committed handover artifacts — operator walkthrough, credential & ownership handover checklist, acceptance sign-off template, and post-handover access-removal checklist — that make the live human handover ceremony to Wency & Jeanette executable. (REQ-22)",
+  "checked": 11,
+  "failed": 0,
+  "generated_at": "2026-06-17T13:19:48.386Z",
+  "results": [
+    {
+      "task_id": "T1",
+      "task_title": "Operator walkthrough for Wency & Jeanette",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Operator walkthrough for Wency & Jeanette",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Operator walkthrough for Wency & Jeanette",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Operator walkthrough for Wency & Jeanette",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Operator walkthrough for Wency & Jeanette",
+      "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 5,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Credential handover checklist, acceptance sign-off, and Qualia access-removal checklist",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Credential handover checklist, acceptance sign-off, and Qualia access-removal checklist",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Credential handover checklist, acceptance sign-off, and Qualia access-removal checklist",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Credential handover checklist, acceptance sign-off, and Qualia access-removal checklist",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Credential handover checklist, acceptance sign-off, and Qualia access-removal checklist",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Credential handover checklist, acceptance sign-off, and Qualia access-removal checklist",
+      "index": 5,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 4,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}

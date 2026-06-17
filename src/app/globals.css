@@ -322,6 +322,13 @@ a:focus-visible {
   transform: none;
 }
 .btn.sm {
+  position: static;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.75rem;
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+}
+.btn.close {
   position: absolute;
   top: var(--sp-2);
   right: var(--sp-2);

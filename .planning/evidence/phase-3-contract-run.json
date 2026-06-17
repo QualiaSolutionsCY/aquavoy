@@ -1,14 +1,14 @@
 {
   "ok": true,
   "phase": 3,
-  "goal": "The repo's migrations match the live DB, and the seams are protected by tests.",
-  "checked": 11,
+  "goal": "Destructive tool calls are gated by a HARD enforced confirmation (not prose), with undo where the platform allows and a principal-scoped auditable record.",
+  "checked": 21,
   "failed": 0,
-  "generated_at": "2026-06-15T15:54:59.804Z",
+  "generated_at": "2026-06-17T10:20:06.995Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Track the scheduled_emails migration to match the live table",
+      "task_title": "Migration: pending_actions table",
       "index": 0,
       "type": "file-exists",
       "ok": true,
@@ -16,7 +16,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Track the scheduled_emails migration to match the live table",
+      "task_title": "Migration: pending_actions table",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,80 +24,166 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Track the scheduled_emails migration to match the live table",
+      "task_title": "Migration: pending_actions table",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T2",
-      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
-      "index": 0,
-      "type": "file-exists",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
-      "index": 0,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
-      "index": 2,
-      "type": "file-exists",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
+      "task_id": "T1",
+      "task_title": "Migration: pending_actions table",
       "index": 3,
-      "type": "command-exit",
+      "type": "grep-match",
       "ok": true,
-      "detail": "",
-      "duration_ms": 1228,
-      "stdout": "\n RUN  v4.1.9 /home/qualiasolutions/Projects/aquavoy\n\n\n Test Files  8 passed (8)\n      Tests  30 passed (30)\n   Start at  18:54:57\n   Duration  565ms (transform 555ms, setup 227ms, import 899ms, tests 118ms, environment 1ms)\n\n",
-      "stderr": ""
+      "detail": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
+      "task_id": "T2",
+      "task_title": "Stage destructive tools + extract executeConfirmedAction",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Stage destructive tools + extract executeConfirmedAction",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Stage destructive tools + extract executeConfirmedAction",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Stage destructive tools + extract executeConfirmedAction",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Stage destructive tools + extract executeConfirmedAction",
       "index": 4,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 1597,
+      "duration_ms": 10241,
       "stdout": "",
+      "stderr": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "/api/actions endpoints (list/confirm/cancel/undo)",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "/api/actions endpoints (list/confirm/cancel/undo)",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "/api/actions endpoints (list/confirm/cancel/undo)",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "/api/actions endpoints (list/confirm/cancel/undo)",
+      "index": 3,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 8474,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Chat pending-action card (Confirm/Cancel/Undo)",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Chat pending-action card (Confirm/Cancel/Undo)",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Chat pending-action card (Confirm/Cancel/Undo)",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Chat pending-action card (Confirm/Cancel/Undo)",
+      "index": 3,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 598,
+      "stdout": "\n\u001b[36m\u001b[1mMEDIUM\u001b[0m  1 finding\n\u001b[2m────────────────────────────────────────────────────────────\u001b[0m\n\u001b[36m●\u001b[0m \u001b[1msrc/app/page.tsx:372\u001b[0m  \u001b[2m[MED-BOUNCE-EASING]\u001b[0m\n  Bounce/elastic easing (banned per design-laws.md §6)\n  \u001b[2m// session cookie via GET /api/auth/me. On 401 we bounce to /login.\u001b[0m\n  \u001b[36m→\u001b[0m Ease out with exponential curves: cubic-bezier(0.22, 1, 0.36, 1) or (0.16, 1, 0.3, 1).\n\n\u001b[1m1\u001b[0m total · \u001b[1m0\u001b[0m critical · 1 files scanned\n",
+      "stderr": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "System prompt update + seam/route tests",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "System prompt update + seam/route tests",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "System prompt update + seam/route tests",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "System prompt update + seam/route tests",
+      "index": 3,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 8621,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  12 passed (12)\n      Tests  59 passed (59)\n   Start at  13:20:02\n   Duration  4.29s (transform 3.49s, setup 960ms, import 6.98s, tests 1.22s, environment 6ms)\n\n",
       "stderr": ""
     }
   ]

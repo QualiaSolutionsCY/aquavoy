@@ -1,37 +1,67 @@
 # Aquavoy
 
-AI agent platform for **Wence** (Aquavoy is Wence's company — same entity).
+Internal AI assistant for **Aquavoy Shipping / Faial BV** — a small inland-waterway
+shipping operation in the Netherlands. Built by Qualia Solutions.
 
-Current scope: a **OneDrive / Microsoft Graph integration** — connect a Microsoft
-account via delegated OAuth and perform the full file surface (browse, download,
-upload, create folders, rename/move/copy, delete, search) through a clean API.
+## What Aquavoy is
+
+Two named operators run the back office by talking to an agent instead of hopping
+between OneDrive, a dozen mailboxes, and manual email drafting. The whole product
+is one chat surface plus three supporting pages. Through chat the agent can:
+
+- **Read and organize OneDrive** via Microsoft Graph — browse, search, download,
+  upload, create folders, rename/move/copy, delete.
+- **Read, send, and schedule email** across 12 company mailboxes (aquavoy.com /
+  faialbv.com), with confirm-before-send/schedule/delete guardrails.
+- **Recall past conversations** — memory is injected per request and is also a
+  callable tool.
+- **Search the web** for facts the operators need.
+
+Supporting pages (Emails, Files, Prep) give a direct UI over the same surfaces the
+agent drives.
 
 ## Stack
 
-- **Next.js 16** (App Router) + **React 19** + **TypeScript**
-- **Supabase** — OAuth token storage (`onedrive_connections`, service-role only)
-- **Microsoft Graph** v1.0 — OneDrive operations
+- **Next.js 16** (App Router) + **React 19** + **TypeScript 5** (strict)
+- **Supabase** — service-role, server-only (token storage, conversation memory,
+  scheduled-email queue)
+- **Microsoft Graph** v1.0 — OneDrive operations via delegated OAuth
+- **imapflow / mailparser / nodemailer** — IMAP read + SMTP send across mailboxes
+- **OpenRouter / Gemini** — the agent's LLM, provider-pluggable
+- **Tavily** — web search
+- **Vercel** — hosting + per-minute cron for the scheduled-email queue
 
-## Architecture
+## Pages
 
+| Route     | Source                  | What it is                                          |
+|-----------|-------------------------|-----------------------------------------------------|
+| `/`       | `src/app/page.tsx`      | Chat — the primary surface; talk to the agent       |
+| `/emails` | `src/app/emails/page.tsx` | Inbox view across the company mailboxes           |
+| `/files`  | `src/app/files/page.tsx`  | OneDrive file browser                             |
+| `/prep`   | `src/app/prep/page.tsx`   | Email-prep — crew/recipient lists + 1:1 drafting  |
+| `/login`  | `src/app/login/page.tsx`  | Auth gate for the named operators                 |
+
+## Local development
+
+```bash
+npm install
+cp .env.example .env.local   # then fill it in — see docs/env-reference.md
+npx supabase link            # link to the Aquavoy Supabase project
+npx supabase db push         # apply supabase/migrations
+npm run dev                  # http://localhost:3000
 ```
-src/app/api/onedrive/*   ← route handlers (thin wiring)
-src/lib/microsoft/
-  oauth.ts               ← OAuth code/refresh flow (owns the token endpoint)
-  graph.ts               ← Graph HTTP transport + error envelope
-  onedrive.ts            ← file operations in internal DriveItem terms  ← the seam
-  connections.ts         ← token persistence + auto-refresh (Supabase)
-  types.ts               ← project-internal shapes
-src/lib/supabase/server  ← service-role client adapter (server-only)
-supabase/migrations      ← onedrive_connections table (RLS on, no policies)
+
+Useful scripts:
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm run lint        # eslint .
+npm run test        # vitest run
 ```
 
-The rest of the app talks to `onedrive.ts`; only that module knows Graph's shape.
-Swapping endpoints or the auth model is a one-file change.
+### Microsoft app registration (Entra / Azure AD)
 
-## Setup
-
-### 1. Microsoft app registration (Entra / Azure AD)
+OneDrive OAuth needs a Microsoft app registration:
 
 1. https://entra.microsoft.com → **App registrations** → **New registration**.
 2. Supported accounts: pick the type that matches `MICROSOFT_TENANT_ID`
@@ -40,56 +70,19 @@ Swapping endpoints or the auth model is a one-file change.
    (and your production URL later).
 4. **Certificates & secrets** → new client secret → copy the value.
 5. **API permissions** → Microsoft Graph → **Delegated**:
-   `offline_access`, `User.Read`, `Files.ReadWrite.All` → Grant admin consent if
-   required by the tenant.
+   `offline_access`, `User.Read`, `Files.ReadWrite.All` → grant admin consent if
+   the tenant requires it.
 
-### 2. Supabase
+## Operating the app
 
-```bash
-npx supabase link        # link to the Aquavoy Supabase project
-npx supabase db push     # applies supabase/migrations/0001_onedrive_connections.sql
-```
+Day-to-day operation — connecting OneDrive, mailbox configuration, the
+scheduled-email cron, and recovery steps — is in **[docs/operator-runbook.md](docs/operator-runbook.md)**.
 
-### 3. Env
+## Documentation
 
-```bash
-cp .env.example .env.local
-# fill: MICROSOFT_CLIENT_ID / _SECRET / _TENANT_ID, APP_BASE_URL,
-#       NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-```
-
-### 4. Run
-
-```bash
-npm install
-npm run dev      # http://localhost:3000 → "Connect OneDrive"
-```
-
-## API
-
-| Method | Route | Purpose |
-|--------|-------|---------|
-| GET    | `/api/onedrive/connect` | Start OAuth → redirect to Microsoft |
-| GET    | `/api/onedrive/callback` | OAuth return → store connection |
-| GET    | `/api/onedrive/connections` | List connected accounts (no tokens) |
-| GET    | `/api/onedrive/files?itemId=\|path=` | List folder children |
-| GET    | `/api/onedrive/download?itemId=` | Redirect to pre-authed download URL |
-| POST   | `/api/onedrive/upload` | Multipart upload (small + chunked) |
-| POST   | `/api/onedrive/folder` | Create folder |
-| PATCH  | `/api/onedrive/item` | Rename / move / copy |
-| DELETE | `/api/onedrive/item?itemId=` | Delete |
-| GET    | `/api/onedrive/search?q=` | Full-text drive search |
-
-All file routes accept an optional `connectionId`; without it they use the most
-recently connected account.
-
-## Notes / next steps
-
-- **Auth model:** delegated (each user connects their own OneDrive). Swap to
-  app-only (client-credentials, one company drive) by changing `oauth.ts` +
-  the Graph paths in `onedrive.ts` from `/me/drive` to `/drives/{id}`.
-- **Multi-tenant mapping:** connections are keyed by Microsoft user id. When app
-  auth lands, link `onedrive_connections` to `auth.uid()` and add an RLS policy.
+- **[docs/operator-runbook.md](docs/operator-runbook.md)** — running and operating the app
+- **[docs/env-reference.md](docs/env-reference.md)** — every environment variable explained
+- **[docs/architecture.md](docs/architecture.md)** — how the pieces fit together
 
 ---
 

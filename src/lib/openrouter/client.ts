@@ -1,5 +1,6 @@
 import { getOpenRouterEnv } from "@/lib/env";
 import { TOOL_DEFINITIONS, executeTool } from "@/lib/agents/onedriveTools";
+import { insertTrace, type ToolCallTrace } from "@/lib/agents/traces";
 
 /**
  * Adapter over the OpenRouter chat-completions API. The rest of the app calls
@@ -46,6 +47,12 @@ export type Principal = (typeof PRINCIPALS)[number];
 export interface ChatOptions {
   /** Personalizes the system prompt to a named principal. */
   identity?: Principal;
+  /**
+   * The HMAC-verified session principal that owns the persisted trace row.
+   * Passed by the route from getPrincipal — NEVER from the request body.
+   * Falls back to "unknown" only if the route omits it.
+   */
+  principal?: string;
 }
 
 /**
@@ -71,6 +78,11 @@ export const SYSTEM_PROMPT = [
   "",
   "Formatting: use Markdown sparingly — **bold** for key terms, short bullet",
   "lists when listing. Never produce walls of headed sections for simple questions.",
+  "NEVER output raw HTML (no <table>, <div>, <td> or any tags) and NEVER use",
+  "Markdown tables — the chat renders plain text only and tags show up as broken",
+  "markup. When you confirm or relay a staged action, describe it in one short",
+  "plain sentence (e.g. \"Staged: email to X, subject Y, sending tomorrow 09:00\"),",
+  "not a table.",
   "",
   "Capabilities:",
   "",
@@ -92,10 +104,14 @@ export const SYSTEM_PROMPT = [
   "3. MEMORY RECALL: use recall_memory to search past conversations when the user",
   "   asks what was discussed before or references earlier topics.",
   "",
-  "4. EMAIL SENDING: use send_email to send from a connected mail account. IMPORTANT:",
-  "   Before calling send_email, ALWAYS show the user the full draft (from, to,",
-  "   subject, body) in chat and wait for their EXPLICIT confirmation in a",
-  "   follow-up message. Never send without asking first.",
+  "4. EMAIL SENDING: use send_email to send from a connected mail account. The",
+  "   destructive tools (send_email, schedule_email, delete_item, move_item,",
+  "   rename_item) are AUTOMATICALLY staged for the user's confirmation by the",
+  "   app — they never run immediately. Propose the action with the full draft",
+  "   (from, to, subject, body), then call send_email ONCE and relay the `summary`",
+  "   it returns; the app shows the user a confirm/cancel card and the user",
+  "   approves it in the UI. Do NOT call send_email a second time after the user",
+  "   says 'yes' — confirming is the UI's job, not yours.",
   "",
   "5. MAILBOX READ ACCESS: you have full read access to all company mailboxes —",
   "   inbox, sent, drafts, and every other folder — via IMAP. Tools:",
@@ -108,17 +124,19 @@ export const SYSTEM_PROMPT = [
   "   emails, always cite the sender, date, and subject line.",
   "",
   "5b. SCHEDULED EMAIL: use schedule_email to queue an email for a future time.",
-  "    The same confirm-first rule applies: show the user the draft including the",
-  "    scheduled time, wait for explicit yes, then call schedule_email. Use",
-  "    list_scheduled_emails to show the queue and cancel_scheduled_email to",
-  "    cancel a pending email by id.",
+  "    schedule_email is also staged for confirmation by the app: show the draft",
+  "    including the scheduled time, call schedule_email ONCE, and relay the",
+  "    summary; the user confirms in the UI. Use list_scheduled_emails to show",
+  "    the queue and cancel_scheduled_email to cancel a pending email by id.",
   "",
   "6. FILE ORGANIZATION: use create_folder, move_item, rename_item, delete_item",
-  "   to organize files on OneDrive. IMPORTANT: For any organization request,",
-  "   first inspect the current structure with list_folder, then PROPOSE the",
-  "   folder structure and moves in chat, and wait for user confirmation before",
-  "   calling any mutating tool. Never delete a file without naming it and",
-  "   getting a yes.",
+  "   to organize files on OneDrive. For any organization request, first inspect",
+  "   the current structure with list_folder, then PROPOSE the folder structure",
+  "   and moves in chat. move_item, rename_item, and delete_item are staged for",
+  "   confirmation by the app — call each ONCE, name the exact file, and relay the",
+  "   summary; the user approves the staged action in the UI. create_folder is",
+  "   additive and runs directly. Never call a destructive tool twice for one",
+  "   request.",
 ].join("\n");
 
 /**
@@ -139,7 +157,7 @@ export async function streamChat(
   };
   withFallbacks(provider, payload);
 
-  const res = await fetch(provider.url, {
+  const res = await fetchStreamWithTimeout(provider.url, {
     method: "POST",
     headers: buildHeaders(provider.key),
     body: JSON.stringify(payload),
@@ -166,7 +184,7 @@ export async function complete(messages: ChatMessage[], opts: ChatOptions & { we
   if (opts.web && provider.openrouter) payload.plugins = [{ id: "web", max_results: 5 }];
   withFallbacks(provider, payload);
 
-  const res = await fetch(provider.url, {
+  const res = await fetchWithTimeout(provider.url, {
     method: "POST",
     headers: buildHeaders(provider.key),
     body: JSON.stringify(payload),
@@ -180,6 +198,59 @@ export async function complete(messages: ChatMessage[], opts: ChatOptions & { we
 }
 
 // ── Shared helpers ──────────────────────────────────────────
+
+/** Non-streaming request timeout: a hung upstream must not pin the function. */
+const FETCH_TIMEOUT_MS = 30_000;
+/**
+ * Streaming header timeout. We only abort if the upstream never sends RESPONSE
+ * HEADERS — once fetch resolves (headers received) we clear the timer, so a long
+ * SSE body is never cut. Use a generous ceiling for slow tool-laden first byte.
+ */
+const STREAM_HEADER_TIMEOUT_MS = 120_000;
+
+/**
+ * fetch with a hard abort after FETCH_TIMEOUT_MS. For NON-streaming calls only,
+ * where we read the whole body — aborting kills the request and any in-flight body.
+ */
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`OpenRouter request timed out after ${FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/**
+ * fetch for STREAMING calls. The timeout guards only the time-to-headers; once
+ * the response object (headers) arrives, the timer is cleared so the SSE body
+ * can stream for as long as the model keeps producing tokens. This protects
+ * against a hung upstream that never responds, without truncating long replies.
+ */
+async function fetchStreamWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), STREAM_HEADER_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    // Headers received — stop the clock so the body stream runs unbounded.
+    clearTimeout(t);
+    return res;
+  } catch (err) {
+    clearTimeout(t);
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(
+        `OpenRouter stream did not respond within ${STREAM_HEADER_TIMEOUT_MS / 1000}s`,
+      );
+    }
+    throw err;
+  }
+}
 
 function buildHeaders(apiKey: string): Record<string, string> {
   return {
@@ -269,97 +340,400 @@ export async function streamChatWithTools(
   const headers = buildHeaders(provider.key);
   const system = buildSystemContent(opts);
 
-  // Working message history — starts with system + user messages.
-  const history: ChatMessage[] = [
-    { role: "system", content: system },
-    ...messages,
-  ];
+  // ── Trace instrumentation (REQ-12/13/14) ──────────────────
+  // Capture model/provider/per-tool latency/token usage for this whole turn.
+  // The trace row is owned by the HMAC-verified session principal (opts.principal),
+  // never a value the model supplied.
+  const turnStart = Date.now();
+  const providerName: "openrouter" | "gemini" = provider.openrouter ? "openrouter" : "gemini";
+  const tracePrincipal = opts.principal ?? "unknown";
+  const toolTraces: ToolCallTrace[] = [];
+  let promptTokens = 0;
+  let completionTokens = 0;
+  // The model's direct answer captured in the (non-streaming) tool loop. Kept as
+  // a safety net: if the final streaming call returns an empty completion, we
+  // emit this so the user never sees "(no response)".
+  let fallbackAnswer = "";
 
-  // ── Tool loop (non-streaming) ──────────────────────────────
-  let iterations = 0;
-  while (iterations < MAX_TOOL_ITERATIONS) {
-    const payload: Record<string, unknown> = {
+  try {
+    // Working message history — starts with system + user messages.
+    const history: ChatMessage[] = [
+      { role: "system", content: system },
+      ...messages,
+    ];
+
+    // ── Tool loop (non-streaming) ────────────────────────────
+    let iterations = 0;
+    while (iterations < MAX_TOOL_ITERATIONS) {
+      const payload: Record<string, unknown> = {
+        model: provider.model,
+        stream: false,
+        messages: history,
+        tools: TOOL_DEFINITIONS,
+      };
+      withFallbacks(provider, payload);
+
+      const res = await fetchWithTimeout(provider.url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => res.statusText);
+        throw new Error(`OpenRouter error ${res.status}: ${detail.slice(0, 300)}`);
+      }
+
+      const json = (await res.json()) as {
+        choices?: NonStreamingChoice[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+      promptTokens += json.usage?.prompt_tokens ?? 0;
+      completionTokens += json.usage?.completion_tokens ?? 0;
+
+      const choice = json.choices?.[0];
+      if (!choice) throw new Error("OpenRouter returned no choices");
+
+      const msg = choice.message;
+      const toolCalls = msg.tool_calls;
+
+      // If no tool calls, the model is done reasoning — break to the final
+      // streaming call below, which regenerates the answer as SSE.
+      //
+      // IMPORTANT: do NOT append msg.content to history here. Appending it makes
+      // the final streaming call see a conversation that already ends with the
+      // assistant's answer, so the model streams an EMPTY completion — the
+      // "(no response)" bug. With nothing appended, history ends at the user
+      // message (direct answer) or the tool results (after tool use), so the
+      // streaming call always has something to generate. We keep the text as a
+      // fallback in case the streaming call still comes back empty.
+      if (!toolCalls || toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
+        fallbackAnswer = msg.content ?? "";
+        break;
+      }
+
+      // Append the assistant message that contains the tool_calls.
+      // OpenAI format: the assistant message holds tool_calls; content may be null.
+      history.push({
+        role: "assistant",
+        content: msg.content ?? "",
+        // Stash tool_calls on the message for the next API call.
+        ...({ tool_calls: toolCalls } as Record<string, unknown>),
+      } as ChatMessage);
+
+      // Execute each tool and append results.
+      for (const tc of toolCalls) {
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        } catch {
+          // Malformed arguments — tell the model.
+        }
+        // Identity for principal-scoped tools (e.g. recall_memory) is taken from
+        // the HMAC-verified session, NEVER from the model's tool-call arguments —
+        // otherwise the model could be steered to read another principal's data.
+        const tStart = Date.now();
+        // executeTool is contracted to never throw, but a thrown error here (a
+        // bug, an unexpected rejection type) must not 502 the whole turn — feed
+        // the model an {error} tool-result so it can recover and continue.
+        let result: string;
+        try {
+          result = await executeTool(tc.function.name, args, null, opts.identity);
+        } catch (err) {
+          result = JSON.stringify({
+            error: `Tool ${tc.function.name} failed: ${err instanceof Error ? err.message : "unknown"}`,
+          });
+        }
+        const latencyMs = Date.now() - tStart;
+
+        toolTraces.push(summarizeToolCall(tc.function.name, args, result, latencyMs));
+
+        history.push({
+          role: "tool",
+          content: result,
+          tool_call_id: tc.id,
+        });
+      }
+
+      iterations++;
+    }
+
+    // ── Final streaming call ─────────────────────────────────
+    // Drop tool definitions on the final call so the model just answers.
+    // include_usage makes the terminal SSE chunk carry token counts.
+    const finalPayload: Record<string, unknown> = {
       model: provider.model,
-      stream: false,
+      stream: true,
       messages: history,
-      tools: TOOL_DEFINITIONS,
+      stream_options: { include_usage: true },
     };
-    withFallbacks(provider, payload);
+    withFallbacks(provider, finalPayload);
 
-    const res = await fetch(provider.url, {
+    const finalRes = await fetchStreamWithTimeout(provider.url, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body: JSON.stringify(finalPayload),
     });
 
-    if (!res.ok) {
-      const detail = await res.text().catch(() => res.statusText);
-      throw new Error(`OpenRouter error ${res.status}: ${detail.slice(0, 300)}`);
+    if (!finalRes.ok || !finalRes.body) {
+      const detail = await finalRes.text().catch(() => finalRes.statusText);
+      throw new Error(`OpenRouter error ${finalRes.status}: ${detail.slice(0, 300)}`);
     }
 
-    const json = (await res.json()) as { choices?: NonStreamingChoice[] };
-    const choice = json.choices?.[0];
-    if (!choice) throw new Error("OpenRouter returned no choices");
+    // Wrap the upstream SSE body: pass every chunk through byte-for-byte, sniff
+    // `data:` lines for terminal usage, and — just before forwarding upstream
+    // `data: [DONE]` — persist the trace and emit one trailing trace-id line.
+    const wrapped = wrapStreamWithTrace(finalRes.body, {
+      principal: tracePrincipal,
+      model: provider.model,
+      provider: providerName,
+      toolTraces,
+      turnStart,
+      basePromptTokens: promptTokens,
+      baseCompletionTokens: completionTokens,
+      fallbackAnswer,
+    });
 
-    const msg = choice.message;
-    const toolCalls = msg.tool_calls;
-
-    // If no tool calls, the model is done reasoning — break to final stream.
-    if (!toolCalls || toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
-      // Append the assistant's final text answer so context is complete for
-      // the streaming call.
-      if (msg.content) {
-        history.push({ role: "assistant", content: msg.content });
-      }
-      break;
-    }
-
-    // Append the assistant message that contains the tool_calls.
-    // OpenAI format: the assistant message holds tool_calls; content may be null.
-    history.push({
-      role: "assistant",
-      content: msg.content ?? "",
-      // Stash tool_calls on the message for the next API call.
-      ...({ tool_calls: toolCalls } as Record<string, unknown>),
-    } as ChatMessage);
-
-    // Execute each tool and append results.
-    for (const tc of toolCalls) {
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
-      } catch {
-        // Malformed arguments — tell the model.
-      }
-      const result = await executeTool(tc.function.name, args);
-      history.push({
-        role: "tool",
-        content: result,
-        tool_call_id: tc.id,
-      });
-    }
-
-    iterations++;
+    return new Response(wrapped, {
+      status: finalRes.status,
+      headers: finalRes.headers,
+    });
+  } catch (err) {
+    // Criterion 3: even when the loop throws mid-turn (e.g. upstream 502), still
+    // persist a trace with the thrown message + whatever tool calls completed,
+    // then re-throw so route.ts keeps its 502 behavior.
+    const message = err instanceof Error ? err.message : "Chat turn failed";
+    await insertTrace({
+      principal: tracePrincipal,
+      model: provider.model,
+      provider: providerName,
+      toolCalls: toolTraces,
+      latencyMs: Date.now() - turnStart,
+      promptTokens,
+      completionTokens,
+      error: message,
+    }).catch(() => {
+      // Trace persistence must never mask the original upstream error.
+    });
+    throw err;
   }
+}
 
-  // ── Final streaming call ───────────────────────────────────
-  // Drop tool definitions on the final call so the model just answers.
-  const finalPayload: Record<string, unknown> = {
-    model: provider.model,
-    stream: true,
-    messages: history,
+/** Compact one-line JSON of args, capped ~200 chars. */
+function compactArgs(args: Record<string, unknown>): string {
+  let s: string;
+  try {
+    s = JSON.stringify(args);
+  } catch {
+    s = "{}";
+  }
+  return s.length > 200 ? s.slice(0, 200) : s;
+}
+
+/**
+ * Build a ToolCallTrace from an executeTool result. executeTool returns a JSON
+ * string; error tools return `{"error": "..."}`. When that shape is present we
+ * populate `error` and reflect the failure in `resultSummary`.
+ */
+function summarizeToolCall(
+  name: string,
+  args: Record<string, unknown>,
+  result: string,
+  latencyMs: number,
+): ToolCallTrace {
+  let error: string | null = null;
+  try {
+    const parsed = JSON.parse(result) as { error?: unknown };
+    if (typeof parsed.error === "string") error = parsed.error;
+  } catch {
+    // Non-JSON result (e.g. the no-connection plain-text message) — no error field.
+  }
+  const resultSummary = result.length > 200 ? result.slice(0, 200) : result;
+  return {
+    name,
+    argsSummary: compactArgs(args),
+    resultSummary,
+    latencyMs,
+    error,
   };
-  withFallbacks(provider, finalPayload);
+}
 
-  const finalRes = await fetch(provider.url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(finalPayload),
+interface StreamTraceContext {
+  principal: string;
+  model: string;
+  provider: "openrouter" | "gemini";
+  toolTraces: ToolCallTrace[];
+  turnStart: number;
+  basePromptTokens: number;
+  baseCompletionTokens: number;
+  /** Direct answer from the tool loop, emitted only if the stream has no content. */
+  fallbackAnswer: string;
+}
+
+/**
+ * Wrap an upstream OpenRouter SSE body so the bytes reach the browser unchanged,
+ * while we (a) sniff the terminal `usage` chunk for token counts, and (b) just
+ * before forwarding `data: [DONE]`, persist the turn's trace and emit one extra
+ * `data: {"aquavoy_trace_id":"<id>"}` line. Line-buffering preserves multibyte
+ * chunk boundaries; the original [DONE] is always forwarded.
+ */
+function wrapStreamWithTrace(
+  body: ReadableStream<Uint8Array>,
+  ctx: StreamTraceContext,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  const encoder = new TextEncoder();
+  // Line buffer used ONLY for sniffing token usage out of the text stream.
+  // Forwarded bytes are never reconstructed from this — raw chunks pass through
+  // untouched so the deltas remain byte-for-byte identical to OpenRouter's.
+  let sniffBuffer = "";
+  let promptTokens = ctx.basePromptTokens;
+  let completionTokens = ctx.baseCompletionTokens;
+  let tracePersisted = false;
+  // Whether the upstream stream carried ANY assistant text. If it stays false,
+  // the model returned an empty completion and we emit ctx.fallbackAnswer so the
+  // user never sees "(no response)".
+  let sawContent = false;
+
+  /** Pull `usage` (and detect content) off a complete SSE data line if present. */
+  const sniffUsage = (line: string): void => {
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith("data:")) return;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") return;
+    try {
+      const obj = JSON.parse(payload) as {
+        usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+        choices?: { delta?: { content?: string | null }; message?: { content?: string | null } }[];
+      };
+      if (obj.usage) {
+        if (typeof obj.usage.prompt_tokens === "number") promptTokens = obj.usage.prompt_tokens;
+        if (typeof obj.usage.completion_tokens === "number")
+          completionTokens = obj.usage.completion_tokens;
+      }
+      const piece = obj.choices?.[0]?.delta?.content ?? obj.choices?.[0]?.message?.content;
+      if (typeof piece === "string" && piece.length > 0) sawContent = true;
+    } catch {
+      // Not JSON (or a partial line not yet complete) — ignore.
+    }
+  };
+
+  /** SSE bytes that inject the fallback answer as one content delta. */
+  const fallbackDeltaBytes = (): Uint8Array =>
+    encoder.encode(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: ctx.fallbackAnswer } }] })}\n\n`,
+    );
+  /** Emit the fallback answer once, if the stream produced no content. */
+  const maybeEmitFallback = (controller: ReadableStreamDefaultController<Uint8Array>): void => {
+    if (!sawContent && ctx.fallbackAnswer) {
+      controller.enqueue(fallbackDeltaBytes());
+      sawContent = true;
+    }
+  };
+
+  /** Decode a chunk into complete lines for sniffing, keeping the partial tail. */
+  const sniffChunk = (chunk: Uint8Array): void => {
+    sniffBuffer += decoder.decode(chunk, { stream: true });
+    const lines = sniffBuffer.split("\n");
+    sniffBuffer = lines.pop() ?? "";
+    for (const line of lines) sniffUsage(line);
+  };
+
+  const persistTrace = async (): Promise<string> => {
+    if (tracePersisted) return "";
+    tracePersisted = true;
+    try {
+      return await insertTrace({
+        principal: ctx.principal,
+        model: ctx.model,
+        provider: ctx.provider,
+        toolCalls: ctx.toolTraces,
+        latencyMs: Date.now() - ctx.turnStart,
+        promptTokens,
+        completionTokens,
+        error: null,
+      });
+    } catch {
+      // Persistence failure must not break the stream the user is reading.
+      return "";
+    }
+  };
+
+  // Marker bytes for the terminal SSE event. OpenRouter emits `data: [DONE]`.
+  const DONE_MARKER = encoder.encode("data: [DONE]");
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        // Stream ended without us having seen an explicit [DONE] chunk — if the
+        // model produced no content, inject the fallback answer first, then emit
+        // the trace-id line (still before close) so it is never omitted.
+        maybeEmitFallback(controller);
+        const id = await persistTrace();
+        if (id) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ aquavoy_trace_id: id })}\n\n`),
+          );
+        }
+        controller.close();
+        return;
+      }
+
+      // Sniff token usage from this chunk's complete lines.
+      sniffChunk(value);
+
+      // Locate `data: [DONE]` at an SSE line boundary inside the raw bytes. If
+      // present, split the chunk so the trace-id line lands BEFORE the terminal
+      // marker, byte-for-byte. A match mid-line (e.g. the literal `data: [DONE]`
+      // appearing inside a JSON string value) is ignored.
+      const idx = indexOfBytes(value, DONE_MARKER);
+      if (idx < 0) {
+        controller.enqueue(value);
+        return;
+      }
+
+      // Forward everything up to (not including) the [DONE] marker untouched.
+      if (idx > 0) controller.enqueue(value.subarray(0, idx));
+
+      // If the model streamed no content, inject the fallback answer before the
+      // terminal marker so the user never sees an empty reply.
+      maybeEmitFallback(controller);
+
+      // Persist + announce the trace before the [DONE] bytes.
+      const id = await persistTrace();
+      if (id) {
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ aquavoy_trace_id: id })}\n\n`),
+        );
+      }
+
+      // Forward the [DONE] marker and any trailing bytes untouched.
+      controller.enqueue(value.subarray(idx));
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
   });
+}
 
-  if (!finalRes.ok || !finalRes.body) {
-    const detail = await finalRes.text().catch(() => finalRes.statusText);
-    throw new Error(`OpenRouter error ${finalRes.status}: ${detail.slice(0, 300)}`);
+/**
+ * Index of the first occurrence of `needle` in `haystack` that begins at an SSE
+ * line boundary, or -1. A line boundary is byte offset 0 of the haystack, or any
+ * offset immediately following a `\n` (0x0A) byte. SSE markers are only valid at
+ * the start of a line, so a needle appearing mid-line (e.g. the literal
+ * `data: [DONE]` inside a JSON string value) is skipped, not matched.
+ */
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  if (needle.length === 0 || haystack.length < needle.length) return -1;
+  const last = haystack.length - needle.length;
+  outer: for (let i = 0; i <= last; i++) {
+    for (let j = 0; j < needle.length; j++) {
+      if (haystack[i + j] !== needle[j]) continue outer;
+    }
+    // Full-needle match at offset i — accept only at a true line boundary.
+    if (i === 0 || haystack[i - 1] === 0x0A) return i;
   }
-  return finalRes;
+  return -1;
 }

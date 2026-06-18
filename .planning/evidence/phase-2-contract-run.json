@@ -1,14 +1,14 @@
 {
   "ok": true,
   "phase": 2,
-  "goal": "No plaintext secrets in Postgres — mailbox passwords and OAuth access/refresh tokens stored encrypted, decrypted only server-side at point of use.",
-  "checked": 11,
+  "goal": "Production deployment is verified and documented: Vercel cron config correct, all 12 Supabase migrations applied, RLS on every table, no secret reachable client-side, monitoring approach recorded with a stable health target.",
+  "checked": 10,
   "failed": 0,
-  "generated_at": "2026-06-15T15:47:38.395Z",
+  "generated_at": "2026-06-17T13:02:27.125Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "task_title": "Add /api/health route + document the monitoring approach",
       "index": 0,
       "type": "file-exists",
       "ok": true,
@@ -16,7 +16,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "task_title": "Add /api/health route + document the monitoring approach",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,7 +24,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "task_title": "Add /api/health route + document the monitoring approach",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -32,23 +32,34 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Server-only AES-256-GCM secret crypto util + env key",
+      "task_title": "Add /api/health route + document the monitoring approach",
       "index": 3,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
+      "task_id": "T1",
+      "task_title": "Add /api/health route + document the monitoring approach",
+      "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 3630,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
       "task_id": "T2",
-      "task_title": "Encrypt mailbox passwords at rest in mail/accounts.ts",
+      "task_title": "Deployment hardening audit document",
       "index": 0,
-      "type": "grep-match",
+      "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Encrypt mailbox passwords at rest in mail/accounts.ts",
+      "task_title": "Deployment hardening audit document",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -56,40 +67,24 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Encrypt mailbox passwords at rest in mail/accounts.ts",
+      "task_title": "Deployment hardening audit document",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
-      "index": 0,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Encrypt OAuth access/refresh tokens at rest in microsoft/connections.ts",
+      "task_id": "T2",
+      "task_title": "Deployment hardening audit document",
       "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Deployment hardening audit document",
+      "index": 4,
       "type": "grep-match",
       "ok": true,
       "detail": ""

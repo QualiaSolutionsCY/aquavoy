@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "phase": 3,
+  "type": "gap-closure",
+  "goal": "Inline sm buttons (action + Retry) render in document flow; the genuine card-corner ✕ stays pinned — no buttons float to the viewport top-right corner at any width.",
+  "why": "GAP 1 (HIGH): globals.css:324-325 makes .btn.sm position:absolute (authored only for the prep ✕ inside .crew-item{position:relative}). Phase 3 reused btn sm on 10 inline buttons whose containers are not positioned, so they float to the viewport top-right and overlap content. SC2 failed on Wiring=1 because the Retry button is visually unreachable.",
+  "generated_at": "2026-06-17T12:23:32Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:8e912f1a3609d7253522d5c38cb336eb9a8911cbfa1691d6b27c72f448fae8a6",
+  "success_criteria": [
+    ".btn.sm is a static size modifier in globals.css — no position:absolute, no top/right; keeps min-height:44px.",
+    ".btn.close exists in globals.css with the absolute corner-pin behavior + min-height:44px.",
+    "The prep ✕ remove button uses btn danger close and stays corner-pinned inside .crew-item.",
+    "All 10 inline sm buttons render in document flow — none escape to the viewport top-right.",
+    "npm run typecheck exits 0."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Split .btn.close (absolute corner) out of .btn.sm (static size modifier)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "frontend",
+      "files_modify": ["src/app/globals.css"],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        ".btn.sm has position:static and no top/right — size-only modifier keeping min-height:44px and small radius.",
+        "A new .btn.close rule exists with position:absolute; top:var(--sp-2); right:var(--sp-2); min-height:44px.",
+        "No min-height:28px reintroduced anywhere."
+      ],
+      "action": "Edit .btn.sm at globals.css:324-332: remove position:absolute/top/right, add position:static, keep padding/font-size/min-height:44px/border-radius. Add a new .btn.close rule immediately after reproducing the OLD .btn.sm corner-pin behavior verbatim (position:absolute, top/right var(--sp-2), min-height:44px). Do not touch .crew-item.",
+      "context_files": ["src/app/globals.css", ".planning/DESIGN.md"],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/app/globals.css",
+          "pattern": "\\.btn\\.close",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "bash",
+          "args": ["-c", "test \"$(awk '/^\\.btn\\.sm \\{/{f=1} f{print} f&&/\\}/{exit}' src/app/globals.css | grep -c 'position: absolute')\" = 0"],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "bash",
+          "args": ["-c", "test \"$(grep -A8 '^\\.btn\\.close {' src/app/globals.css | grep -c 'position: absolute')\" = 1"],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "bash",
+          "args": ["-c", "test \"$(grep -c 'min-height: 28px' src/app/globals.css)\" = 0"],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "npm",
+          "args": ["run", "typecheck"],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Migrate the genuine card-corner button (prep ✕) to .btn.close",
+      "wave": 2,
+      "depends_on": ["T1"],
+      "persona": "frontend",
+      "files_modify": ["src/app/prep/page.tsx"],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "The prep ✕ remove button uses className=\"btn danger close\" and stays corner-pinned in its crew-item card.",
+        "No other sm button in prep/emails/files is changed — the 10 inline buttons keep btn sm and now render in flow via T1.",
+        "The scheduled-Cancel button (emails/page.tsx:600) stays btn danger sm (inline .item grid cell, not a corner pin)."
+      ],
+      "action": "In src/app/prep/page.tsx, at the button opened on line 248 (child glyph ✕ on line 255, aria-label Remove ${r.name}), change className=\"btn danger sm\" to className=\"btn danger close\". Single targeted edit. Do not touch the Retry at line 207 or any button in emails/files.",
+      "context_files": ["src/app/prep/page.tsx", "src/app/globals.css"],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/app/prep/page.tsx",
+          "pattern": "btn danger close",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "bash",
+          "args": ["-c", "test \"$(grep -c 'btn danger close' src/app/prep/page.tsx)\" = 1"],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "bash",
+          "args": ["-c", "test \"$(grep -c 'btn ghost sm' src/app/prep/page.tsx)\" = 1"],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "bash",
+          "args": ["-c", "test \"$(grep -c 'btn danger close' src/app/emails/page.tsx)\" = 0 && test \"$(grep -c 'btn danger close' src/app/files/page.tsx)\" = 0"],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "npm",
+          "args": ["run", "typecheck"],
+          "expected_exit": 0
+        }
+      ]
+    }
+  ]
+}

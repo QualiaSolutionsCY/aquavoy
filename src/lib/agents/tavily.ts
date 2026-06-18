@@ -25,16 +25,32 @@ export interface TavilySearchResponse {
  */
 export async function tavilySearch(query: string): Promise<TavilySearchResponse> {
   const env = getTavilyEnv();
-  const res = await fetch(TAVILY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_key: env.TAVILY_API_KEY,
-      query,
-      max_results: 5,
-      include_answer: true,
-    }),
-  });
+  // 30s timeout: a hung Tavily upstream must not pin the serverless function.
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(TAVILY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: env.TAVILY_API_KEY,
+        query,
+        max_results: 5,
+        include_answer: true,
+      }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    const reason = err instanceof Error && err.name === "AbortError"
+      ? "timed out after 30s"
+      : err instanceof Error
+        ? err.message
+        : "network error";
+    return { answer: `Web search failed (${reason}).`, results: [] };
+  } finally {
+    clearTimeout(t);
+  }
 
   if (!res.ok) {
     const detail = await res.text().catch(() => res.statusText);

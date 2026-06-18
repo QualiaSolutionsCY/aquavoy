@@ -3,16 +3,14 @@ import {
   search,
   downloadContent,
   createFolder as createFolderOnDrive,
-  updateItem,
-  deleteItem as deleteItemOnDrive,
 } from "@/lib/microsoft/onedrive";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import type { DriveItem } from "@/lib/microsoft/types";
 import { tavilySearch } from "@/lib/agents/tavily";
 import { recallMemory } from "@/lib/agents/memoryTools";
+import { stagePendingAction } from "@/lib/agents/pendingActions";
 import { loadAccountWithSecretByEmail, listAccounts } from "@/lib/mail/accounts";
-import { sendMail } from "@/lib/mail/smtp";
-import { scheduleEmail, listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
+import { listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
 import { listFolders, listEmails, readEmail, searchEmails } from "@/lib/mail/imap";
 
 /**
@@ -228,7 +226,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "recall_memory",
       description:
-        "Search through past conversation history to recall what was discussed before. Use this when the user references previous conversations or asks what was talked about earlier.",
+        "Search through past conversation history to recall what was discussed before. Use this when the user references previous conversations or asks what was talked about earlier. Memory is automatically scoped to the current operator — you do not specify whose history to search.",
       parameters: {
         type: "object",
         properties: {
@@ -236,12 +234,8 @@ export const TOOL_DEFINITIONS = [
             type: "string",
             description: "Search term to find in past messages.",
           },
-          principal: {
-            type: "string",
-            description: "The name of the person whose history to search (Wency or Jeanette).",
-          },
         },
-        required: ["query", "principal"],
+        required: ["query"],
         additionalProperties: false,
       },
     },
@@ -562,6 +556,38 @@ const ONEDRIVE_TOOLS = new Set([
   "delete_item",
 ]);
 
+// ── Destructive tools (staged, never executed in the model loop) ─
+// Per ADR-003: these NEVER perform their side-effect inside executeTool. They
+// stage a pending_actions row; the real effect runs only via the confirm
+// endpoint → executeConfirmedAction. create_folder is additive/low-risk and is
+// intentionally NOT in this set.
+const DESTRUCTIVE = new Set([
+  "send_email",
+  "schedule_email",
+  "delete_item",
+  "move_item",
+  "rename_item",
+]);
+
+/** Human-readable one-liner describing what a destructive action will do. */
+function summarizeAction(name: string, args: Record<string, unknown>): string {
+  const s = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : "");
+  switch (name) {
+    case "send_email":
+      return `Send email from ${s("from")} to ${s("to")} — "${s("subject")}"`;
+    case "schedule_email":
+      return `Schedule email from ${s("from")} to ${s("to")} — "${s("subject")}" at ${s("sendAt")}`;
+    case "delete_item":
+      return `Delete OneDrive item ${s("itemId")} (moves to recycle bin)`;
+    case "move_item":
+      return `Move OneDrive item ${s("itemId")} into folder ${s("newParentId")}`;
+    case "rename_item":
+      return `Rename OneDrive item ${s("itemId")} to "${s("newName")}"`;
+    default:
+      return `Run ${name}`;
+  }
+}
+
 // ── Tool executor ────────────────────────────────────────────
 
 /**
@@ -572,8 +598,31 @@ export async function executeTool(
   name: string,
   args: Record<string, unknown>,
   connectionId?: string | null,
+  sessionPrincipal?: string | null,
 ): Promise<string> {
   try {
+    // Destructive actions are STAGED, never executed here (ADR-003). The model
+    // has no code path to the side-effect — this gate is the enforcement, not
+    // the system prompt. Fail closed without a verified session principal: the
+    // staged row must be owned by the HMAC-verified identity, never a value the
+    // model supplied (ADR-001 / REQ-3).
+    if (DESTRUCTIVE.has(name)) {
+      if (!sessionPrincipal)
+        return JSON.stringify({ error: "no verified principal in session" });
+      const summary = summarizeAction(name, args);
+      const row = await stagePendingAction({
+        principal: sessionPrincipal,
+        tool: name,
+        args,
+        summary,
+      });
+      return JSON.stringify({
+        status: "confirmation_required",
+        action_id: row.id,
+        summary,
+      });
+    }
+
     // OneDrive tools need a connection; others don't.
     let connId: string | null = null;
     if (ONEDRIVE_TOOLS.has(name)) {
@@ -629,31 +678,6 @@ export async function executeTool(
         return JSON.stringify(slimItem(folder));
       }
 
-      case "move_item": {
-        const itemId = typeof args.itemId === "string" ? args.itemId : "";
-        const newParentId = typeof args.newParentId === "string" ? args.newParentId : "";
-        if (!itemId || !newParentId)
-          return JSON.stringify({ error: "itemId and newParentId are required" });
-        const moved = await updateItem(connId!, itemId, { newParentId });
-        return JSON.stringify(slimItem(moved));
-      }
-
-      case "rename_item": {
-        const itemId = typeof args.itemId === "string" ? args.itemId : "";
-        const newName = typeof args.newName === "string" ? args.newName : "";
-        if (!itemId || !newName)
-          return JSON.stringify({ error: "itemId and newName are required" });
-        const renamed = await updateItem(connId!, itemId, { newName });
-        return JSON.stringify(slimItem(renamed));
-      }
-
-      case "delete_item": {
-        const itemId = typeof args.itemId === "string" ? args.itemId : "";
-        if (!itemId) return JSON.stringify({ error: "itemId is required" });
-        await deleteItemOnDrive(connId!, itemId);
-        return JSON.stringify({ deleted: true, itemId });
-      }
-
       // ── Web research (Tavily) ──
       case "web_search": {
         const query = typeof args.query === "string" ? args.query : "";
@@ -665,72 +689,21 @@ export async function executeTool(
       // ── Memory recall ──
       case "recall_memory": {
         const query = typeof args.query === "string" ? args.query : "";
-        const principal = typeof args.principal === "string" ? args.principal : "";
-        if (!query || !principal)
-          return JSON.stringify({ error: "query and principal are required" });
-        return await recallMemory(query, principal);
-      }
-
-      // ── Send email ──
-      case "send_email": {
-        const from = typeof args.from === "string" ? args.from : "";
-        const to = typeof args.to === "string" ? args.to : "";
-        const subject = typeof args.subject === "string" ? args.subject : "";
-        const body = typeof args.body === "string" ? args.body : "";
-        if (!from || !to || !subject || !body)
-          return JSON.stringify({ error: "from, to, subject, and body are all required" });
-
-        const account = await loadAccountWithSecretByEmail(from);
-        if (!account) {
-          const accounts = await listAccounts();
-          const connected = accounts.map((a) => a.email);
-          return JSON.stringify({
-            error: `No connected mail account for "${from}".`,
-            connected_addresses: connected,
-            hint: "Tell the user which addresses are available and ask them to pick one.",
-          });
-        }
-
-        await sendMail({ account, to, subject, body });
-        return JSON.stringify({ sent: true, from: account.email, to, subject });
-      }
-
-      // ── Schedule email ──
-      case "schedule_email": {
-        const from = typeof args.from === "string" ? args.from : "";
-        const to = typeof args.to === "string" ? args.to : "";
-        const subject = typeof args.subject === "string" ? args.subject : "";
-        const body = typeof args.body === "string" ? args.body : "";
-        const sendAt = typeof args.sendAt === "string" ? args.sendAt : "";
-        if (!from || !to || !subject || !body || !sendAt)
-          return JSON.stringify({ error: "from, to, subject, body, and sendAt are all required" });
-
-        const sendDate = new Date(sendAt);
-        if (isNaN(sendDate.getTime()))
-          return JSON.stringify({ error: "sendAt must be a valid ISO-8601 datetime" });
-        if (sendDate.getTime() <= Date.now())
-          return JSON.stringify({ error: "sendAt must be in the future" });
-
-        const row = await scheduleEmail({
-          fromEmail: from,
-          toEmail: to,
-          subject,
-          body,
-          scheduledAt: sendAt,
-          createdBy: "agent",
-        });
-        return JSON.stringify({
-          scheduled: true,
-          id: row.id,
-          from: row.fromEmail,
-          to: row.toEmail,
-          subject: row.subject,
-          scheduledAt: row.scheduledAt,
-        });
+        // Principal is pinned to the HMAC-verified session identity passed in by
+        // the caller — NEVER args.principal. The model cannot read another
+        // operator's memory by naming them in the tool call (REQ-3 / ADR-001).
+        // Fail closed if there is no verified session principal.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
+        if (!query) return JSON.stringify({ error: "query is required" });
+        return await recallMemory(query, sessionPrincipal);
       }
 
       case "list_scheduled_emails": {
-        const emails = await listScheduled();
+        // Principal isolation (REQ-3): only the session principal's own queue.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
+        const emails = await listScheduled(sessionPrincipal);
         const summary = emails.map((e) => ({
           id: e.id,
           from: e.fromEmail,
@@ -745,9 +718,12 @@ export async function executeTool(
       }
 
       case "cancel_scheduled_email": {
+        // Principal isolation (REQ-3): an operator can only cancel their own.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
         const id = typeof args.id === "string" ? args.id : "";
         if (!id) return JSON.stringify({ error: "id is required" });
-        const row = await cancelScheduled(id);
+        const row = await cancelScheduled(id, sessionPrincipal);
         return JSON.stringify({ cancelled: true, id: row.id, status: row.status });
       }
 

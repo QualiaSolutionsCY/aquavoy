@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import {
+  Folder, FileText, FileSpreadsheet, Image as ImageIcon, Presentation,
+  FileArchive, Music, Video, File as FileGeneric, FolderOpen, ExternalLink,
+  type LucideIcon,
+} from "lucide-react";
 import type { DriveItem } from "@/lib/microsoft/types";
 
 interface Connection {
@@ -33,6 +38,26 @@ function fmtSize(n: number): string {
     i++;
   }
   return `${v.toFixed(i ? 1 : 0)} ${u[i]}`;
+}
+
+/* Map a drive item to a lucide file-type icon — one consistent line-icon family
+   gives the drive console real iconography (graphics.md) instead of OS-variable
+   emoji or one generic page icon for every file. */
+function fileIconFor(item: DriveItem): LucideIcon {
+  if (item.isFolder) return Folder;
+  // Neither folder nor file (OneNote notebook / Personal Vault / shortcut) —
+  // opens in OneDrive, not a download.
+  if (!item.isFile) return ExternalLink;
+  const ext = item.name.split(".").pop()?.toLowerCase() ?? "";
+  const mime = item.mimeType ?? "";
+  if (mime.startsWith("image/")) return ImageIcon;
+  if (mime.startsWith("video/")) return Video;
+  if (mime.startsWith("audio/")) return Music;
+  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return FileSpreadsheet;
+  if (["doc", "docx", "odt", "rtf", "pdf", "txt", "md"].includes(ext)) return FileText;
+  if (["ppt", "pptx", "key"].includes(ext)) return Presentation;
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return FileArchive;
+  return FileGeneric;
 }
 
 export default function Home() {
@@ -76,19 +101,24 @@ export default function Home() {
 
   // Surface connect/error feedback from the OAuth redirect, then load state.
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const err = url.searchParams.get("error");
-    const connected = url.searchParams.get("connected");
-    if (err) setError(err);
-    if (connected) setNotice("OneDrive connected.");
-    if (err || connected) window.history.replaceState({}, "", url.pathname);
-    loadConnections()
-      .then((list) => {
+    async function init() {
+      const url = new URL(window.location.href);
+      const err = url.searchParams.get("error");
+      const connected = url.searchParams.get("connected");
+      if (err) setError(err);
+      if (connected) setNotice("OneDrive connected.");
+      if (err || connected) window.history.replaceState({}, "", url.pathname);
+      try {
+        const list = await loadConnections();
         const conn = connected || list[0]?.id;
         if (conn) loadFolder(conn);
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setInitializing(false));
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setInitializing(false);
+      }
+    }
+    init();
   }, [loadConnections, loadFolder]);
 
   const openFolder = (item: DriveItem) => {
@@ -185,7 +215,7 @@ export default function Home() {
           <div className="tag">Microsoft Graph file console</div>
         </div>
         <div className="row">
-          <a className="btn" href="/api/onedrive/connect">
+          <a className={connected ? "btn ghost" : "btn"} href="/api/onedrive/connect">
             {connected ? "+ Connect account" : "Connect OneDrive"}
           </a>
         </div>
@@ -193,7 +223,25 @@ export default function Home() {
 
       {error && (
         <div className="notice err" role="alert">
-          {error}
+          Couldn’t reach the drive — the request was refused.{" "}
+          <button
+            className="btn ghost sm"
+            onClick={() => {
+              setError(null);
+              if (activeConn) {
+                loadFolder(activeConn, currentFolderId);
+              } else {
+                loadConnections()
+                  .then((list) => {
+                    const first = list[0]?.id;
+                    if (first) loadFolder(first);
+                  })
+                  .catch((e) => setError((e as Error).message));
+              }
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
       {notice && (
@@ -286,13 +334,18 @@ export default function Home() {
                 </div>
               ))
             ) : items.length === 0 ? (
-              <div className="empty">
-                This folder is empty. Upload a file or create a folder to get started.
-              </div>
+              error ? null : (
+                <div className="empty">
+                  <FolderOpen className="empty-icon" size={30} strokeWidth={1.5} aria-hidden="true" />
+                  This folder is empty.
+                  <span className="empty-hint">Ask the agent to find a file, or upload one.</span>
+                </div>
+              )
             ) : (
               items.map((item) => {
                 const isImage = !item.isFolder && item.mimeType?.startsWith("image/");
                 const showThumb = isImage && !!item.thumbnailUrl;
+                const Icon = fileIconFor(item);
                 return (
                 <div className="item" key={item.id} role="listitem">
                   {showThumb ? (
@@ -314,8 +367,8 @@ export default function Home() {
                       }}
                     />
                   ) : (
-                    <span aria-hidden="true" style={{ opacity: 0.5, fontSize: "1.25rem", display: "grid", placeItems: "center", width: 40, height: 40 }}>
-                      {item.isFolder ? "\u{1F4C1}" : "\u{1F4C4}"}
+                    <span className={`file-icon${item.isFolder ? " folder" : ""}`} aria-hidden="true">
+                      <Icon size={20} strokeWidth={2} />
                     </span>
                   )}
                   {item.isFolder ? (
@@ -328,12 +381,25 @@ export default function Home() {
                     >
                       {item.name}
                     </span>
-                  ) : (
+                  ) : item.isFile ? (
                     <a
                       className="name"
                       href={`/api/onedrive/download?connectionId=${activeConn}&itemId=${item.id}`}
                     >
                       {item.name}
+                    </a>
+                  ) : (
+                    // Special item (OneNote notebook, Personal Vault, shortcut) —
+                    // not directly downloadable. Open it in OneDrive's own UI in a
+                    // new tab instead of hitting a download that has no URL.
+                    <a
+                      className="name"
+                      href={item.webUrl ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Opens in OneDrive — this item isn’t directly downloadable"
+                    >
+                      {item.name} ↗
                     </a>
                   )}
                   <span className="meta">

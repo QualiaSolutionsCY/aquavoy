@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "phase": 1,
+  "type": "gap-closure",
+  "goal": "Close the 2 adversarial findings from Phase 1 verification: principal-scope the trace read path (IDOR) and harden the SSE [DONE] splitter against in-content false positives. All 4 success criteria and the 16/16 machine contract already PASS — this is surgical remediation only.",
+  "why": "Phase 1 FAILED verification on 2 adversarial findings only (HIGH IDOR on getTrace, MEDIUM SSE-splitter false-positive). Both have an in-repo precedent or a precise local fix. Closing them unblocks Phase 2.",
+  "generated_at": "2026-06-17T11:30:47.000Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:f2fa0ba98cbc633bb2a0025d86b1909f410f3fa19963a9552358dabf9c1de92a",
+  "success_criteria": [
+    "getTrace requires and applies a principal predicate; cross-principal trace reads return 404 (HIGH IDOR closed).",
+    "The [DONE] splitter only fires at a true SSE line boundary; in-content data: [DONE] no longer truncates the stream (MEDIUM false-positive closed).",
+    "npx tsc --noEmit exits with 0 errors.",
+    "No file outside the 3 named is modified (no re-planning of passing work)."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Principal-scope getTrace (close HIGH IDOR)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "security",
+      "files_modify": [
+        "src/lib/agents/traces.ts",
+        "src/app/api/traces/[id]/route.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "A principal requesting a trace UUID owned by the other principal receives 404, indistinguishable from a nonexistent id (matches getPendingAction contract).",
+        "A principal requesting their own trace UUID still receives { ok: true, data: AgentTrace }.",
+        "getTrace no longer compiles when called with a single argument; every call site must supply principal."
+      ],
+      "action": "In src/lib/agents/traces.ts change getTrace to (id: string, principal: string) and add .eq(\"principal\", principal) immediately after .eq(\"id\", id) before .maybeSingle(), mirroring src/lib/agents/pendingActions.ts:131-133. Update the docblock to state the scoping. In src/app/api/traces/[id]/route.ts change getTrace(id) at line 25 to getTrace(id, principal); principal already exists and is non-null past the 401 guard at lines 20-22.",
+      "context_files": [
+        "src/lib/agents/traces.ts",
+        "src/app/api/traces/[id]/route.ts",
+        "src/lib/agents/pendingActions.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/traces.ts",
+          "pattern": "eq\\(\"principal\", principal\\)",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/traces/[id]/route.ts",
+          "pattern": "getTrace\\(id, principal\\)",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/traces.ts",
+          "pattern": "principal: string",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0,
+          "timeout_ms": 120000
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Constrain the SSE [DONE] splitter to line boundaries (close MEDIUM false-positive)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/openrouter/client.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "A chunk whose bytes contain data: [DONE] inside a JSON string value (not at a line start) is forwarded untouched; the delta is preserved.",
+        "A real terminal marker at chunk offset 0, or preceded by a \\n byte, is still detected so the trace-id line is emitted before the marker (happy path unchanged).",
+        "Single-chunk and cross-chunk split cases still terminate via the if (done) guard at lines 569-579."
+      ],
+      "action": "Read indexOfBytes (lines 613-624) and the splitter block (lines 585-605) first. After a full-needle match at index i in the outer loop of indexOfBytes, return i only when i === 0 || haystack[i - 1] === 0x0A; otherwise continue scanning. Update the JSDoc / line-587 comment to state the line-boundary constraint. indexOfBytes has exactly one caller (line 587), so the in-loop guard is the lowest-surface change.",
+      "context_files": [
+        "src/lib/openrouter/client.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "haystack\\[i - 1\\] === 0x0A",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "i === 0",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0,
+          "timeout_ms": 120000
+        }
+      ]
+    }
+  ]
+}

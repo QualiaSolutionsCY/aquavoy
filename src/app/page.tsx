@@ -2,12 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import type { PendingAction } from "@/lib/agents/pendingActions";
+import type { AgentTrace, Provider } from "@/lib/agents/traces";
+
 type Principal = "Wency" | "Jeanette";
+
+/* Tools whose confirmed effect can be reversed (ADR-003 §5). `send_email`
+   is excluded — a sent message cannot be recalled. */
+const REVERSIBLE_TOOLS = new Set([
+  "move_item",
+  "rename_item",
+  "delete_item",
+  "schedule_email",
+]);
 const PRINCIPALS: Principal[] = ["Wency", "Jeanette"];
 
 interface Msg {
   role: "user" | "assistant";
   content: string;
+  /* Per-turn observability (REQ-12/13). Populated after the stream completes
+     when the SSE delivered a trailing `aquavoy_trace_id`. Absent on failure —
+     the bubble renders exactly as before. */
+  trace?: AgentTrace;
 }
 
 interface SessionSummary {
@@ -45,8 +61,29 @@ function renderInline(text: string): React.ReactNode[] {
   });
 }
 
+/* Defence against the model occasionally emitting raw HTML (e.g. a <table>
+   describing a staged action) or a stray leading token. We never render HTML;
+   this strips RECOGNISED HTML element tags down to readable text so the chat
+   never shows raw <table> markup. Only known tags match, so prose like
+   "x < 5 and y > 3" is left intact. */
+const HTML_TAGS =
+  /<\/?(?:table|thead|tbody|tfoot|tr|td|th|div|span|p|ul|ol|li|h[1-6]|a|img|pre|blockquote|b|i|u|strong|em)\b[^>]*>/gi;
+
+function sanitizeModelText(text: string): string {
+  if (!text.includes("<")) return text; // fast path — the common case
+  return text
+    .replace(/^[　-鿿]+(?=\s*<)/, "") // stray leading CJK artifact before a tag
+    .replace(/<\/(?:tr|p|div|li|h[1-6]|ul|ol|blockquote)\s*>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:td|th)\s*>/gi, " — ")
+    .replace(HTML_TAGS, "")
+    .replace(/ — *(\n|$)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function renderMarkdown(text: string): React.ReactNode {
-  return text.split("\n").map((line, i) => {
+  return sanitizeModelText(text).split("\n").map((line, i) => {
     const bullet = line.match(/^(\s*)[*-]\s+(.*)$/);
     return (
       <span key={i}>
@@ -61,6 +98,23 @@ function renderMarkdown(text: string): React.ReactNode {
       </span>
     );
   });
+}
+
+/* Human-readable model label for the trace disclosure row (REQ-13).
+   Gemini Flash collapses the long slug; OpenRouter shows the model's last
+   path segment (e.g. "anthropic/claude-3.5" → "claude-3.5"). */
+function friendlyModel(provider: Provider, model: string): string {
+  if (provider === "gemini") {
+    return model.toLowerCase().includes("flash") ? "Gemini Flash" : "Gemini";
+  }
+  const slug = model.split("/").pop() ?? model;
+  return slug || "OpenRouter";
+}
+
+/** Soft-fail log for fire-and-forget enhancement paths — dev console only, never
+ *  surfaced in the production browser console (LOW-1). */
+function devWarn(message: string, err: unknown): void {
+  if (process.env.NODE_ENV !== "production") console.warn(message, err);
 }
 
 export default function Chat() {
@@ -80,6 +134,26 @@ export default function Chat() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const historyPanelRef = useRef<HTMLDivElement>(null);
+
+  // ── Trace disclosure state ──
+  // Which assistant bubbles have their per-tool trace panel expanded,
+  // tracked by message index (mirrors the historyOpen disclosure pattern).
+  const [traceOpen, setTraceOpen] = useState<Set<number>>(new Set());
+
+  function toggleTrace(i: number) {
+    setTraceOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
+  // ── Pending destructive actions (ADR-003) ──
+  // Staged confirm/cancel/undo cards rendered above the composer.
+  const [pending, setPending] = useState<PendingAction[]>([]);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -194,19 +268,90 @@ export default function Chat() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ principal, role, content, sessionId: sessionRef.current }),
-    }).catch((e) => console.warn("chat-history persist failed", e));
+    }).catch((e) => devWarn("chat-history persist failed", e));
   }
 
   /** Clear all stored messages for the current principal. */
   async function clearMemory() {
     if (!identity) return;
-    if (!confirm(`Clear all saved messages for ${identity}?`)) return;
+    if (!window.confirm(`Clear all saved messages for ${identity}?`)) return;
     try {
       await fetch(`/api/chat/history`, { method: "DELETE" });
     } catch (e) {
-      console.warn("chat-history clear failed", e);
+      devWarn("chat-history clear failed", e);
     }
     setMessages([greeting(identity)]);
+  }
+
+  /** Refresh the list of staged destructive actions for this principal. */
+  async function loadPending() {
+    try {
+      const res = await fetch("/api/actions");
+      const json = await res.json();
+      setPending(json.data?.actions ?? []);
+    } catch (e) {
+      devWarn("pending-actions load failed", e);
+    }
+  }
+
+  /**
+   * POST to an action lifecycle route. `confirm` keeps the card visible in its
+   * new (`confirmed`) state so the Undo affordance can render; `cancel` and a
+   * successful `undo` drop the card. The returned action is merged into local
+   * state by id so the transition is immediate, then `loadPending` reconciles.
+   */
+  async function runAction(id: string, route: string, drop: boolean): Promise<boolean> {
+    setActionError(null);
+    setActionBusy(id);
+    try {
+      const res = await fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error ?? `Action failed (${res.status})`);
+      }
+
+      // Undo can be declined by the server (e.g. already sent) — surface why.
+      const undoDeclined = route.endsWith("/undo") && json.data?.undone === false;
+      if (undoDeclined && json.data?.reason) {
+        setActionError(json.data.reason);
+      }
+
+      const updated = json.data?.action as PendingAction | undefined;
+      setPending((prev) => {
+        if (drop && !undoDeclined) return prev.filter((a) => a.id !== id);
+        if (updated) return prev.map((a) => (a.id === id ? updated : a));
+        return prev;
+      });
+      return !undoDeclined;
+    } catch (e) {
+      setActionError((e as Error).message);
+      return false;
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  function confirm(id: string) {
+    // Show the confirmed/sent state briefly (Undo stays reachable for reversible
+    // actions), then auto-dismiss the card so no green box lingers.
+    runAction(id, "/api/actions/confirm", false).then((ok) => {
+      if (ok) {
+        setTimeout(
+          () => setPending((prev) => prev.filter((a) => a.id !== id)),
+          4500,
+        );
+      }
+    });
+  }
+  function cancelAction(id: string) {
+    return runAction(id, "/api/actions/cancel", true);
+  }
+  function undo(id: string) {
+    return runAction(id, "/api/actions/undo", true);
   }
 
   async function send() {
@@ -242,6 +387,8 @@ export default function Chat() {
       const decoder = new TextDecoder();
       let buffer = "";
       let acc = "";
+      // Trailing trace id from the stream (REQ-12) — fetched after [DONE].
+      let traceId: string | null = null;
 
       // Parse OpenRouter's SSE: lines of `data: {json}` ending with `data: [DONE]`.
       for (;;) {
@@ -256,7 +403,14 @@ export default function Chat() {
           const data = trimmed.slice(5).trim();
           if (data === "[DONE]") continue;
           try {
-            const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+            const parsed = JSON.parse(data);
+            // The agent loop appends one trailing frame carrying the trace id.
+            // It has no `choices[0].delta.content`, so it never reaches `acc`.
+            if (typeof parsed?.aquavoy_trace_id === "string") {
+              traceId = parsed.aquavoy_trace_id;
+              continue;
+            }
+            const delta = parsed?.choices?.[0]?.delta?.content;
             if (typeof delta === "string") {
               acc += delta;
               setMessages((prev) => {
@@ -273,6 +427,26 @@ export default function Chat() {
       if (acc) {
         // Fire-and-forget: persist the assistant reply.
         persist(identity, "assistant", acc);
+        // Observability enhancement: hydrate the trace, never block the reply.
+        if (traceId) {
+          try {
+            const tr = await fetch(`/api/traces/${traceId}`);
+            const tj = await tr.json();
+            if (tj.ok && tj.data) {
+              const trace = tj.data as AgentTrace;
+              setMessages((prev) => {
+                const next = [...prev];
+                const last = next.length - 1;
+                if (next[last]?.role === "assistant") {
+                  next[last] = { ...next[last], trace };
+                }
+                return next;
+              });
+            }
+          } catch {
+            /* observability is an enhancement, not a blocker */
+          }
+        }
       } else {
         setMessages((prev) => {
           const next = [...prev];
@@ -285,12 +459,14 @@ export default function Chat() {
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setBusy(false);
+      // The turn may have staged a destructive action — refresh the cards.
+      loadPending();
     }
   }
 
   // ── Learn our identity from the verified session on mount (ADR-001) ──
   // No more self-electing "Wency": the principal comes from the signed
-  // session cookie via GET /api/auth/me. On 401 we bounce to /login.
+  // session cookie via GET /api/auth/me. On 401 we redirect to /login.
   useEffect(() => {
     if (identity) return;
     (async () => {
@@ -304,6 +480,7 @@ export default function Chat() {
         const principal = json?.data?.principal as Principal | undefined;
         if (json.ok && principal) {
           pick(principal);
+          loadPending();
         } else {
           window.location.href = "/login";
         }
@@ -446,29 +623,167 @@ export default function Chat() {
       )}
 
       <div className="thread" ref={scrollRef} role="log" aria-label="Chat messages">
-        {messages.map((m, i) => (
-          <div key={i} className={`bubble ${m.role}`}>
-            <span className="who">{m.role === "user" ? identity : "Aquavoy"}</span>
-            <div className="text">
-              {m.content ? (
-                m.role === "assistant" ? (
-                  renderMarkdown(m.content)
+        {messages.map((m, i) => {
+          const trace = m.trace;
+          const open = traceOpen.has(i);
+          const panelId = `trace-panel-${i}`;
+          const toolCount = trace?.toolCalls.length ?? 0;
+          return (
+            <div key={i} className={`bubble ${m.role}`}>
+              <span className="who">{m.role === "user" ? identity : "Aquavoy"}</span>
+              <div className="text">
+                {m.content ? (
+                  m.role === "assistant" ? (
+                    renderMarkdown(m.content)
+                  ) : (
+                    m.content
+                  )
+                ) : busy && i === messages.length - 1 ? (
+                  <span className="typing-dots" role="status" aria-label="Aquavoy is thinking">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
                 ) : (
-                  m.content
-                )
-              ) : busy && i === messages.length - 1 ? (
-                <span className="typing-dots" role="status" aria-label="Aquavoy is thinking">
-                  <span />
-                  <span />
-                  <span />
-                </span>
-              ) : (
-                ""
+                  ""
+                )}
+              </div>
+              {trace && (
+                <>
+                  <button
+                    type="button"
+                    className="trace-row"
+                    onClick={() => toggleTrace(i)}
+                    aria-expanded={open}
+                    aria-controls={panelId}
+                    aria-label={`${open ? "Hide" : "Show"} agent trace: ${toolCount} tool${
+                      toolCount !== 1 ? "s" : ""
+                    }, ${friendlyModel(trace.provider, trace.model)}, ${(
+                      trace.latencyMs / 1000
+                    ).toFixed(1)} seconds`}
+                  >
+                    <span className="trace-caret" aria-hidden="true">
+                      {open ? "▾" : "▸"}
+                    </span>
+                    <span className="trace-summary">
+                      {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                      {" · "}
+                      {friendlyModel(trace.provider, trace.model)}
+                      {" · "}
+                      {(trace.latencyMs / 1000).toFixed(1)} s
+                    </span>
+                  </button>
+                  {open && (
+                    <div className="trace-panel" role="region" id={panelId} aria-label="Agent trace detail">
+                      {toolCount === 0 ? (
+                        <p className="trace-empty">No tools were called this turn.</p>
+                      ) : (
+                        <ul className="trace-tools">
+                          {trace.toolCalls.map((tc, ti) => (
+                            <li
+                              key={ti}
+                              className={`trace-tool${tc.error ? " error" : ""}`}
+                            >
+                              <div className="trace-tool-head">
+                                <span className="trace-tool-name">{tc.name}</span>
+                                <span className="trace-tool-latency">
+                                  {(tc.latencyMs / 1000).toFixed(2)} s
+                                </span>
+                              </div>
+                              <div className="trace-tool-args">{tc.argsSummary}</div>
+                              {tc.error ? (
+                                <div className="trace-tool-error" role="alert">
+                                  {tc.error}
+                                </div>
+                              ) : (
+                                <div className="trace-tool-result">{tc.resultSummary}</div>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="trace-tokens">
+                        {trace.promptTokens + trace.completionTokens} tokens
+                        {" · "}
+                        {trace.promptTokens} in / {trace.completionTokens} out
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {pending.length > 0 && (
+        <div className="action-stack" role="region" aria-label="Pending actions">
+          {actionError && (
+            <div className="notice err" role="alert">
+              {actionError}
+            </div>
+          )}
+          {pending.map((a) => {
+            const busy = actionBusy === a.id;
+            const confirmed = a.status === "confirmed";
+            const reversible = REVERSIBLE_TOOLS.has(a.tool);
+            return (
+              <div
+                key={a.id}
+                className={`action-card${confirmed ? " confirmed" : ""}`}
+                role="group"
+                aria-label={`Pending action: ${a.summary}`}
+              >
+                <div className="action-head">
+                  <span className="action-tag">
+                    {confirmed ? "Confirmed" : "Confirm needed"}
+                  </span>
+                  <span className="action-tool">{a.tool}</span>
+                </div>
+                <p className="action-summary">{a.summary}</p>
+                <span className="action-id">id {a.id}</span>
+                <div className="action-actions">
+                  {!confirmed && (
+                    <>
+                      <button
+                        className="btn"
+                        onClick={() => confirm(a.id)}
+                        disabled={busy}
+                        aria-label={`Confirm: ${a.summary}`}
+                      >
+                        {busy ? <span className="spinner" aria-hidden="true" /> : "Confirm"}
+                      </button>
+                      <button
+                        className="btn ghost"
+                        onClick={() => cancelAction(a.id)}
+                        disabled={busy}
+                        aria-label={`Cancel: ${a.summary}`}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                  {confirmed && reversible && (
+                    <button
+                      className="btn danger"
+                      onClick={() => undo(a.id)}
+                      disabled={busy}
+                      aria-label={`Undo: ${a.summary}`}
+                    >
+                      {busy ? <span className="spinner" aria-hidden="true" /> : "Undo"}
+                    </button>
+                  )}
+                  {confirmed && !reversible && (
+                    <span className="action-note" role="status">
+                      sent — cannot undo
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="composer">
         <textarea

@@ -5,6 +5,7 @@ import { graphJson } from "./graph";
  * seam pattern as onedrive.ts — route handlers stay thin around these calls.
  * Covers the 1:1 email-preparation surface: send, save-as-draft, list inbox.
  */
+// ADR-004: authoritative stack — Outlook is user-personal drafting/send only, never company mailboxes
 
 export interface OutgoingEmail {
   to: string;

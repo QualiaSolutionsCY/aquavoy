@@ -5,6 +5,7 @@ import type { MailAccountWithSecret } from "./accounts";
  * Adapter over nodemailer — the ONLY file in the project that imports it.
  * Two public functions: verifySmtp (connection test) and sendMail (send).
  */
+// ADR-004: authoritative stack for this operation — IMAP/SMTP owns company mailboxes
 
 interface SmtpCredentials {
   host: string;

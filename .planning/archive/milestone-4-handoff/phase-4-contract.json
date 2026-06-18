@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "phase": 4,
+  "goal": "Deliver the committed handover artifacts \u2014 operator walkthrough, credential & ownership handover checklist, acceptance sign-off template, and post-handover access-removal checklist \u2014 that make the live human handover ceremony to Wency & Jeanette executable. (REQ-22)",
+  "why": "Final phase. The actual handover is a human/business ceremony an agent cannot perform or attest to; this phase delivers the accurate, committed documents that make the ceremony executable, with all human-action items left as un-checked boxes and blank signature lines.",
+  "generated_at": "2026-06-17T13:13:12Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:8b325f88de9c6748b95ff8eee7d10c0f15d34f09102ef0542dfcf0d13e9ffd8b",
+  "success_criteria": [
+    "docs/handover/operator-walkthrough.md exists: numbered walkthrough covering all REQ-22 topics (login, chat, tool-trace, confirm/undo, Emails, Files, Prep), each linking into docs/operator-runbook.md, with a session-coverage checklist whose boxes are all blank.",
+    "docs/handover/credential-handover.md exists: credential & ownership handover checklist covering every account/key from docs/env-reference.md with a verify step per item, an independent-Vercel-deploy section, an acceptance sign-off tying to M1/M2/M3 exit criteria with a blank signature block, and a post-handover Qualia access-removal checklist.",
+    "No checkbox is pre-checked, no signature/date is fabricated, and no document claims a live human action has been performed.",
+    "No TODO/FIXME/placeholder text in either file."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Operator walkthrough for Wency & Jeanette",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [],
+      "files_create": [
+        "docs/handover/operator-walkthrough.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Intro states it is the prepared walkthrough script and that the live session is delivered to Wency & Jeanette, not recorded here as done.",
+        "Numbered walkthrough covers every REQ-22 topic in order (login /login, chat /, tool-trace row, confirm/undo, /emails, /files, /prep), each linking into the matching section of docs/operator-runbook.md instead of duplicating it.",
+        "A session-coverage checklist table has one un-checked [ ] row per topic with blank Attendee/Date columns.",
+        "No unfilled-marker text (TODO, FIXME, not-implemented) anywhere in the file."
+      ],
+      "action": "Create docs/handover/operator-walkthrough.md with an About-this-document intro (prepared script; live session not pre-filled), a numbered Walkthrough section covering the seven REQ-22 topics in order with each step linking into the matching docs/operator-runbook.md heading anchor (verified against the runbook), and a Session coverage checklist table with one [ ] row per topic and empty Attendee/Date cells. Do not duplicate runbook content.",
+      "context_files": [
+        "docs/operator-runbook.md",
+        ".planning/ROADMAP.md",
+        "README.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "docs/handover/operator-walkthrough.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/handover/operator-walkthrough.md",
+          "pattern": "tool-trace|/login|/emails|/files|/prep|confirm",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/handover/operator-walkthrough.md",
+          "pattern": "operator-runbook.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/handover/operator-walkthrough.md",
+          "pattern": "\\[x\\]",
+          "expect": "absent"
+        },
+        {
+          "type": "command-exit",
+          "command": "grep",
+          "args": [
+            "-Eqi",
+            "TODO|FIXME|placeholder|not implemented",
+            "docs/handover/operator-walkthrough.md"
+          ],
+          "expected_exit": 1
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Credential handover checklist, acceptance sign-off, and Qualia access-removal checklist",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [],
+      "files_create": [
+        "docs/handover/credential-handover.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Intro states it is the prepared handover artifact and that transfers, the Vercel access grant, the signature, and Qualia access removal are performed by humans during/after the ceremony \u2014 none pre-completed.",
+        "A credential & ownership handover checklist table lists every credential/access item from REQ-22 criterion 2 (Supabase URL+service-role key, Vercel access, Microsoft app registration client ID+secret, 12 mailbox IMAP/SMTP creds in mail_accounts, OPENROUTER_API_KEY, GOOGLE_API_KEY, TAVILY_API_KEY, plus SESSION_SECRET/ENCRYPTION_KEY/OPERATOR_CREDENTIALS/CRON_SECRET) each with an un-checked [ ] box and a verify step.",
+        "An Independent Vercel deploy access section gives exact steps for the client to be added as member/owner and run vercel --prod, with an un-checked verification box.",
+        "An Acceptance sign-off section restates M1/M2/M3 exit criteria as un-checked rows and provides a signature block with blank Name/Role/Date/Signature lines.",
+        "A Post-handover remove Qualia access checklist enumerates each access surface to drop/downgrade as un-checked boxes.",
+        "No unfilled-marker text, no pre-checked box, no fabricated signature/date."
+      ],
+      "action": "Create docs/handover/credential-handover.md: (1) About-this-document intro; (2) Credential & ownership checklist table covering every key from docs/env-reference.md, each row with a verify step and [ ] box; (3) Independent Vercel deploy section (add client as owner, vercel --prod, [ ] verify); (4) Acceptance sign-off tying to M1/M2/M3 exit criteria with [ ] rows and a blank Name/Role/Date/Signature block; (5) Post-handover remove-Qualia-access [ ] checklist. All boxes blank.",
+      "context_files": [
+        "docs/env-reference.md",
+        "docs/operator-runbook.md",
+        ".planning/ROADMAP.md",
+        ".planning/JOURNEY.md",
+        ".planning/decisions/ADR-004-mail-stack.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "docs/handover/credential-handover.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/handover/credential-handover.md",
+          "pattern": "SUPABASE_SERVICE_ROLE_KEY|OPENROUTER_API_KEY|GOOGLE_API_KEY|TAVILY_API_KEY|MICROSOFT_CLIENT_ID|ENCRYPTION_KEY|SESSION_SECRET|OPERATOR_CREDENTIALS|CRON_SECRET|mail_accounts",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/handover/credential-handover.md",
+          "pattern": "vercel --prod",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/handover/credential-handover.md",
+          "pattern": "Name: _|Date: _|Signature: _",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/handover/credential-handover.md",
+          "pattern": "\\[x\\]",
+          "expect": "absent"
+        },
+        {
+          "type": "command-exit",
+          "command": "grep",
+          "args": [
+            "-Eqi",
+            "TODO|FIXME|placeholder|not implemented",
+            "docs/handover/credential-handover.md"
+          ],
+          "expected_exit": 1
+        }
+      ]
+    }
+  ]
+}

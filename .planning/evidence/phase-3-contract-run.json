@@ -1,14 +1,14 @@
 {
   "ok": true,
   "phase": 3,
-  "goal": "The repo's migrations match the live DB, and the seams are protected by tests.",
-  "checked": 11,
+  "goal": "A QA checklist is produced and committed covering the headline M1-M3 flows, each row with steps + expected result + a Status/Tester/Date column the operator fills on prod, and a code-evidence column citing the prior verification that already proves the invariant.",
+  "checked": 8,
   "failed": 0,
-  "generated_at": "2026-06-15T15:54:59.804Z",
+  "generated_at": "2026-06-17T13:10:56.388Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Track the scheduled_emails migration to match the live table",
+      "task_title": "Author and commit the headline QA checklist",
       "index": 0,
       "type": "file-exists",
       "ok": true,
@@ -16,7 +16,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Track the scheduled_emails migration to match the live table",
+      "task_title": "Author and commit the headline QA checklist",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,81 +24,57 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Track the scheduled_emails migration to match the live table",
+      "task_title": "Author and commit the headline QA checklist",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T2",
-      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
-      "index": 0,
-      "type": "file-exists",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Reconcile mail_accounts to one authoritative email-uniqueness constraint",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
-      "index": 0,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
-      "index": 2,
-      "type": "file-exists",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
+      "task_id": "T1",
+      "task_title": "Author and commit the headline QA checklist",
       "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
+      "index": 1,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 1228,
-      "stdout": "\n RUN  v4.1.9 /home/qualiasolutions/Projects/aquavoy\n\n\n Test Files  8 passed (8)\n      Tests  30 passed (30)\n   Start at  18:54:57\n   Duration  565ms (transform 555ms, setup 227ms, import 899ms, tests 118ms, environment 1ms)\n\n",
+      "duration_ms": 3304,
+      "stdout": "\n> aquavoy@0.1.0 typecheck\n> tsc --noEmit\n\n",
       "stderr": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Add vitest + seam/route test safety net",
-      "index": 4,
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
+      "index": 2,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 1597,
-      "stdout": "",
+      "duration_ms": 3141,
+      "stdout": "\n> aquavoy@0.1.0 test\n> vitest run\n\n\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  12 passed (12)\n      Tests  59 passed (59)\n   Start at  16:10:54\n   Duration  2.02s (transform 1.36s, setup 342ms, import 2.85s, tests 753ms, environment 6ms)\n\n",
       "stderr": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Record the committed automated QA gate (typecheck + tests)",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
     }
   ]
 }

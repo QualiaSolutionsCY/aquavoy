@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "phase": 1,
+  "goal": "A developer or operator arriving at the repo cold can understand the architecture, operate the agent, and run a local dev environment using only the README, operator runbook, env-var reference, and ADR index \u2014 all accurate to the real code.",
+  "why": "First phase of the Handoff milestone (REQ-19). The current README describes only the OneDrive integration and predates the agent chat, the 4 pages, the mail stack, auth, encryption, and most env vars; there is no docs/ directory and no ADR index. The client cannot own the system until the docs match reality.",
+  "generated_at": "2026-06-17T00:00:00Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:99ffce464fa137713a6675a9723d485092a748b3935e46d370aebfd85f650092",
+  "success_criteria": [
+    "README.md accurately describes Aquavoy as the full agent app (chat + 4 pages), gives a working local-dev path (npm install -> env -> npm run dev), maps the real routes, and links to the runbook, env reference, and ADR index.",
+    "docs/operator-runbook.md lets an operator drive the chat, understand confirm/undo (gated destructive set per ADR-003), manage the 12 named mailboxes (IMAP-authoritative per ADR-004), use the OneDrive OAuth connection, and understand the scheduled-email cron.",
+    "docs/env-reference.md documents every variable the app reads with required/optional + source, notes secrets are server-only, and clarifies mailbox passwords live in Supabase; .env.example is synced to match.",
+    "docs/architecture.md is an ADR index linking ADR-001..004 with one-line summaries and verbatim titles.",
+    "No TODO/FIXME/placeholder text remains in any doc produced this phase."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Rewrite README.md as accurate repo orientation",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [
+        "README.md"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "README describes Aquavoy as an internal AI assistant: a single chat surface plus Emails/Files/Prep pages, reading/organizing OneDrive, reading/sending/scheduling email across 12 mailboxes, recalling conversations, searching the web.",
+        "README has a Local development section: npm install, fill .env.local (pointing to the env-var reference), npm run dev at http://localhost:3000, and names npm run typecheck and npm run test.",
+        "README maps the four real routes: / (Chat), /emails, /files, /prep, plus /login as the auth gate.",
+        "README links docs/operator-runbook.md, docs/env-reference.md, and docs/architecture.md by relative path.",
+        "Every page/route named exists under src/app/; Supabase setup uses npx supabase."
+      ],
+      "action": "Full rewrite of README.md. Keep accurate stack facts and Microsoft app-registration steps; add the agent + 4-page reality. Sections: What Aquavoy is, Stack, Pages (route table from src/app/), Local development (install, env, npx supabase migrations, npm run dev), Operating the app (runbook pointers), Documentation (links to the three docs), footer. Point to docs/env-reference.md, do not inline env vars. Any API table must match real route.ts under src/app/api/.",
+      "context_files": [
+        ".planning/PROJECT.md",
+        "README.md",
+        "package.json",
+        "src/app"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "README.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "README.md",
+          "pattern": "[Cc]hat",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "README.md",
+          "pattern": "docs/operator-runbook\\.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "README.md",
+          "pattern": "npm run dev",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "grep",
+          "args": [
+            "-Eqi",
+            "TODO|FIXME|placeholder|coming soon",
+            "README.md"
+          ],
+          "expected_exit": 1
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Write the operator runbook",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [],
+      "files_create": [
+        "docs/operator-runbook.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Starting and driving the chat section: log in at /login (principals Wency, Jeanette), open chat at /, type a request, agent runs tools and streams a reply.",
+        "Confirm/Undo section: destructive actions (send_email, schedule_email, delete_item, move_item, rename_item) are never auto-executed; agent stages them and shows a confirmation card; Confirm runs it, Cancel drops it, Undo reverses reversible confirmed actions; create_folder and read-only tools are not gated.",
+        "Tool-trace row section explains the per-message disclosure of which tools ran (trace surface at /api/traces/[id]).",
+        "The 12 company mailboxes section lists all 12 addresses by domain group verbatim from src/lib/mailboxes.ts, states IMAP/SMTP is authoritative per ADR-004 with Outlook for personal mail only, and that mailbox credentials are stored encrypted in Supabase (mail_accounts), not env files; managed from /emails.",
+        "OneDrive connection section: delegated OAuth via /api/onedrive/connect and /api/onedrive/callback, tokens auto-refresh, re-connect if a connection stops working.",
+        "Scheduled email & cron section: /api/mail/scheduled/run drains every minute guarded by CRON_SECRET; /api/memory/sweep runs every 5 minutes.",
+        "No TODO/FIXME or unfinished filler text remains."
+      ],
+      "action": "Create docs/operator-runbook.md for a non-developer operator in plain language. Pull every mailbox address verbatim from src/lib/mailboxes.ts:31-47. Pull the confirm/undo and gated-tool list verbatim from ADR-003. Pull the IMAP-authoritative/Outlook-personal split from ADR-004. Pull cron schedules from vercel.json. Describe behavior, not invented UI labels.",
+      "context_files": [
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md",
+        ".planning/decisions/ADR-004-mail-stack.md",
+        "src/lib/mailboxes.ts",
+        "vercel.json",
+        "src/lib/mail/accounts.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "docs/operator-runbook.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/operator-runbook.md",
+          "pattern": "prideoffaial@faialbv\\.com",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/operator-runbook.md",
+          "pattern": "[Cc]onfirm",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/operator-runbook.md",
+          "pattern": "[Uu]ndo",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/operator-runbook.md",
+          "pattern": "ADR-004",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "grep",
+          "args": [
+            "-Eqi",
+            "TODO|FIXME|placeholder|coming soon",
+            "docs/operator-runbook.md"
+          ],
+          "expected_exit": 1
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [
+        ".env.example"
+      ],
+      "files_create": [
+        "docs/env-reference.md",
+        "docs/architecture.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "docs/env-reference.md documents every variable the app reads (the 16 in src/lib/env.ts plus CRON_SECRET, GEMINI_MODEL, OPENROUTER_FALLBACK_MODELS) with name, purpose, source, and required-vs-optional; each secret flagged server-only.",
+        "The reference states mailbox IMAP/SMTP passwords are NOT env vars but stored encrypted in the Supabase mail_accounts table.",
+        ".env.example is updated to include every variable above (adding the 7 missing: CRON_SECRET, GOOGLE_API_KEY, GEMINI_MODEL, OPENROUTER_FALLBACK_MODELS, TAVILY_API_KEY, EMBEDDING_MODEL, EMBEDDING_DIM), matching the existing comment style, no secret values filled.",
+        "docs/architecture.md is an ADR index with one entry per ADR (ADR-001 Access-Control Strategy, ADR-002 Durable Memory Architecture, ADR-003 Enforced Confirm/Undo, ADR-004 Keep Both Mail Stacks One Owner Per Operation), verbatim titles, one-line summaries, relative links.",
+        "No TODO/FIXME or unfinished filler text remains."
+      ],
+      "action": "Create docs/env-reference.md as a table (Variable | Required | Server-only | Source/Default | Purpose). Derive the var set from src/lib/env.ts plus the three direct process.env reads (CRON_SECRET, GEMINI_MODEL, OPENROUTER_FALLBACK_MODELS); ignore the incomplete .env.example. Note mailbox passwords live in Supabase mail_accounts. Update .env.example to add the 7 missing vars in the existing style. Create docs/architecture.md indexing the four ADRs with verbatim titles, summaries, links.",
+      "context_files": [
+        "src/lib/env.ts",
+        ".env.example",
+        "src/lib/mail/accounts.ts",
+        ".planning/decisions/ADR-001-access-control-strategy.md",
+        ".planning/decisions/ADR-002-durable-memory-architecture.md",
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md",
+        ".planning/decisions/ADR-004-mail-stack.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "docs/env-reference.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/env-reference.md",
+          "pattern": "CRON_SECRET",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/env-reference.md",
+          "pattern": "ENCRYPTION_KEY",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/env-reference.md",
+          "pattern": "OPERATOR_CREDENTIALS",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": ".env.example",
+          "pattern": "CRON_SECRET",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": ".env.example",
+          "pattern": "TAVILY_API_KEY",
+          "expect": "present"
+        },
+        {
+          "type": "file-exists",
+          "path": "docs/architecture.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/architecture.md",
+          "pattern": "ADR-004",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "grep",
+          "args": [
+            "-Eqi",
+            "TODO|FIXME|placeholder|coming soon",
+            "docs/env-reference.md",
+            "docs/architecture.md"
+          ],
+          "expected_exit": 1
+        }
+      ]
+    }
+  ]
+}

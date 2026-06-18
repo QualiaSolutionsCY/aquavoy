@@ -1,14 +1,14 @@
 {
   "ok": true,
   "phase": 1,
-  "goal": "No unauthenticated caller can drive the agent or read company data; the principal is verified server-side, not trusted from request input.",
-  "checked": 14,
+  "goal": "A developer or operator arriving at the repo cold can understand the architecture, operate the agent, and run a local dev environment using only the README, operator runbook, env-var reference, and ADR index — all accurate to the real code.",
+  "checked": 20,
   "failed": 0,
-  "generated_at": "2026-06-15T15:42:26.587Z",
+  "generated_at": "2026-06-17T12:50:05.420Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Session signing/verification util + per-operator credential check",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 0,
       "type": "file-exists",
       "ok": true,
@@ -16,7 +16,7 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Session signing/verification util + per-operator credential check",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,15 +24,34 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Session signing/verification util + per-operator credential check",
+      "task_title": "Rewrite README.md as accurate repo orientation",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
+      "task_id": "T1",
+      "task_title": "Rewrite README.md as accurate repo orientation",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Rewrite README.md as accurate repo orientation",
+      "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 5,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
       "task_id": "T2",
-      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "task_title": "Write the operator runbook",
       "index": 0,
       "type": "file-exists",
       "ok": true,
@@ -40,7 +59,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "task_title": "Write the operator runbook",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -48,7 +67,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "task_title": "Write the operator runbook",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -56,67 +75,105 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Route-guard proxy + POST /api/login + POST /api/logout",
+      "task_title": "Write the operator runbook",
       "index": 3,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
+      "task_id": "T2",
+      "task_title": "Write the operator runbook",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Write the operator runbook",
+      "index": 5,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 4,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
       "task_id": "T3",
-      "task_title": "Login page + replace auto-login splash in page.tsx",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
       "index": 0,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Login page + replace auto-login splash in page.tsx",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Login page + replace auto-login splash in page.tsx",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
-      "index": 0,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T4",
-      "task_title": "Read principal from session in chat + history routes; add /api/auth/me",
-      "index": 3,
       "type": "file-exists",
       "ok": true,
       "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 5,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 6,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 7,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "index": 8,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 5,
+      "stdout": "",
+      "stderr": ""
     }
   ]
 }

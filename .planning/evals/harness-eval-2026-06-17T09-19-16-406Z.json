@@ -1,0 +1,89 @@
+{
+  "ok": true,
+  "status": "PASS",
+  "score": 90,
+  "phase": 2,
+  "generated_at": "2026-06-17T09:19:16.406Z",
+  "checks": [
+    {
+      "name": "planning_state",
+      "weight": 15,
+      "status": "pass",
+      "score": 15,
+      "evidence": "state.js check returned ok",
+      "state": {
+        "ok": true,
+        "phase": 2,
+        "phase_name": "Phase 2",
+        "total_phases": 3,
+        "status": "built",
+        "assigned_to": "Moayad",
+        "profile": "standard",
+        "milestone": 2,
+        "milestone_name": "Agent Depth",
+        "milestones": [],
+        "lifetime": {
+          "tasks_completed": 0,
+          "phases_completed": 1,
+          "milestones_completed": 0,
+          "total_phases": 0
+        },
+        "verification": "pending",
+        "gap_cycles": 0,
+        "gap_cycle_limit": 2,
+        "tasks_done": 0,
+        "tasks_total": 0,
+        "deployed_url": "",
+        "next_command": "/qualia-verify 2"
+      }
+    },
+    {
+      "name": "state_ledger",
+      "weight": 10,
+      "status": "pass",
+      "score": 10,
+      "evidence": "28 hash-chained event(s)"
+    },
+    {
+      "name": "plan_contract",
+      "weight": 20,
+      "status": "pass",
+      "score": 20,
+      "evidence": ".planning/phase-2-contract.json valid and in sync",
+      "contract": ".planning/phase-2-contract.json"
+    },
+    {
+      "name": "machine_evidence",
+      "weight": 20,
+      "status": "pass",
+      "score": 20,
+      "evidence": ".planning/evidence/phase-2-contract-run.json passed 3 check(s)"
+    },
+    {
+      "name": "verification_report",
+      "weight": 15,
+      "status": "pass",
+      "score": 15,
+      "evidence": ".planning/phase-2-verification.md verdict=pass"
+    },
+    {
+      "name": "framework_trust_score",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "trust-score=87/100 status=DEGRADED",
+      "trust_score": 87
+    },
+    {
+      "name": "erp_linkage",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "project key exists, ERP UUID missing"
+    }
+  ],
+  "artifacts": {
+    "json": ".planning/evals/harness-eval-2026-06-17T09-19-16-406Z.json",
+    "markdown": ".planning/evals/harness-eval-2026-06-17T09-19-16-406Z.md"
+  }
+}

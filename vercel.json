@@ -3,6 +3,10 @@
     {
       "path": "/api/mail/scheduled/run",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/memory/sweep",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

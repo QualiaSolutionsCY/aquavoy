@@ -9,6 +9,11 @@ export interface DriveItem {
   name: string;
   /** true when this item is a folder. */
   isFolder: boolean;
+  /** true when this item is a real, downloadable file (has Graph's `file` facet).
+   *  Items that are neither folder nor file — OneNote notebooks, the Personal
+   *  Vault, shortcuts — have no download URL and must NOT be rendered as
+   *  download links (doing so navigates to a raw error). */
+  isFile: boolean;
   /** child count for folders, undefined for files. */
   childCount?: number;
   /** size in bytes (files). */
@@ -21,6 +26,8 @@ export interface DriveItem {
   webUrl?: string;
   /** Path relative to the drive root, e.g. "/Documents/report.pdf". */
   path?: string;
+  /** Graph item ID of the parent folder. Used to capture prior location for undo. */
+  parentId?: string;
   /** Pre-authenticated thumbnail URL (short-lived, from Graph $expand=thumbnails). */
   thumbnailUrl?: string;
 }
@@ -49,7 +56,7 @@ export interface GraphDriveItem {
   lastModifiedDateTime?: string;
   folder?: { childCount?: number };
   file?: { mimeType?: string };
-  parentReference?: { path?: string };
+  parentReference?: { path?: string; id?: string };
   "@microsoft.graph.downloadUrl"?: string;
   thumbnails?: Array<{
     medium?: { url?: string };

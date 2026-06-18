@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "phase": 1,
+  "goal": "Every agent turn writes a structured trace record to the database (model, provider, tool calls with names/args/result shape, latency per call, token counts); the chat UI surfaces a collapsible 'what ran' panel per response.",
+  "why": "Operators currently fly blind -- they cannot see which model answered, which tools ran, or how long a turn took without tailing server logs. Phase 2 also depends on traces to confirm which mail path fires before one is removed.",
+  "generated_at": "2026-06-17T10:50:31Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:f218543bc049164e5c7e4bbfbc51c4a127401e44d7d2e9b0bbe4feb7d7276597",
+  "success_criteria": [
+    "After any agent response, the chat shows a disclosure row (e.g. '3 tools · Gemini Flash · 1.2 s') that expands to a per-tool trace with name, argument summary, and latency -- no network tab or log-tailing required.",
+    "public.agent_traces has one row per turn with model, provider, tool_calls (JSONB array), latency_ms, prompt_tokens, completion_tokens populated and non-null for every completed turn.",
+    "A slow or failed tool call is represented in the trace with its actual latency and an error field; the trace record is never silently omitted, even when the loop errors mid-turn.",
+    "The observability layer adds zero new runtime dependencies to the client bundle -- all writes happen server-side inside the existing SSE route."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "agent_traces migration + trace persistence library",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0011_agent_traces.sql",
+        "src/lib/agents/traces.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Migration 0011_agent_traces.sql creates public.agent_traces with id, principal (check Wency/Jeanette), model, provider (check openrouter/gemini), tool_calls jsonb, latency_ms, prompt_tokens, completion_tokens, error, created_at.",
+        "Migration enables RLS and declares NO policies (service-role lockdown matching 0010_pending_actions.sql).",
+        "Migration adds an index on (principal, created_at).",
+        "traces.ts exports insertTrace(input) returning the new row id, and getTrace(id) mapping snake_case to camelCase AgentTrace.",
+        "ToolCallTrace is { name, argsSummary, resultSummary, latencyMs, error }."
+      ],
+      "action": "Write the migration in the comment+structure style of 0010_pending_actions.sql (header comment, create table if not exists, comment on table, index, enable row level security, no policies). In traces.ts import supabaseAdmin from @/lib/supabase/server; insertTrace inserts via .from('agent_traces').insert().select('id').single() and returns id; getTrace selects by id and maps to camelCase AgentTrace. Apply locally via npx supabase migration up -- never hand-apply to remote.",
+      "context_files": [
+        "supabase/migrations/0010_pending_actions.sql",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/supabase/server.ts",
+        "src/lib/openrouter/client.ts",
+        ".planning/PROJECT.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0011_agent_traces.sql"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0011_agent_traces.sql",
+          "pattern": "enable row level security",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0011_agent_traces.sql",
+          "pattern": "create policy",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/traces.ts",
+          "pattern": "export async function insertTrace",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/traces.ts",
+          "pattern": "export async function getTrace",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Instrument the agent loop + persist trace + expose over SSE and a fetch route",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/openrouter/client.ts",
+        "src/app/api/chat/route.ts"
+      ],
+      "files_create": [
+        "src/app/api/traces/[id]/route.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Every completed turn writes exactly one agent_traces row with non-null model, provider, tool_calls (one entry per tool with name/argsSummary/resultSummary/latencyMs/error), latency_ms, prompt_tokens, completion_tokens.",
+        "A slow or failed tool call appears in tool_calls with measured latencyMs and a non-null error string on failure.",
+        "If the loop throws mid-turn, a trace row is still written with error set and partial tool calls -- never silently omitted.",
+        "The final SSE stream is unchanged plus one trailing data: {aquavoy_trace_id:<uuid>} line before data: [DONE]; the existing client parser ignores it.",
+        "GET /api/traces/<uuid> returns { ok:true, data: AgentTrace }; unknown id 404; missing principal 401 via getPrincipal."
+      ],
+      "action": "In streamChatWithTools capture model+providerName from chatProvider(), time the turn, wrap executeTool for per-tool latencyMs/argsSummary/resultSummary/error, accumulate usage tokens (stream_options.include_usage). Wrap the final stream to pass chunks through, insertTrace before [DONE], emit data:{aquavoy_trace_id}. try/catch writes a trace on throw then re-throws. Add principal to ChatOptions; route passes getPrincipal. New GET /api/traces/[id]: getPrincipal gate, getTrace, 404 or {ok,data}.",
+      "context_files": [
+        "src/lib/openrouter/client.ts",
+        "src/app/api/chat/route.ts",
+        "src/lib/agents/traces.ts",
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/auth/session.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "insertTrace",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "stream_options",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "aquavoy_trace_id",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/traces/[id]/route.ts",
+          "pattern": "getTrace",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/traces/[id]/route.ts",
+          "pattern": "getPrincipal",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Chat disclosure row + expandable per-tool trace panel",
+      "wave": 3,
+      "depends_on": [
+        "T2"
+      ],
+      "persona": "frontend",
+      "files_modify": [
+        "src/app/page.tsx",
+        "src/app/globals.css"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "After an assistant reply, a disclosure row renders under the bubble showing tool count, friendly provider/model label, and total latency in seconds (e.g. '3 tools · Gemini Flash · 1.2 s').",
+        "Clicking the row (a button with aria-expanded) toggles a panel listing each tool call's name, argsSummary, resultSummary, and per-tool latency; error tool calls render with --danger.",
+        "Row is keyboard-operable and screen-reader labeled; panel uses region semantics consistent with the existing history panel.",
+        "Metadata renders in --font-mono; surfaces use surface-step tokens; no hardcoded hex, no #000/#fff.",
+        "If the trace fetch fails or no trace id arrives, the bubble renders as today (row absent).",
+        "Works at 375px and 1440px; interactive targets >= 44px."
+      ],
+      "action": "Extend Msg with trace?: AgentTrace. In send() SSE parsing capture aquavoy_trace_id, then fetch /api/traces/<id> and set the assistant message's trace (silent try/catch). Add friendlyModel(). Render a trace-row button (aria-expanded/aria-controls) with count/model/seconds and a conditional trace-panel region listing trace.toolCalls; open state per index in a Set. Add globals.css trace-row/panel/tool rules: OKLCH tokens, mono, 44px, reduced-motion. Run slop-detect.",
+      "context_files": [
+        "src/app/page.tsx",
+        "src/app/globals.css",
+        "src/lib/agents/traces.ts",
+        ".planning/DESIGN.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "aquavoy_trace_id",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "/api/traces/",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "trace-row",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "aria-expanded",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    }
+  ]
+}

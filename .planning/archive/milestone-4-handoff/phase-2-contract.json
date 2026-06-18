@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "phase": 2,
+  "goal": "Production deployment is verified and documented: Vercel cron config correct, all 12 Supabase migrations applied, RLS on every table, no secret reachable client-side, monitoring approach recorded with a stable health target.",
+  "why": "At handoff the client must trust the deployment without re-auditing code. The code-level posture is already compliant; this phase makes it legible and verifiable and closes the two real gaps: no monitoring documented, and no clean health endpoint for an uptime monitor.",
+  "generated_at": "2026-06-17T12:53:03Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:0f7878b4d6c6f7952090c8e41f82b44dd70bd352366680eba83fd2464aefb4f7",
+  "success_criteria": [
+    "/api/health returns HTTP 200 unauthenticated (added to proxy allowlist) and reads no secret.",
+    "docs/monitoring.md records the UptimeRobot status page, the /api/health monitor target, the cron logs location, and Vercel error visibility, with no placeholders.",
+    "docs/deployment.md records the 12 migrations + per-table RLS evidence, the server-only secret posture with a re-runnable grep, the real cron config + CRON_SECRET guard citations, and the live-prod operator verification commands.",
+    "No deploy is triggered and no live --linked command output is fabricated; live-prod confirmation is captured as operator runbook steps.",
+    "npx tsc --noEmit exits 0."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Add /api/health route + document the monitoring approach",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/proxy.ts"
+      ],
+      "files_create": [
+        "src/app/api/health/route.ts",
+        "docs/monitoring.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "GET /api/health returns HTTP 200 with JSON containing ok:true and a timestamp, no authentication required.",
+        "The health route reads no environment secret and makes no DB/network call.",
+        "docs/monitoring.md records the UptimeRobot status page, an /api/health uptime monitor instruction, the Vercel cron logs location, and Vercel error visibility.",
+        "docs/monitoring.md contains no leftover authoring markers (verified by the grep in the plan Validation)."
+      ],
+      "action": "Create src/app/api/health/route.ts following the src/app/api/auth/me/route.ts pattern: import ok from @/lib/http, set runtime nodejs and dynamic force-dynamic, export GET returning ok({ status: 'ok', ts: new Date().toISOString() }); no auth, no process.env, no Supabase import. Add '/api/health' to the ALLOWLIST set in src/proxy.ts and to its comment block. Write docs/monitoring.md with Uptime monitoring, Cron monitoring (the two real vercel.json crons), and Error visibility sections.",
+      "context_files": [
+        "src/app/api/auth/me/route.ts",
+        "src/lib/http.ts",
+        "src/proxy.ts",
+        "vercel.json",
+        ".planning/PROJECT.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "src/app/api/health/route.ts",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/proxy.ts",
+          "pattern": "/api/health",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/health/route.ts",
+          "pattern": "process\\.env",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/monitoring.md",
+          "pattern": "stats\\.uptimerobot\\.com/bKudHy1pLs",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Deployment hardening audit document",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "security",
+      "files_modify": [],
+      "files_create": [
+        "docs/deployment.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "docs/deployment.md lists all 12 migrations and states every created table has RLS enabled, with per-table file:line evidence for the 8 tables.",
+        "The doc records the server-only secret posture (SUPABASE_SERVICE_ROLE_KEY only in src/lib/supabase/server.ts, no client.ts, no secret in any use-client component) with the re-runnable grep.",
+        "The doc records the real Vercel cron config and the CRON_SECRET bearer guard citations.",
+        "The doc has a Live production verification section with exact operator CLI commands (npx supabase migration list --linked, npx supabase db diff --linked, pg_tables rowsecurity query) presented as steps, not results.",
+        "The doc records the cron-fired-in-prod check (curl with CRON_SECRET expecting 200, or Vercel cron logs) and points to docs/monitoring.md naming /api/health.",
+        "docs/deployment.md contains no leftover authoring markers (verified by the grep in the plan Validation)."
+      ],
+      "action": "Write docs/deployment.md, every claim carrying file:line: Migrations & RLS (8 tables, create-table + enable-RLS lines; 0006/0012 alter-table); Secret posture (service-role server-only + grep); Cron config (two crons + CRON_SECRET guards); Live production verification (operator steps: migration list --linked, db diff --linked, pg_tables RLS query); Cron prod confirmation (curl with CRON_SECRET or Vercel logs); Monitoring (link docs/monitoring.md, /api/health). Do NOT deploy or run live commands.",
+      "context_files": [
+        "vercel.json",
+        "src/proxy.ts",
+        "src/lib/supabase/server.ts",
+        "src/app/api/mail/scheduled/run/route.ts",
+        "src/app/api/memory/sweep/route.ts",
+        "docs/env-reference.md",
+        ".planning/PROJECT.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "docs/deployment.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/deployment.md",
+          "pattern": "supabase migration list --linked",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/deployment.md",
+          "pattern": "rowsecurity",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/deployment.md",
+          "pattern": "src/lib/supabase/server\\.ts",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/deployment.md",
+          "pattern": "/api/health",
+          "expect": "present"
+        }
+      ]
+    }
+  ]
+}

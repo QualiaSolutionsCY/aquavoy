@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "phase": 3,
+  "goal": "A QA checklist is produced and committed covering the headline M1-M3 flows, each row with steps + expected result + a Status/Tester/Date column the operator fills on prod, and a code-evidence column citing the prior verification that already proves the invariant.",
+  "why": "Handoff QA in this environment is the authored, grounded checklist; the operator owns the live prod execution and sign-off. The auth-gated, key-dependent live flows cannot be run from the build environment, so we deliver the artifact the operator executes against, with code-level evidence pre-attached where a prior phase verification already proved the invariant.",
+  "generated_at": "2026-06-17T16:05:00Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:4066ffe3b248913b7f8f4863be26d4a2ae08122163f428b2a46146f70894f681",
+  "success_criteria": [
+    "docs/qa-checklist.md is committed and covers all six headline flow groups (auth gate; agent chat + tool trace; confirm/undo; mail send + schedule/cron; OneDrive list+download; mobile at 375px on Emails/Files/Prep), one row per flow, columns Flow | Steps | Expected | Code-evidence | Status | Tester | Date.",
+    "Every Flow/Steps/Expected/Code-evidence cell is authored with concrete content; Code-evidence cites a real file:line or archived verification for each invariant already proven at code level. Status/Tester/Date are left blank for the operator (no pre-filled names or dates, no false claim of a live prod run).",
+    "The intro states the operator executes the live flows on production and the build environment cannot.",
+    "docs/qa-automated-gate.md records the developer-run automated gate (typecheck + tests, both passing) and points to the checklist for the live-prod portion.",
+    "npm run typecheck and npm test both exit 0."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Author and commit the headline QA checklist",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [],
+      "files_create": ["docs/qa-checklist.md"],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "docs/qa-checklist.md exists with an intro stating the operator runs the live flows on production and the build environment cannot (auth-gated, key-dependent); Status/Tester/Date left blank, no pre-filled names/dates, no claim a live prod run happened.",
+        "A Markdown table per six flow groups (auth gate; agent chat + tool trace; confirm/undo; mail send + schedule/cron; OneDrive list+download; mobile 375px on Emails/Files/Prep), columns Flow | Steps | Expected | Code-evidence | Status | Tester | Date.",
+        "Code-evidence cells cite real file:line / archived verifications: src/proxy.ts, executeConfirmedAction.ts, onedrive/download, scheduled/run, globals.css:331, and the archived phase-3-verification reports.",
+        "No TODO/FIXME/TBD placeholders in authored columns; a How-to-use closing section instructs the operator to mark Pass/Fail and resolve any Fail before close."
+      ],
+      "action": "Create docs/qa-checklist.md with a caveat intro, one heading + table per flow group (header Flow | Steps | Expected | Code-evidence | Status | Tester | Date), concrete operator steps + expected results, file:line / archived-verification citations in the Code-evidence cell, blank Status/Tester/Date cells, and a How-to-use closing section. Do not pre-fill testers/dates or assert a prod run occurred.",
+      "context_files": [
+        ".planning/PROJECT.md",
+        ".planning/ROADMAP.md",
+        "src/proxy.ts",
+        "src/app/api/mail/scheduled/run/route.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md",
+        ".planning/decisions/ADR-004-mail-stack.md",
+        ".planning/archive/milestone-1-trust-and-hardening/phase-1-verification.md",
+        ".planning/archive/milestone-2-agent-depth/phase-3-verification.md",
+        ".planning/archive/milestone-3-operations-polish/phase-3-verification.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "docs/qa-checklist.md",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/qa-checklist.md",
+          "pattern": "\\| Flow \\| Steps \\| Expected \\| Code-evidence \\| Status \\| Tester \\| Date \\|",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/qa-checklist.md",
+          "pattern": "src/proxy\\.ts|executeConfirmedAction\\.ts|onedrive/download|scheduled/run|globals\\.css:331|phase-3-verification",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/qa-checklist.md",
+          "pattern": "operator|production",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Record the committed automated QA gate (typecheck + tests)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [],
+      "files_create": ["docs/qa-automated-gate.md"],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "docs/qa-automated-gate.md exists and documents the two developer-run commands (npm run typecheck, npm test) with expected exit 0, copy-pasteable.",
+        "Records the run observed at authoring time: tsc --noEmit exit 0; vitest 12 files / 59 tests passed.",
+        "States the boundary: these gates prove compile + seam tests, not the live auth-gated/key-dependent prod flows, and cross-references docs/qa-checklist.md as the operator's surface.",
+        "No TODO/FIXME/TBD placeholders remain."
+      ],
+      "action": "Create docs/qa-automated-gate.md with a Gate|Command|Expected table (typecheck via npm run typecheck; test suite via npm test), a Last-run line (tsc exit 0; vitest 12 files / 59 tests passed), and a boundary paragraph pointing to docs/qa-checklist.md for the live-prod portion.",
+      "context_files": ["package.json", ".planning/ROADMAP.md"],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "docs/qa-automated-gate.md",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npm",
+          "args": ["run", "typecheck"],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "npm",
+          "args": ["test"],
+          "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "docs/qa-automated-gate.md",
+          "pattern": "qa-checklist\\.md",
+          "expect": "present"
+        }
+      ]
+    }
+  ]
+}

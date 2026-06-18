@@ -8,12 +8,16 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:prod": "E2E_BASE_URL=https://aquavoy.vercel.app playwright test e2e/auth-gate.spec.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
     "imapflow": "^1.4.0",
+    "lucide-react": "^1.21.0",
     "mailparser": "^3.9.9",
     "mammoth": "^1.12.0",
     "next": "^16.0.0",
@@ -21,16 +25,20 @@
     "pdf-parse": "^2.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^8.0.1",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "dotenv": "^17.4.2",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.7",
     "typescript": "^5.6.0",
     "vitest": "^4.1.7"
   }

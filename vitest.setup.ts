@@ -23,3 +23,7 @@ process.env.OPERATOR_CREDENTIALS = JSON.stringify({
 // client itself is always mocked in tests that touch it.
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+
+// Embeddings provider key — present so getEmbeddingsEnv() validates; the fetch
+// to the provider is always stubbed in tests that touch it.
+process.env.GOOGLE_API_KEY = "test-google-api-key";

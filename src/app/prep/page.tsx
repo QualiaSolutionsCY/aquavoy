@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Anchor, Mail } from "lucide-react";
 
 /* ── Types ── */
 
@@ -35,6 +37,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 export default function Prep() {
   const [crew, setCrew] = useState<Recipient[]>([]);
+  const [crewLoading, setCrewLoading] = useState(true);
   const [selected, setSelected] = useState<Recipient | null>(null);
   const [crewError, setCrewError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +85,7 @@ export default function Prep() {
   }, []);
 
   async function loadCrew() {
+    setCrewLoading(true);
     try {
       setCrew(await api<Recipient[]>("/api/recipients"));
       setCrewError(null);
@@ -89,12 +93,16 @@ export default function Prep() {
       setCrewError(
         `${(e as Error).message} — recipients need Supabase configured. Add the creds and redeploy.`,
       );
+    } finally {
+      setCrewLoading(false);
     }
   }
 
   useEffect(() => {
-    loadCrew();
-    fetchMailAccounts();
+    async function load() {
+      await Promise.all([loadCrew(), fetchMailAccounts()]);
+    }
+    load();
   }, [fetchMailAccounts]);
 
   async function addRecipient() {
@@ -195,10 +203,40 @@ export default function Prep() {
         {/* -- Crew column -- */}
         <section className="panel">
           <h2 className="panel-h">Crew</h2>
-          {crewError && <div className="notice err">{crewError}</div>}
+          {crewError && (
+            <div className="notice err" role="alert">
+              <div>
+                <strong>Couldn’t load the crew.</strong>{" "}
+                <button
+                  className="btn ghost sm"
+                  onClick={() => {
+                    setCrewError(null);
+                    loadCrew();
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+              <div className="empty-hint">{crewError}</div>
+            </div>
+          )}
+          {crewLoading ? (
+            <div className="crew-list" aria-busy="true" aria-label="Loading crew">
+              {[0, 1, 2, 3].map((i) => (
+                <div className="skeleton-row" key={i}>
+                  <span className="skeleton icon" />
+                  <span className="skeleton" style={{ width: `${72 - i * 9}%` }} />
+                  <span className="skeleton meta" />
+                </div>
+              ))}
+            </div>
+          ) : (
           <div className="crew-list">
             {crew.length === 0 && !crewError ? (
-              <div className="empty">No recipients yet. Add one below.</div>
+              <div className="empty">
+                <Anchor className="empty-icon" size={28} strokeWidth={1.5} aria-hidden="true" />
+                Add a recipient to get started.
+              </div>
             ) : (
               crew.map((r) => (
                 <div
@@ -214,12 +252,13 @@ export default function Prep() {
                   <div className="meta">{r.email}</div>
                   {r.role && <div className="meta">{r.role}</div>}
                   <button
-                    className="btn danger sm"
+                    className="btn ghost close"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeRecipient(r.id);
                     }}
                     aria-label={`Remove ${r.name}`}
+                    title={`Remove ${r.name}`}
                   >
                     ✕
                   </button>
@@ -227,32 +266,45 @@ export default function Prep() {
               ))
             )}
           </div>
+          )}
 
           <div className="add-form">
+            <label className="lbl" htmlFor="crew-name" style={{ marginTop: 0 }}>
+              Name
+            </label>
             <input
-              placeholder="Name"
+              id="crew-name"
+              placeholder="e.g. Jan de Vries"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              aria-label="Recipient name"
             />
+            <label className="lbl" htmlFor="crew-email">
+              Email
+            </label>
             <input
-              placeholder="Email"
+              id="crew-email"
+              placeholder="name@company.com"
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              aria-label="Recipient email"
             />
+            <label className="lbl" htmlFor="crew-role">
+              Role <span style={{ color: "var(--text-muted)" }}>(optional)</span>
+            </label>
             <input
-              placeholder="Role (optional)"
+              id="crew-role"
+              placeholder="e.g. Captain"
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
-              aria-label="Recipient role"
             />
+            <label className="lbl" htmlFor="crew-notes">
+              Context <span style={{ color: "var(--text-muted)" }}>(optional)</span>
+            </label>
             <input
-              placeholder="Context / notes (optional)"
+              id="crew-notes"
+              placeholder="e.g. prefers Dutch, handles night shifts"
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              aria-label="Additional context"
             />
             <button className="btn" onClick={addRecipient} disabled={!form.name || !form.email}>
               + Add to crew
@@ -266,7 +318,11 @@ export default function Prep() {
             {selected ? `Prepare email to ${selected.name}` : "Select a recipient"}
           </h2>
           {!selected ? (
-            <div className="empty">Pick someone from the crew to prepare their 1:1 email.</div>
+            <div className="empty">
+              <Mail className="empty-icon" size={30} strokeWidth={1.5} aria-hidden="true" />
+              Pick someone from the crew to prepare their 1:1 email.
+              <span className="empty-hint">Their role and notes shape the draft.</span>
+            </div>
           ) : (
             <>
               {/* From account selector */}
@@ -294,9 +350,9 @@ export default function Prep() {
                   style={{ fontSize: "0.8125rem", padding: "var(--sp-2) var(--sp-3)" }}
                 >
                   No mail account connected.{" "}
-                  <a href="/emails" style={{ fontWeight: 600 }}>
+                  <Link href="/emails" style={{ fontWeight: 600 }}>
                     Connect a mailbox first
-                  </a>
+                  </Link>
                 </div>
               )}
 

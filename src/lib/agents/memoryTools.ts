@@ -1,51 +1,53 @@
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { hybridRecall, type RankedFact } from "@/lib/agents/memoryStore";
 
 /**
- * Memory recall — searches the chat_messages table for past conversation
- * content matching a query, filtered by principal. Used as a tool the model
- * can call to remember earlier conversations.
+ * Memory recall — the dual-path surface over the durable memory store. Both
+ * paths route through the 3-signal hybrid ranker in memoryStore.ts (ADR-002):
+ *   - recallMemory: the callable `recall_memory` tool (model-initiated). Its
+ *     input/output JSON contract is unchanged from the old substring version.
+ *   - autoRecall: server auto-inject on every chat request (model never has to
+ *     "remember to remember"). Still returns string | null.
+ *
+ * Both are principal-scoped (REQ-3): recall for one operator never returns
+ * another's facts. The old chat_messages substring grep is gone — recall now
+ * blends semantic similarity, lexical hit, and recency over extracted facts.
  */
 
-interface MemoryHit {
-  role: string;
-  content: string;
-  created_at: string;
+/** Format a fact's timestamp for display: "YYYY-MM-DD HH:MM". */
+function whenOf(createdAt: string): string {
+  return createdAt.slice(0, 16).replace("T", " ");
 }
 
 /**
- * Search chat history for messages matching `query` (case-insensitive substring)
- * for a given principal. Returns up to 20 most recent matches, content trimmed
- * to 500 chars each.
+ * Search durable memory for facts relevant to `query` for a given principal.
+ * Returns up to 20 ranked hits as a JSON string. The output shape is unchanged
+ * from the prior version — `{ hits: [{ role, content, created_at }] }` on a hit,
+ * `{ message, hits: [] }` when empty, `{ error }` on failure — so the existing
+ * recall_memory tool contract (and its test mock) hold.
  */
 export async function recallMemory(
   query: string,
   principal: string,
 ): Promise<string> {
-  const db = supabaseAdmin();
-
-  const { data, error } = await db
-    .from("chat_messages")
-    .select("role, content, created_at")
-    .eq("principal", principal)
-    .ilike("content", `%${query}%`)
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  if (error) {
-    return JSON.stringify({ error: `Memory recall failed: ${error.message}` });
+  let ranked: RankedFact[];
+  try {
+    ranked = await hybridRecall(query, principal, 20);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown error";
+    return JSON.stringify({ error: `Memory recall failed: ${message}` });
   }
 
-  if (!data || data.length === 0) {
+  if (ranked.length === 0) {
     return JSON.stringify({
       message: `No past messages found matching "${query}" for ${principal}.`,
       hits: [],
     });
   }
 
-  const hits = (data as MemoryHit[]).map((row) => ({
-    role: row.role,
-    content: row.content.length > 500 ? row.content.slice(0, 500) + "..." : row.content,
-    created_at: row.created_at,
+  const hits = ranked.map((r) => ({
+    role: "memory",
+    content: r.fact.length > 500 ? r.fact.slice(0, 500) + "..." : r.fact,
+    created_at: r.created_at,
   }));
 
   return JSON.stringify({ hits });
@@ -53,44 +55,28 @@ export async function recallMemory(
 
 /**
  * Automatic recall — runs on EVERY chat request (server-side, before the model
- * sees the message). Extracts salient words from the user's message, searches
- * past conversations, and returns a context block to inject as a system note.
- * This removes the "model forgot to check its memory" failure mode: relevant
- * history arrives whether or not the model thinks to call recall_memory.
+ * sees the message). Routes through the same hybrid ranker as the tool, scoped to
+ * the principal, and returns a context block to inject as a system note (or null
+ * when nothing relevant is stored). This removes the "model forgot to check its
+ * memory" failure mode: relevant history arrives whether or not the model thinks
+ * to call recall_memory.
  */
 export async function autoRecall(
   principal: string,
   userText: string,
 ): Promise<string | null> {
-  // Salient words: ≥5 chars, deduped, max 4 — short Dutch/English function
-  // words (wat/moet/doen/voor/…) stay out by length alone.
-  const words = Array.from(
-    new Set(
-      userText
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}\s]/gu, " ")
-        .split(/\s+/)
-        .filter((w) => w.length >= 5),
-    ),
-  ).slice(0, 4);
-  if (words.length === 0) return null;
+  if (!userText.trim()) return null;
 
-  const db = supabaseAdmin();
-  const { data, error } = await db
-    .from("chat_messages")
-    .select("role, content, created_at")
-    .eq("principal", principal)
-    .or(words.map((w) => `content.ilike.%${w}%`).join(","))
-    .order("created_at", { ascending: false })
-    .limit(6);
+  let ranked: RankedFact[];
+  try {
+    ranked = await hybridRecall(userText, principal, 6);
+  } catch {
+    return null;
+  }
 
-  if (error || !data || data.length === 0) return null;
+  if (ranked.length === 0) return null;
 
-  const lines = (data as MemoryHit[]).map((row) => {
-    const when = row.created_at.slice(0, 16).replace("T", " ");
-    const text = row.content.length > 300 ? row.content.slice(0, 300) + "…" : row.content;
-    return `- [${when}] ${row.role === "user" ? principal : "Aquavoy"}: ${text}`;
-  });
+  const lines = ranked.map((r) => `- [${whenOf(r.created_at)}] ${r.fact}`);
 
   return [
     `Auto-recalled notes from ${principal}'s past conversations (may include the`,

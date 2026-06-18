@@ -18,7 +18,7 @@ import type { AgentTrace } from "@/lib/agents/traces";
 
 type Principal = "Wency" | "Jeanette";
 
-/* Bolt-style hero suggestion chips. Each fires a REAL Aquavoy capability —
+/* Empty-state example chips. Each fires a REAL Aquavoy capability —
    web search, OneDrive file lookup, crew email prep — so nothing on the
    landing surface is decorative. */
 const SUGGESTIONS: { icon: typeof Globe; label: string; prompt: string }[] = [
@@ -52,14 +52,13 @@ const REVERSIBLE_TOOLS = new Set([
   "delete_item",
   "schedule_email",
 ]);
-const PRINCIPALS: Principal[] = ["Wency", "Jeanette"];
 
 interface Msg {
   role: "user" | "assistant";
   content: string;
   /* Per-turn observability (REQ-12/13). Populated after the stream completes
      when the SSE delivered a trailing `aquavoy_trace_id`. Absent on failure —
-     the bubble renders exactly as before. */
+     the message renders exactly as before. */
   trace?: AgentTrace;
 }
 
@@ -79,9 +78,11 @@ function greeting(name: Principal): Msg {
 }
 
 /* ── Lightweight Markdown rendering for assistant replies ──
-   Handles **bold**, *italic*, `code`, and "* " / "- " bullet markers.
-   Newlines survive via the bubble's pre-wrap white-space. */
-const INLINE_MD = /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|`[^`]+`)/g;
+   Handles **bold**, *italic*, `code`, "* " / "- " bullet markers, and
+   bare http/https URLs (auto-linked so generated spreadsheet / OneDrive links
+   the agent returns are clickable). Newlines survive via pre-wrap white-space. */
+const INLINE_MD =
+  /(\*\*[^*]+\*\*|\*[^*\s][^*]*\*|`[^`]+`|https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g;
 
 function renderInline(text: string): React.ReactNode[] {
   return text.split(INLINE_MD).map((part, i) => {
@@ -90,6 +91,13 @@ function renderInline(text: string): React.ReactNode[] {
     }
     if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
       return <code key={i}>{part.slice(1, -1)}</code>;
+    }
+    if (/^https?:\/\//.test(part)) {
+      return (
+        <a key={i} href={part} target="_blank" rel="noopener noreferrer">
+          {part}
+        </a>
+      );
     }
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return <em key={i}>{part.slice(1, -1)}</em>;
@@ -163,7 +171,7 @@ export default function Chat() {
   const historyPanelRef = useRef<HTMLDivElement>(null);
 
   // ── Trace disclosure state ──
-  // Which assistant bubbles have their per-tool trace panel expanded,
+  // Which assistant messages have their per-tool trace panel expanded,
   // tracked by message index (mirrors the historyOpen disclosure pattern).
   const [traceOpen, setTraceOpen] = useState<Set<number>>(new Set());
 
@@ -186,7 +194,7 @@ export default function Chat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Grow the composer with its content (bolt-style), capped at 40dvh.
+  // Grow the composer with its content, capped at 40dvh.
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
@@ -549,180 +557,144 @@ export default function Chat() {
     );
   }
 
-  // Bolt-style hero shows only on a fresh thread (greeting alone, not mid-send).
+  // The greeting-only thread shows the centered empty state (not mid-send).
   const isEmpty = messages.length <= 1 && !busy;
 
-  // Single composer used in both surfaces: centered in the hero, docked in-thread.
-  const composerCard = (
-    <form
-      className="composer-card"
-      onSubmit={(e) => {
-        e.preventDefault();
-        send();
-      }}
-    >
-      <textarea
-        ref={taRef}
-        rows={1}
-        className="composer-input"
-        placeholder={`Message Aquavoy as ${identity}…`}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            send();
-          }
-        }}
-        aria-label="Type your message"
-      />
-      <div className="composer-foot">
-        <span className="identity-chip" title={`Signed in as ${identity}`}>
-          <span className="identity-dot" aria-hidden="true" />
-          {identity}
-        </span>
-        <button
-          type="submit"
-          className="composer-send"
-          disabled={busy || !input.trim()}
-          aria-label="Send message"
-        >
-          {busy ? (
-            <span className="spinner" aria-hidden="true" />
-          ) : (
-            <ArrowUp size={18} strokeWidth={2.5} aria-hidden="true" />
-          )}
-        </button>
-      </div>
-    </form>
-  );
-
   return (
-    <main className="chat-wrap">
-      <div className="chat-header">
-        <div className="chat-header-info">
-          <h1>Aquavoy</h1>
-          <div className="chat-header-meta">
-            Chatting as <strong>{identity}</strong> · AI assistant
-          </div>
+    <main className="cx">
+      {/* ── Slim sticky top bar ── */}
+      <header className="cx-bar">
+        <div className="cx-brand">
+          <span className="cx-brand-name">Aquavoy</span>
+          <span className="cx-brand-meta">
+            chatting as <strong>{identity}</strong>
+          </span>
         </div>
-        <div className="row">
-          <button className="btn" onClick={newChat} aria-label="Start a new chat thread">
-            <Plus size={16} aria-hidden="true" /> New chat
+        <div className="cx-bar-actions">
+          <button
+            type="button"
+            className="cx-icon-btn"
+            onClick={newChat}
+            aria-label="Start a new chat thread"
+            title="New chat"
+          >
+            <Plus size={18} aria-hidden="true" />
           </button>
           <button
-            className="btn ghost"
+            type="button"
+            className="cx-icon-btn"
             onClick={toggleHistory}
             aria-label={historyOpen ? "Close chat history" : "Browse chat history"}
             aria-expanded={historyOpen}
+            title="History"
           >
-            <History size={16} aria-hidden="true" /> History
+            <History size={18} aria-hidden="true" />
           </button>
           <button
-            className="btn ghost"
+            type="button"
+            className="cx-icon-btn"
             onClick={clearMemory}
             aria-label="Clear conversation memory"
+            title="Clear conversation"
           >
-            <Trash2 size={16} aria-hidden="true" /> Clear
+            <Trash2 size={18} aria-hidden="true" />
           </button>
         </div>
-      </div>
+      </header>
 
-      {error && (
-        <div className="notice err" role="alert">
-          {error}
-        </div>
-      )}
-
+      {/* ── History panel (overlays the column from the top) ── */}
       {historyOpen && (
-        <div
-          className="history-panel"
-          ref={historyPanelRef}
-          role="dialog"
-          aria-label="Chat history"
-        >
-          <div className="history-header">
-            <span className="panel-h">Past conversations</span>
-            <button
-              className="btn ghost history-close"
-              onClick={() => setHistoryOpen(false)}
-              aria-label="Close history panel"
-            >
-              <X size={16} aria-hidden="true" />
-            </button>
+        <div className="cx-col cx-overlay-col">
+          <div
+            className="history-panel"
+            ref={historyPanelRef}
+            role="dialog"
+            aria-label="Chat history"
+          >
+            <div className="history-header">
+              <span className="panel-h">Past conversations</span>
+              <button
+                type="button"
+                className="cx-icon-btn"
+                onClick={() => setHistoryOpen(false)}
+                aria-label="Close history panel"
+                title="Close"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
+
+            {historyLoading && (
+              <div className="history-list">
+                {[1, 2, 3].map((n) => (
+                  <div key={n} className="skeleton-row">
+                    <div className="skeleton" style={{ width: "1.25rem", height: "1.25rem" }} />
+                    <div className="skeleton" />
+                    <div className="skeleton meta" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {historyError && (
+              <div className="notice err" role="alert">
+                {historyError}
+              </div>
+            )}
+
+            {!historyLoading && !historyError && sessions.length === 0 && (
+              <div className="empty">No past conversations yet.</div>
+            )}
+
+            {!historyLoading && !historyError && sessions.length > 0 && (
+              <div className="history-list">
+                {sessions.map((s) => (
+                  <button
+                    key={s.sessionId}
+                    className={`history-item${s.sessionId === sessionRef.current ? " active" : ""}`}
+                    onClick={() => openSession(s.sessionId)}
+                    aria-label={`Open conversation: ${s.title}`}
+                    aria-current={
+                      s.sessionId === sessionRef.current ? "true" : undefined
+                    }
+                  >
+                    <span className="history-title">{s.title}</span>
+                    <span className="history-meta">
+                      <span className="history-count">
+                        {s.count} msg{s.count !== 1 ? "s" : ""}
+                      </span>
+                      <span className="history-date">
+                        {new Date(s.lastAt).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-
-          {historyLoading && (
-            <div className="history-list">
-              {[1, 2, 3].map((n) => (
-                <div key={n} className="skeleton-row">
-                  <div className="skeleton" style={{ width: "1.25rem", height: "1.25rem" }} />
-                  <div className="skeleton" />
-                  <div className="skeleton meta" />
-                </div>
-              ))}
-            </div>
-          )}
-
-          {historyError && (
-            <div className="notice err" role="alert">
-              {historyError}
-            </div>
-          )}
-
-          {!historyLoading && !historyError && sessions.length === 0 && (
-            <div className="empty">No past conversations yet.</div>
-          )}
-
-          {!historyLoading && !historyError && sessions.length > 0 && (
-            <div className="history-list">
-              {sessions.map((s) => (
-                <button
-                  key={s.sessionId}
-                  className={`history-item${s.sessionId === sessionRef.current ? " active" : ""}`}
-                  onClick={() => openSession(s.sessionId)}
-                  aria-label={`Open conversation: ${s.title}`}
-                  aria-current={
-                    s.sessionId === sessionRef.current ? "true" : undefined
-                  }
-                >
-                  <span className="history-title">{s.title}</span>
-                  <span className="history-meta">
-                    <span className="history-count">
-                      {s.count} msg{s.count !== 1 ? "s" : ""}
-                    </span>
-                    <span className="history-date">
-                      {new Date(s.lastAt).toLocaleDateString(undefined, {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
-      {isEmpty ? (
-        <div className="chat-hero">
-          <div className="hero-rays" aria-hidden="true" />
-          <div className="hero-inner">
-            <h2 className="hero-title">What can I help with, {identity}?</h2>
-            <p className="hero-sub">
+      {/* ── Conversation scroll region ── */}
+      <div className="cx-scroll" ref={scrollRef} role="log" aria-label="Chat messages">
+        {isEmpty ? (
+          <div className="cx-col cx-empty">
+            <h1 className="cx-greeting">How can I help, {identity}?</h1>
+            <p className="cx-greeting-sub">
               Ask anything — I can search the web, work with your OneDrive files, and
               prep crew email.
             </p>
-            {composerCard}
-            <div className="suggest-row">
+            <div className="cx-chips">
               {SUGGESTIONS.map((s) => {
                 const Icon = s.icon;
                 return (
                   <button
                     key={s.label}
                     type="button"
-                    className="suggest-chip"
+                    className="cx-chip"
                     onClick={() => send(s.prompt)}
                     disabled={busy}
                   >
@@ -733,169 +705,240 @@ export default function Chat() {
               })}
             </div>
           </div>
-        </div>
-      ) : (
-      <div className="thread" ref={scrollRef} role="log" aria-label="Chat messages">
-        {messages.map((m, i) => {
-          const trace = m.trace;
-          const open = traceOpen.has(i);
-          const panelId = `trace-panel-${i}`;
-          const toolCount = trace?.toolCalls.length ?? 0;
-          return (
-            <div key={i} className={`bubble ${m.role}`}>
-              <span className="who">{m.role === "user" ? identity : "Aquavoy"}</span>
-              <div className="text">
-                {m.content ? (
-                  m.role === "assistant" ? (
-                    renderMarkdown(m.content)
-                  ) : (
-                    m.content
-                  )
-                ) : busy && i === messages.length - 1 ? (
-                  <span className="typing-dots" role="status" aria-label="Aquavoy is thinking">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                ) : (
-                  ""
-                )}
+        ) : (
+          <div className="cx-col cx-thread">
+            {error && (
+              <div className="notice err" role="alert">
+                {error}
               </div>
-              {trace && (
-                <>
-                  <button
-                    type="button"
-                    className="trace-row"
-                    onClick={() => toggleTrace(i)}
-                    aria-expanded={open}
-                    aria-controls={panelId}
-                    aria-label={`${open ? "Hide" : "Show"} agent trace: ${toolCount} tool${
-                      toolCount !== 1 ? "s" : ""
-                    }, ${(trace.latencyMs / 1000).toFixed(1)} seconds`}
-                  >
-                    <span className="trace-caret" aria-hidden="true">
-                      {open ? "▾" : "▸"}
-                    </span>
-                    <span className="trace-summary">
-                      {toolCount} tool{toolCount !== 1 ? "s" : ""}
-                      {" · "}
-                      {(trace.latencyMs / 1000).toFixed(1)} s
-                    </span>
-                  </button>
-                  {open && (
-                    <div className="trace-panel" role="region" id={panelId} aria-label="Agent trace detail">
-                      {toolCount === 0 ? (
-                        <p className="trace-empty">No tools were called this turn.</p>
-                      ) : (
-                        <ul className="trace-tools">
-                          {trace.toolCalls.map((tc, ti) => (
-                            <li
-                              key={ti}
-                              className={`trace-tool${tc.error ? " error" : ""}`}
-                            >
-                              <div className="trace-tool-head">
-                                <span className="trace-tool-name">{tc.name}</span>
-                                <span className="trace-tool-latency">
-                                  {(tc.latencyMs / 1000).toFixed(2)} s
-                                </span>
-                              </div>
-                              <div className="trace-tool-args">{tc.argsSummary}</div>
-                              {tc.error ? (
-                                <div className="trace-tool-error" role="alert">
-                                  {tc.error}
-                                </div>
-                              ) : (
-                                <div className="trace-tool-result">{tc.resultSummary}</div>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      )}
+            )}
 
-      {pending.length > 0 && (
-        <div className="action-stack" role="region" aria-label="Pending actions">
-          {actionError && (
-            <div className="notice err" role="alert">
-              {actionError}
-            </div>
-          )}
-          {pending.map((a) => {
-            const busy = actionBusy === a.id;
-            const confirmed = a.status === "confirmed";
-            const reversible = REVERSIBLE_TOOLS.has(a.tool);
-            return (
-              <div
-                key={a.id}
-                className={`action-card${confirmed ? " confirmed" : ""}`}
-                role="group"
-                aria-label={`Pending action: ${a.summary}`}
-              >
-                <div className="action-head">
-                  <span className="action-tag">
-                    {confirmed ? "Confirmed" : "Confirm needed"}
-                  </span>
-                  <span className="action-tool">{a.tool}</span>
-                </div>
-                <p className="action-summary">{a.summary}</p>
-                <span className="action-id">id {a.id}</span>
-                <div className="action-actions">
-                  {!confirmed && (
+            {messages.map((m, i) => {
+              const trace = m.trace;
+              const open = traceOpen.has(i);
+              const panelId = `trace-panel-${i}`;
+              const toolCount = trace?.toolCalls.length ?? 0;
+
+              if (m.role === "user") {
+                return (
+                  <div key={i} className="cx-msg cx-msg-user">
+                    <div className="cx-user-bubble">{m.content}</div>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={i} className="cx-msg cx-msg-assistant">
+                  <div className="cx-assistant-label">
+                    <span className="cx-avatar" aria-hidden="true">
+                      <Sparkles size={13} strokeWidth={2.25} />
+                    </span>
+                    Aquavoy
+                  </div>
+                  <div className="cx-assistant-text">
+                    {m.content ? (
+                      renderMarkdown(m.content)
+                    ) : busy && i === messages.length - 1 ? (
+                      <span
+                        className="typing-dots"
+                        role="status"
+                        aria-label="Aquavoy is thinking"
+                      >
+                        <span />
+                        <span />
+                        <span />
+                      </span>
+                    ) : (
+                      ""
+                    )}
+                  </div>
+                  {trace && (
                     <>
                       <button
-                        className="btn"
-                        onClick={() => confirm(a.id)}
-                        disabled={busy}
-                        aria-label={`Confirm: ${a.summary}`}
+                        type="button"
+                        className="trace-row"
+                        onClick={() => toggleTrace(i)}
+                        aria-expanded={open}
+                        aria-controls={panelId}
+                        aria-label={`${open ? "Hide" : "Show"} agent trace: ${toolCount} tool${
+                          toolCount !== 1 ? "s" : ""
+                        }, ${(trace.latencyMs / 1000).toFixed(1)} seconds`}
                       >
-                        {busy ? <span className="spinner" aria-hidden="true" /> : "Confirm"}
+                        <span className="trace-caret" aria-hidden="true">
+                          {open ? "▾" : "▸"}
+                        </span>
+                        <span className="trace-summary">
+                          {toolCount} tool{toolCount !== 1 ? "s" : ""}
+                          {" · "}
+                          {(trace.latencyMs / 1000).toFixed(1)} s
+                        </span>
                       </button>
-                      <button
-                        className="btn ghost"
-                        onClick={() => cancelAction(a.id)}
-                        disabled={busy}
-                        aria-label={`Cancel: ${a.summary}`}
-                      >
-                        Cancel
-                      </button>
+                      {open && (
+                        <div
+                          className="trace-panel"
+                          role="region"
+                          id={panelId}
+                          aria-label="Agent trace detail"
+                        >
+                          {toolCount === 0 ? (
+                            <p className="trace-empty">No tools were called this turn.</p>
+                          ) : (
+                            <ul className="trace-tools">
+                              {trace.toolCalls.map((tc, ti) => (
+                                <li
+                                  key={ti}
+                                  className={`trace-tool${tc.error ? " error" : ""}`}
+                                >
+                                  <div className="trace-tool-head">
+                                    <span className="trace-tool-name">{tc.name}</span>
+                                    <span className="trace-tool-latency">
+                                      {(tc.latencyMs / 1000).toFixed(2)} s
+                                    </span>
+                                  </div>
+                                  <div className="trace-tool-args">{tc.argsSummary}</div>
+                                  {tc.error ? (
+                                    <div className="trace-tool-error" role="alert">
+                                      {tc.error}
+                                    </div>
+                                  ) : (
+                                    <div className="trace-tool-result">
+                                      {tc.resultSummary}
+                                    </div>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
                     </>
                   )}
-                  {confirmed && reversible && (
-                    <button
-                      className="btn danger"
-                      onClick={() => undo(a.id)}
-                      disabled={busy}
-                      aria-label={`Undo: ${a.summary}`}
-                    >
-                      {busy ? <span className="spinner" aria-hidden="true" /> : "Undo"}
-                    </button>
-                  )}
-                  {confirmed && !reversible && (
-                    <span className="action-note" role="status">
-                      sent — cannot undo
-                    </span>
-                  )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
 
-      {!isEmpty && <div className="composer-dock">{composerCard}</div>}
-      <div className="chat-credit">
-        Powered by{" "}
-        <a href="https://qualiasolutions.net" target="_blank" rel="noopener noreferrer">
-          Qualia Solutions
-        </a>
+            {pending.length > 0 && (
+              <div className="action-stack" role="region" aria-label="Pending actions">
+                {actionError && (
+                  <div className="notice err" role="alert">
+                    {actionError}
+                  </div>
+                )}
+                {pending.map((a) => {
+                  const cardBusy = actionBusy === a.id;
+                  const confirmed = a.status === "confirmed";
+                  const reversible = REVERSIBLE_TOOLS.has(a.tool);
+                  return (
+                    <div
+                      key={a.id}
+                      className={`action-card${confirmed ? " confirmed" : ""}`}
+                      role="group"
+                      aria-label={`Pending action: ${a.summary}`}
+                    >
+                      <div className="action-head">
+                        <span className="action-tag">
+                          {confirmed ? "Confirmed" : "Confirm needed"}
+                        </span>
+                        <span className="action-tool">{a.tool}</span>
+                      </div>
+                      <p className="action-summary">{a.summary}</p>
+                      <span className="action-id">id {a.id}</span>
+                      <div className="action-actions">
+                        {!confirmed && (
+                          <>
+                            <button
+                              className="btn"
+                              onClick={() => confirm(a.id)}
+                              disabled={cardBusy}
+                              aria-label={`Confirm: ${a.summary}`}
+                            >
+                              {cardBusy ? <span className="spinner" aria-hidden="true" /> : "Confirm"}
+                            </button>
+                            <button
+                              className="btn ghost"
+                              onClick={() => cancelAction(a.id)}
+                              disabled={cardBusy}
+                              aria-label={`Cancel: ${a.summary}`}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                        {confirmed && reversible && (
+                          <button
+                            className="btn danger"
+                            onClick={() => undo(a.id)}
+                            disabled={cardBusy}
+                            aria-label={`Undo: ${a.summary}`}
+                          >
+                            {cardBusy ? <span className="spinner" aria-hidden="true" /> : "Undo"}
+                          </button>
+                        )}
+                        {confirmed && !reversible && (
+                          <span className="action-note" role="status">
+                            sent — cannot undo
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Sticky bottom composer ── */}
+      <div className="cx-composer-region">
+        <div className="cx-col">
+          {isEmpty && error && (
+            <div className="notice err" role="alert">
+              {error}
+            </div>
+          )}
+          <form
+            className="cx-composer"
+            onSubmit={(e) => {
+              e.preventDefault();
+              send();
+            }}
+          >
+            <textarea
+              ref={taRef}
+              rows={1}
+              className="cx-composer-input"
+              placeholder={`Message Aquavoy as ${identity}…`}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              aria-label="Type your message"
+            />
+            <button
+              type="submit"
+              className="cx-send"
+              disabled={busy || !input.trim()}
+              aria-label="Send message"
+            >
+              {busy ? (
+                <span className="spinner" aria-hidden="true" />
+              ) : (
+                <ArrowUp size={18} strokeWidth={2.5} aria-hidden="true" />
+              )}
+            </button>
+          </form>
+          <div className="cx-credit">
+            Powered by{" "}
+            <a href="https://qualiasolutions.net" target="_blank" rel="noopener noreferrer">
+              Qualia Solutions
+            </a>
+          </div>
+        </div>
       </div>
     </main>
   );

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Inbox as InboxIcon, MailOpen } from "lucide-react";
 import { MAILBOXES, GROUPS, DOMAIN_DEFAULTS } from "@/lib/mailboxes";
 
 /* ── API types (contract with backend agent) ── */
@@ -33,6 +33,28 @@ interface ScheduledEmail {
   /* Optional — a sibling agent is adding this to the API row.
      Absent / "none" / unknown all mean a one-time send. */
   recurrence?: "none" | "daily" | "weekly" | "monthly" | null;
+}
+
+/* Inbox reader — matches GET /api/mail/messages and /api/mail/message
+   per the shared API contract. Every field is read defensively so an
+   absent / odd value never crashes the render. */
+interface EmailSummary {
+  uid: number;
+  date: string | null;
+  from: string;
+  to: string;
+  subject: string;
+  seen: boolean | null;
+}
+
+interface EmailDetail {
+  uid: number;
+  from: string;
+  to: string;
+  cc: string;
+  date: string | null;
+  subject: string;
+  body: string;
 }
 
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -118,6 +140,16 @@ export default function Emails() {
   const [scheduledLoading, setScheduledLoading] = useState(true);
   const [scheduledError, setScheduledError] = useState<string | null>(null);
 
+  /* ── Inbox reader state ── */
+  const [readerMailbox, setReaderMailbox] = useState<string>("");
+  const [messages, setMessages] = useState<EmailSummary[]>([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [messagesError, setMessagesError] = useState<string | null>(null);
+  const [selectedUid, setSelectedUid] = useState<number | null>(null);
+  const [detail, setDetail] = useState<EmailDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
   const fetchScheduled = useCallback(async () => {
     try {
       const res = await fetch("/api/mail/scheduled");
@@ -151,6 +183,49 @@ export default function Emails() {
     }
   }
 
+  /* Load the most recent envelopes for the selected reader mailbox. */
+  const fetchMessages = useCallback(async (mailbox: string) => {
+    if (!mailbox) return;
+    setMessagesLoading(true);
+    setMessagesError(null);
+    setMessages([]);
+    setSelectedUid(null);
+    setDetail(null);
+    setDetailError(null);
+    try {
+      const res = await fetch(
+        `/api/mail/messages?mailbox=${encodeURIComponent(mailbox)}`,
+      );
+      const json = (await res.json()) as Envelope<EmailSummary[]>;
+      if (!json.ok) throw new Error(json.error);
+      setMessages(Array.isArray(json.data) ? json.data : []);
+    } catch (e) {
+      setMessagesError((e as Error).message);
+    } finally {
+      setMessagesLoading(false);
+    }
+  }, []);
+
+  /* Open one message in the detail pane. */
+  async function openMessage(mailbox: string, uid: number) {
+    setSelectedUid(uid);
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetail(null);
+    try {
+      const res = await fetch(
+        `/api/mail/message?mailbox=${encodeURIComponent(mailbox)}&uid=${uid}`,
+      );
+      const json = (await res.json()) as Envelope<EmailDetail>;
+      if (!json.ok) throw new Error(json.error);
+      setDetail(json.data);
+    } catch (e) {
+      setDetailError((e as Error).message);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
   const fetchAccounts = useCallback(async () => {
     try {
       const res = await fetch("/api/mail/accounts");
@@ -179,9 +254,25 @@ export default function Emails() {
     load();
   }, [fetchAccounts, fetchScheduled]);
 
+  /* When a reader mailbox is picked, pull its recent envelopes. Fetching in the
+     change handler (not an effect) avoids the cascading-render path that
+     synchronous setState inside an effect triggers. */
+  function selectReaderMailbox(mailbox: string) {
+    setReaderMailbox(mailbox);
+    if (mailbox) fetchMessages(mailbox);
+  }
+
   function findAccount(address: string): MailAccount | undefined {
     return accounts.find((a) => a.email.toLowerCase() === address.toLowerCase());
   }
+
+  /* Mailboxes offered in the reader selector: prefer the connected accounts the
+     page already fetched; fall back to every known company mailbox so the reader
+     is usable before any account is verified. */
+  const readerOptions: string[] =
+    accounts.length > 0
+      ? accounts.map((a) => a.email)
+      : MAILBOXES.map((m) => m.address);
 
   function openConnectForm(email: string, group: "aquavoy.com" | "faialbv.com") {
     setOpenForm(email);
@@ -554,6 +645,153 @@ export default function Emails() {
           ))}
         </>
       )}
+
+      {/* ── Inbox reader: pick a mailbox, read its recent mail ── */}
+      <section className="panel inbox" style={{ marginTop: "2rem" }}>
+        <div className="inbox-bar">
+          <h2 className="panel-h" style={{ margin: 0 }}>
+            Inbox
+          </h2>
+          <label className="lbl" htmlFor="reader-mailbox" style={{ margin: 0, whiteSpace: "nowrap" }}>
+            Mailbox
+          </label>
+          <select
+            id="reader-mailbox"
+            className="inbox-select"
+            value={readerMailbox}
+            onChange={(e) => selectReaderMailbox(e.target.value)}
+          >
+            <option value="">Select a mailbox…</option>
+            {readerOptions.map((address) => (
+              <option key={address} value={address}>
+                {address}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {!readerMailbox ? (
+          <div className="empty">
+            <InboxIcon className="empty-icon" size={28} strokeWidth={1.5} aria-hidden="true" />
+            Pick a mailbox to read its recent emails.
+            <span className="empty-hint">The newest 20 messages load on select.</span>
+          </div>
+        ) : (
+          <div className="inbox-grid">
+            {/* ── Left: message list ── */}
+            <div className="inbox-list" aria-label="Recent emails">
+              {messagesLoading ? (
+                <div aria-busy="true" aria-label="Loading emails">
+                  {[0, 1, 2, 3, 4, 5].map((i) => (
+                    <div className="skeleton-row" key={i}>
+                      <span className="skeleton icon" />
+                      <span className="skeleton" style={{ width: `${72 - i * 8}%` }} />
+                      <span className="skeleton meta" />
+                    </div>
+                  ))}
+                </div>
+              ) : messagesError ? (
+                <div className="empty">
+                  <div>{messagesError}</div>
+                  <button
+                    className="btn ghost sm"
+                    style={{ marginTop: "var(--sp-3)" }}
+                    onClick={() => fetchMessages(readerMailbox)}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : messages.length === 0 ? (
+                <div className="empty">
+                  <MailOpen className="empty-icon" size={28} strokeWidth={1.5} aria-hidden="true" />
+                  No emails.
+                </div>
+              ) : (
+                <ul className="inbox-rows" role="listbox" aria-label={`Emails in ${readerMailbox}`}>
+                  {messages.map((m) => {
+                    const unread = m.seen === false;
+                    const active = selectedUid === m.uid;
+                    return (
+                      <li key={m.uid}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={active}
+                          className={`inbox-row${active ? " active" : ""}${unread ? " unread" : ""}`}
+                          onClick={() => openMessage(readerMailbox, m.uid)}
+                        >
+                          <span className="inbox-dot" aria-hidden="true" />
+                          <span className="inbox-row-main">
+                            <span className="inbox-from">{m.from || "(unknown sender)"}</span>
+                            <span className="inbox-subject">{m.subject || "(no subject)"}</span>
+                          </span>
+                          <span className="inbox-date">{m.date ? fmtAmsterdam(m.date) : "—"}</span>
+                          {unread && <span className="sr-only">Unread</span>}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+
+            {/* ── Right: message detail ── */}
+            <div className="inbox-detail" aria-live="polite">
+              {detailLoading ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+                  <span className="skeleton" style={{ width: "70%", height: "1.2rem" }} />
+                  <span className="skeleton" style={{ width: "50%" }} />
+                  <span className="skeleton" style={{ width: "100%", height: "8rem", marginTop: "var(--sp-3)" }} />
+                </div>
+              ) : detailError ? (
+                <div className="empty">
+                  <div>{detailError}</div>
+                  {selectedUid !== null && (
+                    <button
+                      className="btn ghost sm"
+                      style={{ marginTop: "var(--sp-3)" }}
+                      onClick={() => openMessage(readerMailbox, selectedUid)}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              ) : detail ? (
+                <article className="inbox-message">
+                  <h3 className="inbox-msg-subject">{detail.subject || "(no subject)"}</h3>
+                  <dl className="inbox-msg-head">
+                    <div className="inbox-msg-field">
+                      <dt>From</dt>
+                      <dd>{detail.from || "—"}</dd>
+                    </div>
+                    <div className="inbox-msg-field">
+                      <dt>To</dt>
+                      <dd>{detail.to || "—"}</dd>
+                    </div>
+                    {detail.cc && (
+                      <div className="inbox-msg-field">
+                        <dt>Cc</dt>
+                        <dd>{detail.cc}</dd>
+                      </div>
+                    )}
+                    <div className="inbox-msg-field">
+                      <dt>Date</dt>
+                      <dd>{detail.date ? fmtAmsterdam(detail.date) : "—"}</dd>
+                    </div>
+                  </dl>
+                  <div className="inbox-msg-body">{detail.body || "(no content)"}</div>
+                </article>
+              ) : (
+                <div className="empty">
+                  <MailOpen className="empty-icon" size={28} strokeWidth={1.5} aria-hidden="true" />
+                  Select an email to read it.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* ── Scheduled emails panel ── */}
       <section className="panel" style={{ marginTop: "2rem" }}>
         <h2 className="panel-h">Scheduled Emails</h2>

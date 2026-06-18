@@ -16,6 +16,7 @@ import { loadAccountWithSecretByEmail, listAccounts } from "@/lib/mail/accounts"
 import { listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
 import { scheduleTask, listTasks, cancelTask } from "@/lib/agents/scheduledTasks";
 import { listFolders, listEmails, readEmail, searchEmails } from "@/lib/mail/imap";
+import { generateInboxBriefing } from "@/lib/mail/briefing";
 
 /**
  * Tool definitions (OpenAI function-calling JSON schema) and executor for the
@@ -602,6 +603,35 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "generate_inbox_briefing",
+      description:
+        "Produce a morning/evening inbox briefing for a connected mailbox: it reads the most recent inbox messages and classifies them into important emails the user needs to read, likely spam/ads they can skip, plus a 1-2 sentence overview and a total count. Read-only and safe — needs NO confirmation. Use this when the user asks for a briefing or to triage their inbox, e.g. 'give me my inbox briefing', 'what's worth reading in my inbox', 'which emails are spam'. Returns JSON: { mailbox, total, important: [{from, subject, reason}], likelySpam: [{from, subject}], summary }. Relay the summary and the important emails (cite sender + subject); name the likely spam only briefly.",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description:
+              "The email address of the connected mailbox to brief (e.g. info@aquavoy.com).",
+          },
+          folder: {
+            type: "string",
+            description:
+              'Folder hint to brief: "inbox", "sent", "drafts", "trash", or an explicit IMAP path. Defaults to inbox.',
+          },
+          count: {
+            type: "number",
+            description: "Number of recent messages to triage (max 25, default 20).",
+          },
+        },
+        required: ["mailbox"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ── Slim DriveItem projection for tool results ───────────────
@@ -1091,6 +1121,29 @@ export async function executeTool(
         }
         const folders = await listFolders(mailbox);
         return JSON.stringify(folders);
+      }
+
+      case "generate_inbox_briefing": {
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        if (!mailbox) return JSON.stringify({ error: "mailbox (email address) is required" });
+        const acct5 = await loadAccountWithSecretByEmail(mailbox);
+        if (!acct5) {
+          const accounts = await listAccounts();
+          return JSON.stringify({
+            error: `No connected mail account for "${mailbox}".`,
+            connected_addresses: accounts.map((a) => a.email),
+          });
+        }
+        const folder = typeof args.folder === "string" ? args.folder : undefined;
+        const limit = typeof args.count === "number" ? args.count : undefined;
+        // identity personalizes the triage prompt; it is the HMAC-verified session
+        // principal passed in by the caller, never a value the model supplied.
+        const identity =
+          sessionPrincipal === "Wency" || sessionPrincipal === "Jeanette"
+            ? sessionPrincipal
+            : undefined;
+        const briefing = await generateInboxBriefing(mailbox, { folder, limit, identity });
+        return JSON.stringify(briefing);
       }
 
       default:

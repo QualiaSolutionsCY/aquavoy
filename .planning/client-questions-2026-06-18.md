@@ -1,25 +1,39 @@
-# Aquavoy — Questions for Wency (2026-06-18)
+# Aquavoy — Finance Build: Client Input Status (2026-06-18)
 
-Hi Wency — three quick things we need from you to start the finance build. Answers today keep us on schedule.
+**Bottom line: nothing is blocking us. We already have what we need to build.**
 
-## 1. Where should documents live — new database or organised OneDrive?
+## Already in hand — no need to ask Wency
+- **Company list** — the 8 legal entities are implemented in code
+  (`src/app/finance/page.tsx` `COMPANIES`, mirrored in `.planning/CONTEXT.md`):
+  Aquavoy Holding, Aquavoy Shipping, Aquavoy Crewing, W&D Holding, W&D Trading,
+  Denver Services BV, Faial BV, Novo Porto Scheepvaart BV.
+- **Per-company folders** — Wency already keeps these in his OneDrive, and his OneDrive
+  is connected, so the agent can read the structure directly.
+- **Real invoices** — his email + OneDrive are connected; the agent reads actual
+  invoices/receipts from there, so no need for him to send samples.
+- **Filing-by-company already exists** — the Finance tab's "scan & propose organization"
+  already instructs the agent to file each company's documents under its own folder
+  (`companyClause()` in `finance/page.tsx`). This *is* the "organize invoices by company"
+  ask — built as a propose-and-confirm flow over his existing OneDrive folders.
 
-For v1, do you want the agent to **manage its own separate database** of your documents, or simply **organise the files you already have in OneDrive**?
+## What's actually left to build — still no client input needed
+The finance **views** Wency asked for — a real **consolidated + per-company
+expense/income overview** — are not built yet. The Finance tab today organizes files but
+shows no real numbers. Remaining work: extract amount / date / type from each invoice →
+index it per company in Supabase → render per-entity and consolidated totals. Files stay
+in his OneDrive; the index sits on top (hybrid — see internal note).
 
-*Why it matters: this single choice defines the entire files and finance architecture, so we want it locked before we build.*
-
-## 2. Company structure + a few sample invoices
-
-Could you send the **legal-entity structure** — AquaVoy Holding (Shipping, Crewing), W&D Holding (Trading), Denver Services, Novo Porto, Faial Bay, plus the dormant Bulgaria and Portugal companies — along with **a handful of sample invoices**?
-
-*Why it matters: the agent uses these to learn how to classify each document to the right company.*
-
-## 3. What should we name the agent?
-
-Have you settled on a **name for the agent**?
-
-*Why it matters: we need it locked before wiring up the voice agent and labelling it across the UI.*
+## Optional (nice, not blocking)
+Confirm his OneDrive folder names match the 8 company names so the agent files into the
+existing folders rather than creating new ones — though the agent can also just list his
+folders and map automatically.
 
 ---
 
-Thanks Wency — even short answers to these three unblock us straight away.
+### Internal note
+- **Agent name:** parked at Wency's request — revisit before the voice agent.
+- **DB-vs-OneDrive:** resolved as an engineering decision — **hybrid**. OneDrive stays the
+  document store (filing-by-company already built); Supabase holds the finance
+  index/ledger that powers the expense/income views. Rationale: consolidated/per-company
+  finance is impossible from folders alone, and Wency requires files stay in OneDrive +
+  exportable. Pending: lock as **ADR-005**.

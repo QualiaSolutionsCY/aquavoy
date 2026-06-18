@@ -652,13 +652,26 @@ async function extractText(
     return truncate(result.value);
   }
 
-  // .pdf — pdf-parse v2 uses a class-based API
+  // .pdf — pdf-parse v2 uses a class-based API.
+  // Wrapped so the read_file tool ALWAYS returns a non-empty, informative string
+  // to the model: a parse failure (password-protected / corrupted / unsupported)
+  // or an empty result (scanned, image-only PDF) must never surface as "no
+  // response". Both branches return a human-readable sentinel instead of throwing
+  // or returning "".
   if (lower.endsWith(".pdf")) {
-    const { PDFParse } = await import("pdf-parse");
-    const buf = new Uint8Array(await response.arrayBuffer());
-    const parser = new PDFParse({ data: buf });
-    const result = await parser.getText();
-    return truncate(result.text);
+    try {
+      const { PDFParse } = await import("pdf-parse");
+      const buf = new Uint8Array(await response.arrayBuffer());
+      const parser = new PDFParse({ data: buf });
+      const result = await parser.getText();
+      if (!result.text || !result.text.trim()) {
+        return `[The PDF "${name}" contains no extractable text — it is most likely a scanned image. Text/OCR extraction is not available for scanned PDFs yet.]`;
+      }
+      return truncate(result.text);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return `[Could not read the PDF "${name}": ${message}. It may be password-protected, corrupted, or in an unsupported format.]`;
+    }
   }
 
   // .xlsx / .xls — extract all sheets as CSV

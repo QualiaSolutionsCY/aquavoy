@@ -5,6 +5,12 @@ import { getPrincipal } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/* The agent tool-loop (up to MAX_TOOL_ITERATIONS OneDrive/web calls) runs BEFORE
+   the first streamed byte. Tool-heavy turns — e.g. the Finance "scan & propose"
+   organization request — exceed Vercel's short default function timeout, so the
+   streamed reply never starts and the page shows no response. Match the 120s
+   stream-header window in lib/openrouter/client.ts with headroom. */
+export const maxDuration = 300;
 
 const ROLES = new Set(["user", "assistant", "system"]);
 

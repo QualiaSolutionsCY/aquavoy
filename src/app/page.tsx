@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import type { PendingAction } from "@/lib/agents/pendingActions";
-import type { AgentTrace, Provider } from "@/lib/agents/traces";
+import type { AgentTrace } from "@/lib/agents/traces";
 
 type Principal = "Wency" | "Jeanette";
 
@@ -135,17 +135,6 @@ function renderMarkdown(text: string): React.ReactNode {
       </span>
     );
   });
-}
-
-/* Human-readable model label for the trace disclosure row (REQ-13).
-   Gemini Flash collapses the long slug; OpenRouter shows the model's last
-   path segment (e.g. "anthropic/claude-3.5" → "claude-3.5"). */
-function friendlyModel(provider: Provider, model: string): string {
-  if (provider === "gemini") {
-    return model.toLowerCase().includes("flash") ? "Gemini Flash" : "Gemini";
-  }
-  const slug = model.split("/").pop() ?? model;
-  return slug || "OpenRouter";
 }
 
 /** Soft-fail log for fire-and-forget enhancement paths — dev console only, never
@@ -782,17 +771,13 @@ export default function Chat() {
                     aria-controls={panelId}
                     aria-label={`${open ? "Hide" : "Show"} agent trace: ${toolCount} tool${
                       toolCount !== 1 ? "s" : ""
-                    }, ${friendlyModel(trace.provider, trace.model)}, ${(
-                      trace.latencyMs / 1000
-                    ).toFixed(1)} seconds`}
+                    }, ${(trace.latencyMs / 1000).toFixed(1)} seconds`}
                   >
                     <span className="trace-caret" aria-hidden="true">
                       {open ? "▾" : "▸"}
                     </span>
                     <span className="trace-summary">
                       {toolCount} tool{toolCount !== 1 ? "s" : ""}
-                      {" · "}
-                      {friendlyModel(trace.provider, trace.model)}
                       {" · "}
                       {(trace.latencyMs / 1000).toFixed(1)} s
                     </span>
@@ -826,11 +811,6 @@ export default function Chat() {
                           ))}
                         </ul>
                       )}
-                      <div className="trace-tokens">
-                        {trace.promptTokens + trace.completionTokens} tokens
-                        {" · "}
-                        {trace.promptTokens} in / {trace.completionTokens} out
-                      </div>
                     </div>
                   )}
                 </>

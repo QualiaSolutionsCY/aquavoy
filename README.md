@@ -55,6 +55,7 @@ Useful scripts:
 
 ```bash
 npm run typecheck   # tsc --noEmit
+npm run lint        # eslint .
 npm run test        # vitest run
 ```
 

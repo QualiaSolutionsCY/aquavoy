@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 /* ── Types ── */
@@ -328,9 +329,9 @@ export default function Prep() {
                   style={{ fontSize: "0.8125rem", padding: "var(--sp-2) var(--sp-3)" }}
                 >
                   No mail account connected.{" "}
-                  <a href="/emails" style={{ fontWeight: 600 }}>
+                  <Link href="/emails" style={{ fontWeight: 600 }}>
                     Connect a mailbox first
-                  </a>
+                  </Link>
                 </div>
               )}
 

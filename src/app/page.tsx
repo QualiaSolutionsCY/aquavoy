@@ -1,11 +1,48 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import {
+  ArrowUp,
+  FileText,
+  Globe,
+  History,
+  Mail,
+  Plus,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import type { PendingAction } from "@/lib/agents/pendingActions";
-import type { AgentTrace, Provider } from "@/lib/agents/traces";
+import type { AgentTrace } from "@/lib/agents/traces";
 
 type Principal = "Wency" | "Jeanette";
+
+/* Bolt-style hero suggestion chips. Each fires a REAL Aquavoy capability —
+   web search, OneDrive file lookup, crew email prep — so nothing on the
+   landing surface is decorative. */
+const SUGGESTIONS: { icon: typeof Globe; label: string; prompt: string }[] = [
+  {
+    icon: Globe,
+    label: "Search the web",
+    prompt: "Search the web for today's top inland-waterway shipping and logistics headlines.",
+  },
+  {
+    icon: FileText,
+    label: "Find a file",
+    prompt: "Find my most recently modified files in OneDrive and list them.",
+  },
+  {
+    icon: Mail,
+    label: "Draft an email",
+    prompt: "Help me draft a short email to a crew member about a schedule change.",
+  },
+  {
+    icon: Sparkles,
+    label: "What can you do?",
+    prompt: "What can you help me with? List your capabilities briefly.",
+  },
+];
 
 /* Tools whose confirmed effect can be reversed (ADR-003 §5). `send_email`
    is excluded — a sent message cannot be recalled. */
@@ -100,17 +137,6 @@ function renderMarkdown(text: string): React.ReactNode {
   });
 }
 
-/* Human-readable model label for the trace disclosure row (REQ-13).
-   Gemini Flash collapses the long slug; OpenRouter shows the model's last
-   path segment (e.g. "anthropic/claude-3.5" → "claude-3.5"). */
-function friendlyModel(provider: Provider, model: string): string {
-  if (provider === "gemini") {
-    return model.toLowerCase().includes("flash") ? "Gemini Flash" : "Gemini";
-  }
-  const slug = model.split("/").pop() ?? model;
-  return slug || "OpenRouter";
-}
-
 /** Soft-fail log for fire-and-forget enhancement paths — dev console only, never
  *  surfaced in the production browser console (LOW-1). */
 function devWarn(message: string, err: unknown): void {
@@ -124,6 +150,7 @@ export default function Chat() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
   // Current thread id — "New chat" rotates it; old threads stay stored
   // and remain reachable through the agent's recall_memory tool.
   const sessionRef = useRef<string>(crypto.randomUUID());
@@ -158,6 +185,14 @@ export default function Chat() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  // Grow the composer with its content (bolt-style), capped at 40dvh.
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, window.innerHeight * 0.4)}px`;
+  }, [input]);
 
   // Close history panel on Escape key
   useEffect(() => {
@@ -354,8 +389,8 @@ export default function Chat() {
     return runAction(id, "/api/actions/undo", true);
   }
 
-  async function send() {
-    const text = input.trim();
+  async function send(forced?: string) {
+    const text = (forced ?? input).trim();
     if (!text || busy || !identity) return;
     setError(null);
     setInput("");
@@ -514,6 +549,54 @@ export default function Chat() {
     );
   }
 
+  // Bolt-style hero shows only on a fresh thread (greeting alone, not mid-send).
+  const isEmpty = messages.length <= 1 && !busy;
+
+  // Single composer used in both surfaces: centered in the hero, docked in-thread.
+  const composerCard = (
+    <form
+      className="composer-card"
+      onSubmit={(e) => {
+        e.preventDefault();
+        send();
+      }}
+    >
+      <textarea
+        ref={taRef}
+        rows={1}
+        className="composer-input"
+        placeholder={`Message Aquavoy as ${identity}…`}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            send();
+          }
+        }}
+        aria-label="Type your message"
+      />
+      <div className="composer-foot">
+        <span className="identity-chip" title={`Signed in as ${identity}`}>
+          <span className="identity-dot" aria-hidden="true" />
+          {identity}
+        </span>
+        <button
+          type="submit"
+          className="composer-send"
+          disabled={busy || !input.trim()}
+          aria-label="Send message"
+        >
+          {busy ? (
+            <span className="spinner" aria-hidden="true" />
+          ) : (
+            <ArrowUp size={18} strokeWidth={2.5} aria-hidden="true" />
+          )}
+        </button>
+      </div>
+    </form>
+  );
+
   return (
     <main className="chat-wrap">
       <div className="chat-header">
@@ -525,7 +608,7 @@ export default function Chat() {
         </div>
         <div className="row">
           <button className="btn" onClick={newChat} aria-label="Start a new chat thread">
-            + New chat
+            <Plus size={16} aria-hidden="true" /> New chat
           </button>
           <button
             className="btn ghost"
@@ -533,14 +616,14 @@ export default function Chat() {
             aria-label={historyOpen ? "Close chat history" : "Browse chat history"}
             aria-expanded={historyOpen}
           >
-            History
+            <History size={16} aria-hidden="true" /> History
           </button>
           <button
             className="btn ghost"
             onClick={clearMemory}
             aria-label="Clear conversation memory"
           >
-            Clear memory
+            <Trash2 size={16} aria-hidden="true" /> Clear
           </button>
         </div>
       </div>
@@ -565,7 +648,7 @@ export default function Chat() {
               onClick={() => setHistoryOpen(false)}
               aria-label="Close history panel"
             >
-              &#x2715;
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
 
@@ -622,6 +705,36 @@ export default function Chat() {
         </div>
       )}
 
+      {isEmpty ? (
+        <div className="chat-hero">
+          <div className="hero-rays" aria-hidden="true" />
+          <div className="hero-inner">
+            <h2 className="hero-title">What can I help with, {identity}?</h2>
+            <p className="hero-sub">
+              Ask anything — I can search the web, work with your OneDrive files, and
+              prep crew email.
+            </p>
+            {composerCard}
+            <div className="suggest-row">
+              {SUGGESTIONS.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <button
+                    key={s.label}
+                    type="button"
+                    className="suggest-chip"
+                    onClick={() => send(s.prompt)}
+                    disabled={busy}
+                  >
+                    <Icon size={15} aria-hidden="true" />
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="thread" ref={scrollRef} role="log" aria-label="Chat messages">
         {messages.map((m, i) => {
           const trace = m.trace;
@@ -658,17 +771,13 @@ export default function Chat() {
                     aria-controls={panelId}
                     aria-label={`${open ? "Hide" : "Show"} agent trace: ${toolCount} tool${
                       toolCount !== 1 ? "s" : ""
-                    }, ${friendlyModel(trace.provider, trace.model)}, ${(
-                      trace.latencyMs / 1000
-                    ).toFixed(1)} seconds`}
+                    }, ${(trace.latencyMs / 1000).toFixed(1)} seconds`}
                   >
                     <span className="trace-caret" aria-hidden="true">
                       {open ? "▾" : "▸"}
                     </span>
                     <span className="trace-summary">
                       {toolCount} tool{toolCount !== 1 ? "s" : ""}
-                      {" · "}
-                      {friendlyModel(trace.provider, trace.model)}
                       {" · "}
                       {(trace.latencyMs / 1000).toFixed(1)} s
                     </span>
@@ -702,11 +811,6 @@ export default function Chat() {
                           ))}
                         </ul>
                       )}
-                      <div className="trace-tokens">
-                        {trace.promptTokens + trace.completionTokens} tokens
-                        {" · "}
-                        {trace.promptTokens} in / {trace.completionTokens} out
-                      </div>
                     </div>
                   )}
                 </>
@@ -715,6 +819,7 @@ export default function Chat() {
           );
         })}
       </div>
+      )}
 
       {pending.length > 0 && (
         <div className="action-stack" role="region" aria-label="Pending actions">
@@ -785,29 +890,7 @@ export default function Chat() {
         </div>
       )}
 
-      <div className="composer">
-        <textarea
-          rows={1}
-          placeholder={`Message Aquavoy as ${identity}…`}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          aria-label="Type your message"
-        />
-        <button
-          className="btn"
-          onClick={send}
-          disabled={busy || !input.trim()}
-          aria-label="Send message"
-        >
-          {busy ? <span className="spinner" aria-hidden="true" /> : "Send"}
-        </button>
-      </div>
+      {!isEmpty && <div className="composer-dock">{composerCard}</div>}
       <div className="chat-credit">
         Powered by{" "}
         <a href="https://qualiasolutions.net" target="_blank" rel="noopener noreferrer">

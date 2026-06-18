@@ -61,8 +61,29 @@ function renderInline(text: string): React.ReactNode[] {
   });
 }
 
+/* Defence against the model occasionally emitting raw HTML (e.g. a <table>
+   describing a staged action) or a stray leading token. We never render HTML;
+   this strips RECOGNISED HTML element tags down to readable text so the chat
+   never shows raw <table> markup. Only known tags match, so prose like
+   "x < 5 and y > 3" is left intact. */
+const HTML_TAGS =
+  /<\/?(?:table|thead|tbody|tfoot|tr|td|th|div|span|p|ul|ol|li|h[1-6]|a|img|pre|blockquote|b|i|u|strong|em)\b[^>]*>/gi;
+
+function sanitizeModelText(text: string): string {
+  if (!text.includes("<")) return text; // fast path — the common case
+  return text
+    .replace(/^[　-鿿]+(?=\s*<)/, "") // stray leading CJK artifact before a tag
+    .replace(/<\/(?:tr|p|div|li|h[1-6]|ul|ol|blockquote)\s*>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:td|th)\s*>/gi, " — ")
+    .replace(HTML_TAGS, "")
+    .replace(/ — *(\n|$)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function renderMarkdown(text: string): React.ReactNode {
-  return text.split("\n").map((line, i) => {
+  return sanitizeModelText(text).split("\n").map((line, i) => {
     const bullet = line.match(/^(\s*)[*-]\s+(.*)$/);
     return (
       <span key={i}>

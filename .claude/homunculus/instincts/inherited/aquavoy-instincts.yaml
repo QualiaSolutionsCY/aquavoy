@@ -1,0 +1,648 @@
+# Instincts generated from https://github.com/QualiaSolutionsCY/aquavoy
+# Generated: 2026-06-17T10:31:46.269Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: aquavoy-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Commit Length
+
+## Action
+
+Write moderate-length commit messages (~76 characters)
+
+## Evidence
+
+- Average commit message length: 76 chars
+- Based on 11 commits
+
+---
+id: aquavoy-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: aquavoy-import-alias
+trigger: "when importing modules"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Import Alias
+
+## Action
+
+Use path aliases (@/, ~/) instead of relative imports
+
+## Evidence
+
+- Import analysis shows alias pattern
+- Example: import { x } from '@/lib/x'
+
+---
+id: aquavoy-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: aquavoy-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: app, lib
+
+---
+id: aquavoy-test-colocate
+trigger: "when writing tests"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Test Colocate
+
+## Action
+
+Place test file next to the source file (e.g., Button.test.tsx next to Button.tsx)
+
+## Evidence
+
+- Colocated test pattern detected
+- Tests live alongside source files
+
+---
+id: aquavoy-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Test Framework
+
+## Action
+
+Use vitest as the test framework
+
+## Evidence
+
+- Test framework detected: vitest
+- File pattern: *.test.ts
+
+---
+id: aquavoy-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: aquavoy-test-mocking
+trigger: "when mocking dependencies in tests"
+confidence: 0.75
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Test Mocking
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Mocking pattern detected: vi.mock
+- Consistent across test files
+
+---
+id: aquavoy-test-types
+trigger: "when planning tests for a feature"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Test Types
+
+## Action
+
+Write unit, integration tests to match project standards
+
+## Evidence
+
+- Test types detected: unit, integration
+- Coverage config: no
+
+---
+id: aquavoy-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~16x per month
+- Files: src/app/api/memory/sweep/*, src/lib/agents/*, src/lib/embeddings/*
+
+---
+id: aquavoy-workflow-phase-planning-and-verification
+trigger: "when doing phase planning and verification"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Workflow Phase Planning And Verification
+
+## Action
+
+Follow the phase-planning-and-verification workflow:
+1. Create or update .planning/phase-X-context.md with phase context.
+2. Write or update .planning/phase-X-plan.md for planning.
+3. Define .planning/phase-X-contract.json for contract/spec.
+4. Add .planning/phase-X-verification.md for verification notes.
+5. Record machine evaluation outputs in .planning/evals/harness-eval-*.json and .md.
+6. Update .planning/evidence/phase-X-contract-run.json with contract run results.
+7. Update .planning/qualia/state.jsonl with current state.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: .planning/phase-*-context.md, .planning/phase-*-plan.md, .planning/phase-*-contract.json
+
+---
+id: aquavoy-workflow-adr-driven-feature-scope-and-implementation
+trigger: "when doing adr driven feature scope and implementation"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Workflow Adr Driven Feature Scope And Implementation
+
+## Action
+
+Follow the adr-driven-feature-scope-and-implementation workflow:
+1. Write an ADR in .planning/decisions/ADR-XXX-*.md.
+2. Update .planning/CONTEXT.md and related phase context files.
+3. Implement or update feature code in src/lib/agents/*.ts and related files.
+4. If needed, add or update migration SQL in supabase/migrations/XXXX_*.sql.
+5. Add or update API endpoints in src/app/api/*/route.ts.
+6. Write or update tests in src/lib/agents/*.test.ts and src/app/api/*/route.test.ts.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: .planning/decisions/ADR-*-*.md, .planning/CONTEXT.md, .planning/phase-*-context.md
+
+---
+id: aquavoy-workflow-api-endpoint-implementation-with-confirmation-logic
+trigger: "when doing api endpoint implementation with confirmation logic"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Workflow Api Endpoint Implementation With Confirmation Logic
+
+## Action
+
+Follow the api-endpoint-implementation-with-confirmation-logic workflow:
+1. Add or update route handler files in src/app/api/actions/*/route.ts.
+2. Implement or update business logic in src/lib/agents/*.ts (e.g., pendingActions.ts, executeConfirmedAction.ts).
+3. Update or add types in src/lib/microsoft/types.ts or similar.
+4. Write or update tests for the endpoints and logic in src/app/api/actions/*/route.test.ts and src/lib/agents/*.test.ts.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/app/api/actions/*/route.ts, src/app/api/actions/*/route.test.ts, src/lib/agents/*.ts
+
+---
+id: aquavoy-workflow-test-driven-feature-verification
+trigger: "when doing test driven feature verification"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Workflow Test Driven Feature Verification
+
+## Action
+
+Follow the test-driven-feature-verification workflow:
+1. Write or update tests in src/lib/agents/*.test.ts for agent logic.
+2. Write or update tests in src/app/api/*/route.test.ts for API endpoints.
+3. Add or update test setup/configuration files as needed (e.g., vitest.setup.ts).
+4. Update planning/evidence or verification documents to reflect test results.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/lib/agents/*.test.ts, src/app/api/*/route.test.ts, vitest.setup.ts
+
+---
+id: aquavoy-instinct-file-naming-camelCase
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct File Naming CamelCase
+
+## Action
+
+Use camelCase for file names
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Consistent with TypeScript ecosystem
+
+---
+id: aquavoy-instinct-function-naming-camelCase
+trigger: "When defining a function"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Function Naming CamelCase
+
+## Action
+
+Name the function using camelCase
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: aquavoy-instinct-class-naming-PascalCase
+trigger: "When defining a class"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Class Naming PascalCase
+
+## Action
+
+Name the class using PascalCase
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: aquavoy-instinct-constant-naming-SCREAMING_SNAKE_CASE
+trigger: "When defining a constant"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Constant Naming SCREAMING_SNAKE_CASE
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: aquavoy-instinct-import-alias
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Import Alias
+
+## Action
+
+Use import aliases instead of relative paths
+
+## Evidence
+
+- Pattern in importStyle: alias
+
+---
+id: aquavoy-instinct-named-exports
+trigger: "When exporting from a module"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Named Exports
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in exportStyle: named
+
+---
+id: aquavoy-instinct-vitest-pattern
+trigger: "When writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Vitest Pattern
+
+## Action
+
+Use Vitest as the testing framework and place tests in files matching *.test.ts
+
+## Evidence
+
+- Pattern in testing.framework
+- Pattern in testing.filePattern
+
+---
+id: aquavoy-instinct-vi-mock-style
+trigger: "When mocking dependencies in tests"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Vi Mock Style
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Pattern in testing.mockingStyle
+
+---
+id: aquavoy-instinct-colocated-tests
+trigger: "When adding tests for a module"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Colocated Tests
+
+## Action
+
+Place test files next to the implementation (colocated)
+
+## Evidence
+
+- Pattern in architecture.testLocation: colocated
+
+---
+id: aquavoy-instinct-git-commit-prefix
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Git Commit Prefix
+
+## Action
+
+Start the commit message with a prefix such as feat, scope, test, harden, or verify
+
+## Evidence
+
+- Pattern in commits.prefixes
+- Seen in commit examples
+
+---
+id: aquavoy-instinct-git-commit-scope
+trigger: "When writing a commit message for a specific area"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Git Commit Scope
+
+## Action
+
+Use the format prefix(scope): description (e.g., feat(memory): ...)
+
+## Evidence
+
+- Seen in commit examples: feat(memory): ...
+- test(docs): ...
+
+---
+id: aquavoy-instinct-git-commit-length
+trigger: "When writing a commit message"
+confidence: 0.8
+domain: git
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Git Commit Length
+
+## Action
+
+Write a descriptive commit message (average length ~76 characters)
+
+## Evidence
+
+- Pattern in commits.averageLength
+- Seen in commit examples
+
+---
+id: aquavoy-instinct-phase-planning-workflow
+trigger: "When starting or completing a new milestone or phase"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Phase Planning Workflow
+
+## Action
+
+Create/update .planning/phase-*-context.md, plan.md, contract.json, verification.md, harness-eval-*.json/.md, evidence/phase-*-contract-run.json, and qualia/state.jsonl
+
+## Evidence
+
+- Workflow: phase-planning-and-verification
+- Files involved in workflow
+
+---
+id: aquavoy-instinct-adr-feature-workflow
+trigger: "When designing and implementing a new major feature or architectural change"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Adr Feature Workflow
+
+## Action
+
+Write an ADR, update context, implement feature code, add migrations and API endpoints, and write tests
+
+## Evidence
+
+- Workflow: adr-driven-feature-scope-and-implementation
+- Files involved in workflow
+
+---
+id: aquavoy-instinct-api-endpoint-workflow
+trigger: "When adding or modifying API endpoints for user-triggered actions"
+confidence: 0.88
+domain: workflow
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Api Endpoint Workflow
+
+## Action
+
+Add/update route handlers, business logic, types, and tests for confirmation/cancellation/undo actions
+
+## Evidence
+
+- Workflow: api-endpoint-implementation-with-confirmation-logic
+- Files involved in workflow
+
+---
+id: aquavoy-instinct-test-driven-verification-workflow
+trigger: "When verifying a new capability, fix, or closing a test coverage gap"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: QualiaSolutionsCY/aquavoy
+---
+
+# Aquavoy Instinct Test Driven Verification Workflow
+
+## Action
+
+Write/update tests for agents and API endpoints, update test setup, and reflect results in evidence/verification docs
+
+## Evidence
+
+- Workflow: test-driven-feature-verification
+- Files involved in workflow
+

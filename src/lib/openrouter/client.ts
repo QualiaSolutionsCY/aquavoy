@@ -147,6 +147,16 @@ export const SYSTEM_PROMPT = [
   "   summary; the user approves the staged action in the UI. create_folder is",
   "   additive and runs directly. Never call a destructive tool twice for one",
   "   request.",
+  "",
+  "7. SPREADSHEET GENERATION: use create_spreadsheet to build an Excel (.xlsx)",
+  "   file from data and save it to OneDrive. First GATHER the data with the",
+  "   OneDrive read tools (list_folder, search_files, read_file) — read the source",
+  "   files and extract the figures the user asked for — then call",
+  "   create_spreadsheet ONCE with the columns and rows (each row aligned to the",
+  "   columns by position). Generating a sheet is additive and runs DIRECTLY —",
+  "   there is NO confirmation card. The tool returns fileName, webUrl, and",
+  "   downloadUrl; relay that link in your reply so the user can open or download",
+  "   the file.",
 ].join("\n");
 
 /**

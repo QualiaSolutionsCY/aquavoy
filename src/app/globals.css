@@ -201,9 +201,43 @@ html, body {
   outline-offset: 2px;
 }
 
+/* ── Operator identity + sign-out ── */
+.nav-who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: var(--sp-3);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.nav-logout {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  color: var(--text-dim);
+}
+.nav-logout:hover {
+  color: var(--danger);
+  background: var(--danger-subtle);
+}
+.nav-logout:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 @media (max-width: 640px) {
   .nav-inner {
     padding: var(--sp-2) var(--sp-3);
+  }
+  .nav-who {
+    display: none;
   }
   .nav-links {
     gap: 0;

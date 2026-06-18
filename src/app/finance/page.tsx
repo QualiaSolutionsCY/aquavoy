@@ -7,15 +7,42 @@ import type { PendingAction } from "@/lib/agents/pendingActions";
 
 type Principal = "Wency" | "Jeanette";
 
+/* The eight legal entities the group's accounting revolves around. Invoices,
+   receipts, and accounting documents are filed per company. Source of truth for
+   the finance section; mirror in .planning/CONTEXT.md. */
+const COMPANIES = [
+  "Aquavoy Holding",
+  "Aquavoy Shipping",
+  "Aquavoy Crewing",
+  "W&D Holding",
+  "W&D Trading",
+  "Denver Services BV",
+  "Faial BV",
+  "Novo Porto Scheepvaart BV",
+] as const;
+
+/* Scope clause prepended to every finance instruction. With no company picked,
+   the agent organizes all eight under their own top-level folders; with one
+   picked, it works inside that company only. */
+function companyClause(company: string | null): string {
+  return company
+    ? `Work only within the company "${company}". `
+    : `The group has eight companies — organize each one's documents under its own top-level folder: ${COMPANIES.join(", ")}. `;
+}
+
 /* The one-click "Scan & propose" prompt. Phrased so the agent inspects the
    current OneDrive structure FIRST and stages moves for approval — it never
    reorganizes anything before showing the plan. */
-const SCAN_PROMPT =
-  "Help me organize my accounting files in OneDrive. Find the invoices, " +
-  "receipts, and accounting-related documents, inspect the current folder " +
-  "structure first, then propose a clean organization (e.g. by document type " +
-  "and year) and stage the moves for my approval. Do not move anything " +
-  "without showing me the plan first.";
+function buildScanPrompt(company: string | null): string {
+  return (
+    "Help me organize my accounting files in OneDrive. " +
+    companyClause(company) +
+    "Find the invoices, receipts, and accounting-related documents, inspect the " +
+    "current folder structure first, then propose a clean organization (by " +
+    "company, then document type and year) and stage the moves for my approval. " +
+    "Do not move anything without showing me the plan first."
+  );
+}
 
 /* Tools whose confirmed effect can be reversed (ADR-003 §5). Mirrors the set
    in src/app/page.tsx — copied here intentionally (the chat page owns its own
@@ -92,6 +119,7 @@ function devWarn(message: string, err: unknown): void {
 
 export default function Finance() {
   const [identity, setIdentity] = useState<Principal | null>(null);
+  const [company, setCompany] = useState<string | null>(null);
   const [instruction, setInstruction] = useState("");
   const [proposal, setProposal] = useState("");
   const [hasRun, setHasRun] = useState(false);
@@ -307,7 +335,7 @@ export default function Finance() {
         <div className="row">
           <button
             className="btn"
-            onClick={() => send(SCAN_PROMPT)}
+            onClick={() => send(buildScanPrompt(company))}
             disabled={busy}
             aria-label="Scan OneDrive and propose an organization for accounting files"
           >
@@ -328,6 +356,28 @@ export default function Finance() {
         is reorganized until you confirm it below.
       </p>
 
+      <div className="fin-companies" role="group" aria-label="Filter by company">
+        <button
+          type="button"
+          className={`fin-company-chip${company === null ? " active" : ""}`}
+          onClick={() => setCompany(null)}
+          aria-pressed={company === null}
+        >
+          All companies
+        </button>
+        {COMPANIES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            className={`fin-company-chip${company === c ? " active" : ""}`}
+            onClick={() => setCompany(c)}
+            aria-pressed={company === c}
+          >
+            {c}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div className="notice err" role="alert">
           {error}
@@ -338,7 +388,7 @@ export default function Finance() {
         className="fin-composer"
         onSubmit={(e) => {
           e.preventDefault();
-          send(instruction);
+          send(companyClause(company) + instruction);
           setInstruction("");
         }}
       >

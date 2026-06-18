@@ -1292,7 +1292,46 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   font-size: 0.9375rem;
   line-height: 1.6;
   max-width: 72ch;
+  margin: 0 0 var(--sp-4);
+}
+
+/* Company filter — scopes the agent's organization to one of the eight group
+   entities (or all). Reuses the pill aesthetic of the chat suggestion chips. */
+.fin-companies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
   margin: 0 0 var(--sp-5);
+}
+.fin-company-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0.35rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast),
+    color var(--transition-fast), transform 100ms ease;
+}
+.fin-company-chip:hover {
+  border-color: var(--text-dim);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+.fin-company-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.fin-company-chip.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .fin-composer {

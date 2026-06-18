@@ -5,6 +5,7 @@
 ## Language
 
 - **Aquavoy / Wence / Faial BV** — the same shipping entity; "Aquavoy" is the product/brand, "Faial BV" the legal entity, "Wence" the owner's shorthand. *Avoid:* treating them as separate clients.
+- **Group companies** — the eight legal entities the Finance/accounting section files documents for: **Aquavoy Holding, Aquavoy Shipping, Aquavoy Crewing, W&D Holding, W&D Trading, Denver Services BV, Faial BV, Novo Porto Scheepvaart BV**. Invoices/receipts/accounting docs are organized per company (source of truth: `COMPANIES` in `src/app/finance/page.tsx`). *Avoid:* treating "Aquavoy" as one billing entity — it spans Holding/Shipping/Crewing plus the W&D, Denver, Faial, and Novo Porto companies.
 - **Principal** — a named operator the chat scopes to (currently Wency or Jeanette); a whitelist for memory + persona, NOT authentication. *Avoid:* "user", "account", "login".
 - **Agent** — the OpenRouter/Gemini tool-loop in `lib/openrouter/client.ts` that drives all 17 tools. *Avoid:* "bot", "assistant model".
 - **Tool** — one capability in the registry (`onedriveTools.ts`), e.g. `send_email`, `delete_item`, `recall_memory`. *Avoid:* "function", "command".

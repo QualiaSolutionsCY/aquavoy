@@ -1,6 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
+import {
+  Folder, FileText, FileSpreadsheet, Image as ImageIcon, Presentation,
+  FileArchive, Music, Video, File as FileGeneric, FolderOpen,
+  type LucideIcon,
+} from "lucide-react";
 import type { DriveItem } from "@/lib/microsoft/types";
 
 interface Connection {
@@ -35,21 +40,21 @@ function fmtSize(n: number): string {
   return `${v.toFixed(i ? 1 : 0)} ${u[i]}`;
 }
 
-/* Map a drive item to a file-type glyph — gives the drive console a readable
-   iconography instead of one generic page icon for every file. */
-function fileGlyph(item: DriveItem): string {
-  if (item.isFolder) return "\u{1F4C1}"; // 📁
+/* Map a drive item to a lucide file-type icon — one consistent line-icon family
+   gives the drive console real iconography (graphics.md) instead of OS-variable
+   emoji or one generic page icon for every file. */
+function fileIconFor(item: DriveItem): LucideIcon {
+  if (item.isFolder) return Folder;
   const ext = item.name.split(".").pop()?.toLowerCase() ?? "";
   const mime = item.mimeType ?? "";
-  if (mime.startsWith("image/")) return "\u{1F5BC}️"; // 🖼️
-  if (mime.startsWith("video/")) return "\u{1F3AC}"; // 🎬
-  if (mime.startsWith("audio/")) return "\u{1F3B5}"; // 🎵
-  if (ext === "pdf") return "\u{1F4D5}"; // 📕
-  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return "\u{1F4CA}"; // 📊
-  if (["doc", "docx", "odt", "rtf"].includes(ext)) return "\u{1F4DD}"; // 📝
-  if (["ppt", "pptx", "key"].includes(ext)) return "\u{1F4FD}️"; // 📽️
-  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "\u{1F5DC}️"; // 🗜️
-  return "\u{1F4C4}"; // 📄
+  if (mime.startsWith("image/")) return ImageIcon;
+  if (mime.startsWith("video/")) return Video;
+  if (mime.startsWith("audio/")) return Music;
+  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return FileSpreadsheet;
+  if (["doc", "docx", "odt", "rtf", "pdf", "txt", "md"].includes(ext)) return FileText;
+  if (["ppt", "pptx", "key"].includes(ext)) return Presentation;
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return FileArchive;
+  return FileGeneric;
 }
 
 export default function Home() {
@@ -215,7 +220,7 @@ export default function Home() {
 
       {error && (
         <div className="notice err" role="alert">
-          Could not load — Retry{" "}
+          Couldn’t reach the drive — the request was refused.{" "}
           <button
             className="btn ghost sm"
             onClick={() => {
@@ -328,15 +333,16 @@ export default function Home() {
             ) : items.length === 0 ? (
               error ? null : (
                 <div className="empty">
-                  <span className="empty-icon" aria-hidden="true">{"\u{1F4C2}"}</span>
+                  <FolderOpen className="empty-icon" size={30} strokeWidth={1.5} aria-hidden="true" />
                   This folder is empty.
-                  <span className="empty-hint">Search for a file in the chat.</span>
+                  <span className="empty-hint">Ask the agent to find a file, or upload one.</span>
                 </div>
               )
             ) : (
               items.map((item) => {
                 const isImage = !item.isFolder && item.mimeType?.startsWith("image/");
                 const showThumb = isImage && !!item.thumbnailUrl;
+                const Icon = fileIconFor(item);
                 return (
                 <div className="item" key={item.id} role="listitem">
                   {showThumb ? (
@@ -359,7 +365,7 @@ export default function Home() {
                     />
                   ) : (
                     <span className={`file-icon${item.isFolder ? " folder" : ""}`} aria-hidden="true">
-                      {fileGlyph(item)}
+                      <Icon size={18} strokeWidth={1.75} />
                     </span>
                   )}
                   {item.isFolder ? (

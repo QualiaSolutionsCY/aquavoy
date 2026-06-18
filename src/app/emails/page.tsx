@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { CalendarClock } from "lucide-react";
 import { MAILBOXES, GROUPS, DOMAIN_DEFAULTS } from "@/lib/mailboxes";
 
 /* ── API types (contract with backend agent) ── */
@@ -265,7 +266,7 @@ export default function Emails() {
         </div>
       ) : error ? (
         <div className="empty">
-          <div>Could not load — Retry</div>
+          <div>Couldn’t reach the mailboxes — the server didn’t respond.</div>
           <button
             className="btn ghost sm"
             style={{ marginTop: "var(--sp-3)" }}
@@ -555,7 +556,7 @@ export default function Emails() {
           </div>
         ) : scheduledError ? (
           <div className="empty">
-            <div>Could not load — Retry</div>
+            <div>Couldn’t load the scheduled queue.</div>
             <button
               className="btn ghost sm"
               style={{ marginTop: "var(--sp-3)" }}
@@ -569,7 +570,11 @@ export default function Emails() {
             </button>
           </div>
         ) : scheduled.length === 0 ? (
-          <div className="empty">Ask the agent to list your emails</div>
+          <div className="empty">
+            <CalendarClock className="empty-icon" size={28} strokeWidth={1.5} aria-hidden="true" />
+            No emails scheduled.
+            <span className="empty-hint">Ask the agent to queue one for later.</span>
+          </div>
         ) : (
           <div className="list">
             {scheduled.map((item) => (

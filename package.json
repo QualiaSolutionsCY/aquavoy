@@ -17,6 +17,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.58.0",
     "imapflow": "^1.4.0",
+    "lucide-react": "^1.21.0",
     "mailparser": "^3.9.9",
     "mammoth": "^1.12.0",
     "next": "^16.0.0",

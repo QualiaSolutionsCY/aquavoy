@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Anchor, Mail } from "lucide-react";
 
 /* ── Types ── */
 
@@ -205,7 +206,7 @@ export default function Prep() {
           {crewError && (
             <div className="notice err" role="alert">
               <div>
-                <strong>Could not load — Retry</strong>{" "}
+                <strong>Couldn’t load the crew.</strong>{" "}
                 <button
                   className="btn ghost sm"
                   onClick={() => {
@@ -233,7 +234,7 @@ export default function Prep() {
           <div className="crew-list">
             {crew.length === 0 && !crewError ? (
               <div className="empty">
-                <span className="empty-icon" aria-hidden="true">⚓</span>
+                <Anchor className="empty-icon" size={28} strokeWidth={1.5} aria-hidden="true" />
                 Add a recipient to get started.
               </div>
             ) : (
@@ -318,7 +319,7 @@ export default function Prep() {
           </h2>
           {!selected ? (
             <div className="empty">
-              <span className="empty-icon" aria-hidden="true">✉️</span>
+              <Mail className="empty-icon" size={30} strokeWidth={1.5} aria-hidden="true" />
               Pick someone from the crew to prepare their 1:1 email.
               <span className="empty-hint">Their role and notes shape the draft.</span>
             </div>

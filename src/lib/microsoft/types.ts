@@ -9,6 +9,11 @@ export interface DriveItem {
   name: string;
   /** true when this item is a folder. */
   isFolder: boolean;
+  /** true when this item is a real, downloadable file (has Graph's `file` facet).
+   *  Items that are neither folder nor file — OneNote notebooks, the Personal
+   *  Vault, shortcuts — have no download URL and must NOT be rendered as
+   *  download links (doing so navigates to a raw error). */
+  isFile: boolean;
   /** child count for folders, undefined for files. */
   childCount?: number;
   /** size in bytes (files). */

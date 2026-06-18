@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import {
   Folder, FileText, FileSpreadsheet, Image as ImageIcon, Presentation,
-  FileArchive, Music, Video, File as FileGeneric, FolderOpen,
+  FileArchive, Music, Video, File as FileGeneric, FolderOpen, ExternalLink,
   type LucideIcon,
 } from "lucide-react";
 import type { DriveItem } from "@/lib/microsoft/types";
@@ -45,6 +45,9 @@ function fmtSize(n: number): string {
    emoji or one generic page icon for every file. */
 function fileIconFor(item: DriveItem): LucideIcon {
   if (item.isFolder) return Folder;
+  // Neither folder nor file (OneNote notebook / Personal Vault / shortcut) —
+  // opens in OneDrive, not a download.
+  if (!item.isFile) return ExternalLink;
   const ext = item.name.split(".").pop()?.toLowerCase() ?? "";
   const mime = item.mimeType ?? "";
   if (mime.startsWith("image/")) return ImageIcon;
@@ -378,12 +381,25 @@ export default function Home() {
                     >
                       {item.name}
                     </span>
-                  ) : (
+                  ) : item.isFile ? (
                     <a
                       className="name"
                       href={`/api/onedrive/download?connectionId=${activeConn}&itemId=${item.id}`}
                     >
                       {item.name}
+                    </a>
+                  ) : (
+                    // Special item (OneNote notebook, Personal Vault, shortcut) —
+                    // not directly downloadable. Open it in OneDrive's own UI in a
+                    // new tab instead of hitting a download that has no URL.
+                    <a
+                      className="name"
+                      href={item.webUrl ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Opens in OneDrive — this item isn’t directly downloadable"
+                    >
+                      {item.name} ↗
                     </a>
                   )}
                   <span className="meta">

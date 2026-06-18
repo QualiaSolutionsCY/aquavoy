@@ -30,6 +30,7 @@ function map(raw: GraphDriveItem): DriveItem {
     id: raw.id,
     name: raw.name,
     isFolder: Boolean(raw.folder),
+    isFile: Boolean(raw.file),
     childCount: raw.folder?.childCount,
     size: raw.size ?? 0,
     mimeType: raw.file?.mimeType,

@@ -6,11 +6,11 @@ import { useEffect, useState } from "react";
 import { LogOut, User, Menu, X } from "lucide-react";
 
 const LINKS = [
-  { href: "/", label: "Chat", short: "Chat" },
-  { href: "/emails", label: "Emails", short: "Mail" },
-  { href: "/files", label: "Files", short: "Files" },
-  { href: "/finance", label: "Finance", short: "Fin" },
-  { href: "/prep", label: "Prep", short: "Prep" },
+  { href: "/", label: "Chat" },
+  { href: "/emails", label: "Emails" },
+  { href: "/files", label: "Files" },
+  { href: "/finance", label: "Finance" },
+  { href: "/prep", label: "Prep" },
 ] as const;
 
 export default function Nav() {

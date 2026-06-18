@@ -47,6 +47,19 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --transition-fast: 150ms var(--ease-out);
   --transition-base: 200ms var(--ease-out);
+
+  /* ── Elevation (brand-tinted toward hue 220 — never pure black, per §6/§10) ── */
+  --shadow-1: 0 1px 2px oklch(0.10 0.03 220 / 0.30), 0 3px 10px oklch(0.10 0.03 220 / 0.22);
+  --shadow-2: 0 4px 12px oklch(0.08 0.03 220 / 0.42), 0 14px 34px oklch(0.08 0.03 220 / 0.30);
+}
+
+/* Tabular numerals everywhere numbers carry meaning — instrument-panel alignment.
+   Applies to all monospace metadata + a .tnum utility for inline use. */
+.meta, .trace-row, .trace-tool-latency, .trace-tokens, .trace-tool-args, .trace-tool-result,
+.history-count, .history-date, .action-id, .action-note, .badge, .stat, .crumbs,
+.footer-tag, .footer-credit, .chat-header-meta, .tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 /* ── Reduced motion ── */
@@ -473,17 +486,91 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 /* ── Empty state ── */
 .empty {
   color: var(--text-dim);
-  padding: var(--sp-7) var(--sp-4);
+  padding: var(--sp-6) var(--sp-4);
   text-align: center;
   font-size: 0.9375rem;
   line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.empty > * {
+  max-width: 44ch;
+}
+.empty-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+  opacity: 0.65;
+  margin-bottom: var(--sp-1);
 }
 .empty .empty-hint {
   display: block;
-  margin-top: var(--sp-2);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   color: var(--text-muted);
+}
+
+/* ── Status dot — semantic state, always paired with a text label (never the
+   sole signal, per design-product.md color rules) ── */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.status-dot.ok {
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--success-subtle), 0 0 7px oklch(0.72 0.14 160 / 0.45);
+}
+.status-dot.warn {
+  background: oklch(0.80 0.14 85);
+}
+.status-dot.err {
+  background: var(--danger);
+  box-shadow: 0 0 0 2px var(--danger-subtle);
+}
+
+/* ── Stat strip — glanceable operational summary (mailbox health, drive state) ── */
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+}
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  min-height: 36px;
+}
+.stat strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ── File-type icon — drive console iconography ── */
+.file-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.file-icon.folder {
+  background: var(--accent-subtle);
 }
 
 /* ================================================================
@@ -673,10 +760,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   background: var(--surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  border-left: 2px solid var(--accent);
 }
 .trace-tool.error {
-  border-left-color: var(--danger);
+  border-color: oklch(0.66 0.17 25 / 0.4);
+  background: var(--danger-subtle);
 }
 .trace-tool-head {
   display: flex;
@@ -687,7 +774,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .trace-tool-name {
   font-family: var(--font-mono);
   font-size: 0.8125rem;
-  color: var(--text);
+  color: var(--accent);
   word-break: break-word;
 }
 .trace-tool-latency {
@@ -837,7 +924,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 .history-item.active {
   background: var(--accent-subtle);
-  border-left: 3px solid var(--accent);
+}
+.history-item.active .history-title {
+  color: var(--accent);
 }
 .history-title {
   flex: 1;
@@ -1040,7 +1129,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   border-color: var(--accent);
   background: var(--surface-2);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px oklch(0 0 0 / 0.3);
+  box-shadow: var(--shadow-2);
 }
 .pick-btn:focus-visible {
   outline: 2px solid var(--accent);

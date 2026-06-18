@@ -279,7 +279,20 @@ export default function Emails() {
           </button>
         </div>
       ) : (
-        GROUPS.map((group) => (
+        <>
+          <div className="stat-strip" aria-label="Mailbox summary">
+            <span className="stat">
+              <span className="status-dot ok" aria-hidden="true" />
+              <strong>{accounts.length}</strong>/{MAILBOXES.length} mailboxes connected
+            </span>
+            {scheduled.some((s) => s.status === "pending") && (
+              <span className="stat">
+                <span className="status-dot warn" aria-hidden="true" />
+                <strong>{scheduled.filter((s) => s.status === "pending").length}</strong> scheduled pending
+              </span>
+            )}
+          </div>
+          {GROUPS.map((group) => (
           <section key={group} style={{ marginBottom: "2rem" }}>
             <h2
               style={{
@@ -307,19 +320,9 @@ export default function Emails() {
 
                       {acct ? (
                         <>
-                          <span
-                            style={{
-                              fontSize: "0.75rem",
-                              fontWeight: 600,
-                              padding: "0.2rem 0.55rem",
-                              borderRadius: "var(--radius)",
-                              background: "oklch(0.4 0.08 160 / 0.35)",
-                              color: "oklch(0.82 0.12 160)",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            Connected
-                            {acct.displayName ? ` — ${acct.displayName}` : ""}
+                          <span className="badge ok">
+                            <span className="status-dot ok" aria-hidden="true" />
+                            Connected{acct.displayName ? ` — ${acct.displayName}` : ""}
                           </span>
                           <div className="row" style={{ gap: "0.35rem" }}>
                             <button
@@ -355,16 +358,8 @@ export default function Emails() {
                         </>
                       ) : (
                         <>
-                          <span
-                            style={{
-                              fontSize: "0.75rem",
-                              padding: "0.2rem 0.55rem",
-                              borderRadius: "var(--radius)",
-                              background: "oklch(0.3 0.04 240 / 0.5)",
-                              color: "var(--text-dim)",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
+                          <span className="badge muted">
+                            <span className="status-dot" aria-hidden="true" />
                             Not connected
                           </span>
                           <button
@@ -541,7 +536,8 @@ export default function Emails() {
               })}
             </div>
           </section>
-        ))
+          ))}
+        </>
       )}
       {/* ── Scheduled emails panel ── */}
       <section className="panel" style={{ marginTop: "2rem" }}>

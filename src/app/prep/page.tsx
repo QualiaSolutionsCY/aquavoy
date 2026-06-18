@@ -232,7 +232,10 @@ export default function Prep() {
           ) : (
           <div className="crew-list">
             {crew.length === 0 && !crewError ? (
-              <div className="empty">Add a recipient to get started</div>
+              <div className="empty">
+                <span className="empty-icon" aria-hidden="true">⚓</span>
+                Add a recipient to get started.
+              </div>
             ) : (
               crew.map((r) => (
                 <div
@@ -248,12 +251,13 @@ export default function Prep() {
                   <div className="meta">{r.email}</div>
                   {r.role && <div className="meta">{r.role}</div>}
                   <button
-                    className="btn danger close"
+                    className="btn ghost close"
                     onClick={(e) => {
                       e.stopPropagation();
                       removeRecipient(r.id);
                     }}
                     aria-label={`Remove ${r.name}`}
+                    title={`Remove ${r.name}`}
                   >
                     ✕
                   </button>
@@ -264,30 +268,42 @@ export default function Prep() {
           )}
 
           <div className="add-form">
+            <label className="lbl" htmlFor="crew-name" style={{ marginTop: 0 }}>
+              Name
+            </label>
             <input
-              placeholder="Name"
+              id="crew-name"
+              placeholder="e.g. Jan de Vries"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              aria-label="Recipient name"
             />
+            <label className="lbl" htmlFor="crew-email">
+              Email
+            </label>
             <input
-              placeholder="Email"
+              id="crew-email"
+              placeholder="name@company.com"
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              aria-label="Recipient email"
             />
+            <label className="lbl" htmlFor="crew-role">
+              Role <span style={{ color: "var(--text-muted)" }}>(optional)</span>
+            </label>
             <input
-              placeholder="Role (optional)"
+              id="crew-role"
+              placeholder="e.g. Captain"
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
-              aria-label="Recipient role"
             />
+            <label className="lbl" htmlFor="crew-notes">
+              Context <span style={{ color: "var(--text-muted)" }}>(optional)</span>
+            </label>
             <input
-              placeholder="Context / notes (optional)"
+              id="crew-notes"
+              placeholder="e.g. prefers Dutch, handles night shifts"
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              aria-label="Additional context"
             />
             <button className="btn" onClick={addRecipient} disabled={!form.name || !form.email}>
               + Add to crew
@@ -301,7 +317,11 @@ export default function Prep() {
             {selected ? `Prepare email to ${selected.name}` : "Select a recipient"}
           </h2>
           {!selected ? (
-            <div className="empty">Pick someone from the crew to prepare their 1:1 email.</div>
+            <div className="empty">
+              <span className="empty-icon" aria-hidden="true">✉️</span>
+              Pick someone from the crew to prepare their 1:1 email.
+              <span className="empty-hint">Their role and notes shape the draft.</span>
+            </div>
           ) : (
             <>
               {/* From account selector */}

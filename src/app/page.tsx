@@ -434,7 +434,7 @@ export default function Chat() {
 
   // ── Learn our identity from the verified session on mount (ADR-001) ──
   // No more self-electing "Wency": the principal comes from the signed
-  // session cookie via GET /api/auth/me. On 401 we bounce to /login.
+  // session cookie via GET /api/auth/me. On 401 we redirect to /login.
   useEffect(() => {
     if (identity) return;
     (async () => {

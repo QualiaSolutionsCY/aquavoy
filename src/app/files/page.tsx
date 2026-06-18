@@ -35,6 +35,23 @@ function fmtSize(n: number): string {
   return `${v.toFixed(i ? 1 : 0)} ${u[i]}`;
 }
 
+/* Map a drive item to a file-type glyph — gives the drive console a readable
+   iconography instead of one generic page icon for every file. */
+function fileGlyph(item: DriveItem): string {
+  if (item.isFolder) return "\u{1F4C1}"; // 📁
+  const ext = item.name.split(".").pop()?.toLowerCase() ?? "";
+  const mime = item.mimeType ?? "";
+  if (mime.startsWith("image/")) return "\u{1F5BC}️"; // 🖼️
+  if (mime.startsWith("video/")) return "\u{1F3AC}"; // 🎬
+  if (mime.startsWith("audio/")) return "\u{1F3B5}"; // 🎵
+  if (ext === "pdf") return "\u{1F4D5}"; // 📕
+  if (["xls", "xlsx", "csv", "ods"].includes(ext)) return "\u{1F4CA}"; // 📊
+  if (["doc", "docx", "odt", "rtf"].includes(ext)) return "\u{1F4DD}"; // 📝
+  if (["ppt", "pptx", "key"].includes(ext)) return "\u{1F4FD}️"; // 📽️
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "\u{1F5DC}️"; // 🗜️
+  return "\u{1F4C4}"; // 📄
+}
+
 export default function Home() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [activeConn, setActiveConn] = useState<string>("");
@@ -190,7 +207,7 @@ export default function Home() {
           <div className="tag">Microsoft Graph file console</div>
         </div>
         <div className="row">
-          <a className="btn" href="/api/onedrive/connect">
+          <a className={connected ? "btn ghost" : "btn"} href="/api/onedrive/connect">
             {connected ? "+ Connect account" : "Connect OneDrive"}
           </a>
         </div>
@@ -309,10 +326,13 @@ export default function Home() {
                 </div>
               ))
             ) : items.length === 0 ? (
-              <div className="empty">
-                This folder is empty.
-                <span className="empty-hint">Search for a file in the chat.</span>
-              </div>
+              error ? null : (
+                <div className="empty">
+                  <span className="empty-icon" aria-hidden="true">{"\u{1F4C2}"}</span>
+                  This folder is empty.
+                  <span className="empty-hint">Search for a file in the chat.</span>
+                </div>
+              )
             ) : (
               items.map((item) => {
                 const isImage = !item.isFolder && item.mimeType?.startsWith("image/");
@@ -338,8 +358,8 @@ export default function Home() {
                       }}
                     />
                   ) : (
-                    <span aria-hidden="true" style={{ opacity: 0.5, fontSize: "1.25rem", display: "grid", placeItems: "center", width: 40, height: 40 }}>
-                      {item.isFolder ? "\u{1F4C1}" : "\u{1F4C4}"}
+                    <span className={`file-icon${item.isFolder ? " folder" : ""}`} aria-hidden="true">
+                      {fileGlyph(item)}
                     </span>
                   )}
                   {item.isFolder ? (

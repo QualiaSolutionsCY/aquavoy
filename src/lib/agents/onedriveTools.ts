@@ -3,9 +3,12 @@ import {
   search,
   downloadContent,
   createFolder as createFolderOnDrive,
+  uploadFile,
+  getDownloadUrl,
 } from "@/lib/microsoft/onedrive";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import type { DriveItem } from "@/lib/microsoft/types";
+import { buildSpreadsheet, type SheetSpec } from "@/lib/agents/spreadsheet";
 import { tavilySearch } from "@/lib/agents/tavily";
 import { recallMemory } from "@/lib/agents/memoryTools";
 import { stagePendingAction } from "@/lib/agents/pendingActions";
@@ -130,6 +133,61 @@ export const TOOL_DEFINITIONS = [
           },
         },
         required: ["name"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "create_spreadsheet",
+      description:
+        "Generate a professionally-formatted Excel (.xlsx) spreadsheet from structured data, save it to OneDrive, and return a link the user can view/download. WORKFLOW: first gather the data the user wants with the OneDrive read tools (list_folder, search_files, read_file), then call this ONCE with columns + rows. Generating a sheet is additive and runs DIRECTLY — there is NO confirmation card. Returns JSON with fileName, webUrl (open in OneDrive), and downloadUrl. Relay the link to the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          filename: {
+            type: "string",
+            description:
+              "File name for the spreadsheet (the .xlsx extension is added automatically if missing), e.g. 'Q1 Invoices'.",
+          },
+          sheets: {
+            type: "array",
+            description:
+              "One or more sheets. Each sheet has a tab name, the column header labels, and the data rows (one array of cells per row, aligned to columns by position).",
+            items: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description: "Sheet tab name.",
+                },
+                columns: {
+                  type: "array",
+                  description: "Column header labels.",
+                  items: { type: "string" },
+                },
+                rows: {
+                  type: "array",
+                  description:
+                    "Data rows. Each row is an array of cell values (string or number) aligned to columns by index.",
+                  items: {
+                    type: "array",
+                    items: { type: ["string", "number"] },
+                  },
+                },
+              },
+              required: ["name", "columns", "rows"],
+              additionalProperties: false,
+            },
+          },
+          parentId: {
+            type: "string",
+            description:
+              "Optional Graph item ID of the destination folder. Omit to save to the OneDrive root.",
+          },
+        },
+        required: ["filename", "sheets"],
         additionalProperties: false,
       },
     },
@@ -549,6 +607,35 @@ function slimItem(item: DriveItem) {
   };
 }
 
+// ── Validate the model's spreadsheet args into SheetSpec[] ───
+// The model supplies `sheets` as loosely-typed JSON; coerce + validate it into
+// the strict shape buildSpreadsheet expects. Returns an Error (not thrown) so
+// executeTool can surface a readable {error} string without crashing the turn.
+function parseSheets(raw: unknown): SheetSpec[] | Error {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return new Error("sheets must be a non-empty array");
+  }
+  const out: SheetSpec[] = [];
+  for (let i = 0; i < raw.length; i += 1) {
+    const s = raw[i] as Record<string, unknown> | null;
+    if (!s || typeof s !== "object") return new Error(`sheet ${i + 1} is malformed`);
+    const name = typeof s.name === "string" && s.name.trim() ? s.name : `Sheet ${i + 1}`;
+    if (!Array.isArray(s.columns) || s.columns.length === 0) {
+      return new Error(`sheet "${name}" needs a non-empty columns array`);
+    }
+    const columns = s.columns.map((c) => String(c));
+    const rawRows = Array.isArray(s.rows) ? s.rows : [];
+    const rows: (string | number)[][] = rawRows.map((row) => {
+      const cells = Array.isArray(row) ? row : [];
+      return cells.map((cell) =>
+        typeof cell === "number" ? cell : cell == null ? "" : String(cell),
+      );
+    });
+    out.push({ name, columns, rows });
+  }
+  return out;
+}
+
 // ── Text extraction from downloaded bytes ────────────────────
 
 async function extractText(
@@ -620,6 +707,7 @@ const ONEDRIVE_TOOLS = new Set([
   "search_files",
   "read_file",
   "create_folder",
+  "create_spreadsheet",
   "move_item",
   "rename_item",
   "delete_item",
@@ -745,6 +833,45 @@ export async function executeTool(
           folderName,
         );
         return JSON.stringify(slimItem(folder));
+      }
+
+      // ── OneDrive: generate spreadsheet (additive — runs DIRECTLY) ──
+      // create_spreadsheet is additive/low-risk like create_folder: it creates a
+      // NEW file and is intentionally NOT in the DESTRUCTIVE set, so it runs here
+      // rather than being staged for confirmation.
+      case "create_spreadsheet": {
+        const filename = typeof args.filename === "string" ? args.filename.trim() : "";
+        if (!filename) return JSON.stringify({ error: "filename is required" });
+
+        const sheets = parseSheets(args.sheets);
+        if (sheets instanceof Error) return JSON.stringify({ error: sheets.message });
+
+        const parentId = typeof args.parentId === "string" && args.parentId
+          ? args.parentId
+          : undefined;
+
+        const { buffer, fileName } = buildSpreadsheet({ filename, sheets });
+        const item = await uploadFile(
+          connId!,
+          parentId ? { itemId: parentId } : {},
+          fileName,
+          buffer,
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
+        // Graph exposes a short-lived pre-authenticated download URL separately
+        // from the item metadata; resolve it so the user can download directly.
+        let downloadUrl: string | null = null;
+        try {
+          downloadUrl = await getDownloadUrl(connId!, item.id);
+        } catch {
+          // Non-fatal: the webUrl still lets the user open & download from OneDrive.
+        }
+        return JSON.stringify({
+          created: true,
+          fileName: item.name,
+          webUrl: item.webUrl ?? null,
+          downloadUrl,
+        });
       }
 
       // ── Web research (Tavily) ──

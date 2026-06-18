@@ -13,8 +13,21 @@ import {
   X,
 } from "lucide-react";
 
+import RecipientAutocomplete from "@/components/RecipientAutocomplete";
 import type { PendingAction } from "@/lib/agents/pendingActions";
 import type { AgentTrace } from "@/lib/agents/traces";
+
+/* The composer offers address autocomplete only when the operator is clearly
+   typing one — i.e. the trailing whitespace-delimited token already contains an
+   `@` and at least one character after it. This keeps the assist out of the way
+   during normal prose and only surfaces it for "name@…" handles. */
+const ADDRESS_TOKEN = /(^|\s)([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]*)$/;
+
+/** The trailing address-like token of the composer text, or null. */
+function trailingAddressToken(text: string): string | null {
+  const m = text.match(ADDRESS_TOKEN);
+  return m ? m[2] : null;
+}
 
 type Principal = "Wency" | "Jeanette";
 
@@ -397,6 +410,18 @@ export default function Chat() {
     return runAction(id, "/api/actions/undo", true);
   }
 
+  /* Replace the trailing address token in the composer with the chosen full
+     address (plus a trailing space), then return focus to the textarea so the
+     operator can keep typing. Additive — never touches send behaviour. */
+  function insertAddress(email: string) {
+    setInput((prev) => {
+      const replaced = prev.replace(ADDRESS_TOKEN, (_m, lead: string) => `${lead}${email}`);
+      const base = ADDRESS_TOKEN.test(prev) ? replaced : prev;
+      return base.endsWith(" ") ? base : `${base} `;
+    });
+    requestAnimationFrame(() => taRef.current?.focus());
+  }
+
   async function send(forced?: string) {
     const text = (forced ?? input).trim();
     if (!text || busy || !identity) return;
@@ -559,6 +584,10 @@ export default function Chat() {
 
   // The greeting-only thread shows the centered empty state (not mid-send).
   const isEmpty = messages.length <= 1 && !busy;
+
+  // Address-autocomplete assist — present only while the trailing token is a
+  // "name@…" handle, so the composer offers crew/mailbox suggestions inline.
+  const addressToken = trailingAddressToken(input);
 
   return (
     <main className="cx">
@@ -897,6 +926,27 @@ export default function Chat() {
               {error}
             </div>
           )}
+          {addressToken && (
+            <div className="cx-recipient-assist">
+              <span className="cx-recipient-assist-label" id="recipient-assist-label">
+                Email suggestions
+              </span>
+              <RecipientAutocomplete
+                value={addressToken}
+                ariaLabel="Email address suggestions for the message you are composing"
+                onChange={(next) => {
+                  // Mirror edits to the trailing token back into the composer so
+                  // the textarea stays the single source of truth.
+                  setInput((prev) =>
+                    ADDRESS_TOKEN.test(prev)
+                      ? prev.replace(ADDRESS_TOKEN, (_m, lead: string) => `${lead}${next}`)
+                      : prev,
+                  );
+                }}
+                onSelect={insertAddress}
+              />
+            </div>
+          )}
           <form
             className="cx-composer"
             onSubmit={(e) => {
@@ -940,6 +990,23 @@ export default function Chat() {
           </div>
         </div>
       </div>
+
+      {/* Scoped composer-assist styles — kept out of globals.css (owned elsewhere). */}
+      <style jsx>{`
+        .cx-recipient-assist {
+          display: flex;
+          flex-direction: column;
+          gap: var(--sp-1);
+          margin-bottom: var(--sp-2);
+        }
+        .cx-recipient-assist-label {
+          font-size: 0.75rem;
+          font-weight: 500;
+          letter-spacing: 0.02em;
+          color: var(--text-muted);
+          padding-left: var(--sp-1);
+        }
+      `}</style>
     </main>
   );
 }

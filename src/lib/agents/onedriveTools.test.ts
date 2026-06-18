@@ -26,9 +26,15 @@ vi.mock("@/lib/agents/memoryTools", () => ({ recallMemory: vi.fn() }));
 // Parser libs are mocked: we test OUR extraction dispatch + read_file wiring,
 // not the vendor libraries themselves (rules/architecture.md §6).
 vi.mock("mammoth", () => ({ extractRawText: vi.fn(async () => ({ value: "DOCX TEXT" })) }));
+
+// pdf-parse's getText() result is controllable per-test so we can exercise the
+// empty-text branch (scanned/image-only PDF) without a real vendor parse.
+const { pdfTextMock } = vi.hoisted(() => ({
+  pdfTextMock: vi.fn(async () => ({ text: "PDF TEXT" })),
+}));
 vi.mock("pdf-parse", () => ({
   PDFParse: class {
-    getText = async () => ({ text: "PDF TEXT" });
+    getText = pdfTextMock;
   },
 }));
 vi.mock("xlsx", () => ({
@@ -228,6 +234,10 @@ describe("agents/onedriveTools read_file — inline document understanding (M2-P
   beforeEach(() => {
     downloadContentMock.mockReset();
     getItemMock.mockReset();
+    // Restore the default non-empty PDF parse result; the empty-text case below
+    // overrides it for a single call.
+    pdfTextMock.mockReset();
+    pdfTextMock.mockResolvedValue({ text: "PDF TEXT" });
   });
 
   it("AC1: extracts text content from a downloaded text file", async () => {
@@ -282,6 +292,27 @@ describe("agents/onedriveTools read_file — inline document understanding (M2-P
     downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "report.pdf"));
     const out = await executeTool("read_file", { itemId: "item-6" }, "conn-1");
     expect(JSON.parse(out).content).toBe("PDF TEXT");
+  });
+
+  it("A10: a scanned/image-only PDF (empty parse) returns an explanatory message, never empty", async () => {
+    // pdf-parse yields whitespace-only text for a scanned, image-only PDF.
+    pdfTextMock.mockResolvedValueOnce({ text: "   \n  " });
+    downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "contract.pdf"));
+    const out = await executeTool("read_file", { itemId: "item-scan" }, "conn-1");
+    const content = JSON.parse(out).content;
+    expect(content).toContain('The PDF "contract.pdf" contains no extractable text');
+    expect(content).toContain("scanned image");
+    expect(content.trim().length).toBeGreaterThan(0);
+  });
+
+  it("A10: a failed PDF parse (throw) returns an explanatory message, never throws or empties", async () => {
+    pdfTextMock.mockRejectedValueOnce(new Error("Password required"));
+    downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "locked.pdf"));
+    const out = await executeTool("read_file", { itemId: "item-locked" }, "conn-1");
+    const content = JSON.parse(out).content;
+    expect(content).toContain('Could not read the PDF "locked.pdf"');
+    expect(content).toContain("Password required");
+    expect(content).toContain("password-protected");
   });
 
   it("AC6: dispatches .xlsx to the xlsx branch (CSV per sheet)", async () => {

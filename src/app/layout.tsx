@@ -31,9 +31,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <a href="#main" className="skip-link">
           Skip to content
         </a>
-        <Nav />
-        <div id="main">{children}</div>
-        <Footer />
+        <div className="app-shell">
+          <Nav />
+          <div className="app-content">
+            <div id="main">{children}</div>
+            <Footer />
+          </div>
+        </div>
       </body>
     </html>
   );

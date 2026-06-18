@@ -86,15 +86,48 @@ html, body {
 /* Depth-of-water ground: faint light from above, deep teal below the fold */
 body {
   min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
   background:
     radial-gradient(120% 70% at 50% -10%, oklch(0.19 0.028 210 / 0.5), transparent 60%),
     var(--bg);
   background-attachment: fixed;
 }
-body > #main {
+
+/* App shell: left rail + content column on desktop; stacked on mobile.
+   --rail-w drives the desktop sidebar width; --topbar-h is the mobile bar height,
+   collapsed to 0 on desktop so content sits flush against the rail. */
+:root {
+  --rail-w: 240px;
+  /* Mobile sticky top bar = 44px burger + 2×sp-2 padding = 60px.
+     On desktop the bar is gone, so full-height views use 100dvh (see ≥1024px). */
+  --topbar-h: 60px;
+}
+@media (min-width: 1024px) {
+  :root {
+    --topbar-h: 0px;
+  }
+}
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+.app-content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
+  min-width: 0;
+}
+.app-content > #main {
+  flex: 1;
+}
+@media (min-width: 1024px) {
+  .app-shell {
+    flex-direction: row;
+  }
+  .app-content {
+    /* never sit under the fixed rail */
+    margin-left: var(--rail-w);
+  }
 }
 
 html, body {
@@ -124,25 +157,10 @@ html, body {
 }
 
 /* ================================================================
-   NAVIGATION
+   NAVIGATION — left rail (desktop) + burger drawer (mobile)
    ================================================================ */
-.nav {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  background: oklch(0.14 0.015 220 / 0.92);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-subtle);
-}
-.nav-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: var(--sp-3) clamp(1rem, 3vw, 3.5rem);
-  gap: var(--sp-4);
-}
+
+/* ── Shared brand lockup ── */
 .nav-brand {
   display: flex;
   align-items: center;
@@ -168,18 +186,21 @@ html, body {
   letter-spacing: -0.02em;
   color: var(--text);
 }
+
+/* ── Shared link styling (rail + drawer) ── */
 .nav-links {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--sp-1);
 }
 .nav-link {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
+  width: 100%;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   font-weight: 500;
   color: var(--text-dim);
   text-decoration: none;
@@ -201,19 +222,30 @@ html, body {
   outline-offset: 2px;
 }
 
-/* ── Operator identity + sign-out ── */
+/* ── Operator identity + sign-out (sits at the foot of rail/drawer) ── */
+.nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: auto;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border-subtle);
+}
 .nav-who {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-1);
-  margin-left: var(--sp-3);
-  padding: var(--sp-1) var(--sp-3);
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 0.75rem;
   letter-spacing: 0.02em;
+}
+.nav-who-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .nav-logout {
@@ -232,29 +264,123 @@ html, body {
   cursor: not-allowed;
 }
 
-@media (max-width: 640px) {
-  .nav-inner {
-    padding: var(--sp-2) var(--sp-3);
-  }
-  .nav-who {
-    display: none;
-  }
-  .nav-links {
-    gap: 0;
-  }
-  .nav-link {
-    padding: var(--sp-2);
-    font-size: 0.8125rem;
-  }
-  .nav-link .nav-link-label {
-    display: none;
-  }
-  .nav-link .nav-link-short {
-    display: inline;
+/* ── Desktop left rail ── */
+.nav-rail {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .nav-rail {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-5);
+    width: var(--rail-w);
+    padding: var(--sp-5) var(--sp-4);
+    background: oklch(0.14 0.015 220 / 0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-right: 1px solid var(--border-subtle);
+    overflow-y: auto;
   }
 }
-@media (min-width: 641px) {
-  .nav-link .nav-link-short {
+
+/* ── Mobile top bar + burger ── */
+.nav-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: oklch(0.14 0.015 220 / 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.nav-burger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast),
+              border-color var(--transition-fast);
+}
+.nav-burger:hover {
+  background: var(--surface);
+  border-color: var(--border-subtle);
+}
+.nav-burger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@media (min-width: 1024px) {
+  .nav-topbar {
+    display: none;
+  }
+}
+
+/* ── Mobile slide-in drawer + scrim ── */
+.nav-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: oklch(0.08 0.02 220 / 0.55);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-base), visibility var(--transition-base);
+}
+.nav-scrim.open {
+  opacity: 1;
+  visibility: visible;
+}
+.nav-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  width: min(80vw, 300px);
+  padding: var(--sp-4);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+  transform: translateX(-100%);
+  transition: transform var(--transition-base);
+  overflow-y: auto;
+}
+.nav-drawer.open {
+  transform: translateX(0);
+}
+.nav-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.nav-burger-close {
+  color: var(--text-dim);
+}
+.nav-burger-close:hover {
+  color: var(--text);
+}
+@media (min-width: 1024px) {
+  .nav-scrim,
+  .nav-drawer {
     display: none;
   }
 }
@@ -636,7 +762,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
    ================================================================ */
 .cx {
   width: 100%;
-  height: calc(100dvh - 53px); /* account for nav height */
+  height: calc(100dvh - var(--topbar-h)); /* account for mobile top bar (0 on desktop rail) */
   display: flex;
   flex-direction: column;
   position: relative;
@@ -741,7 +867,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 /* History panel floats over the column from the top. */
 .cx-overlay-col {
   position: absolute;
-  top: calc(53px + var(--sp-2));
+  top: calc(var(--topbar-h) + var(--sp-2));
   left: 0;
   right: 0;
   z-index: 15;
@@ -1512,7 +1638,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
    IDENTITY GATE
    ================================================================ */
 .gate {
-  min-height: calc(100dvh - 53px);
+  min-height: calc(100dvh - var(--topbar-h));
   display: grid;
   place-items: center;
   padding: var(--sp-5);

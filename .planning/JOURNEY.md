@@ -6,7 +6,7 @@
 
 ---
 
-## M1 — Trust & Hardening  `[CURRENT]`
+## Milestone 1 · Trust & Hardening  `[SHIPPED]`
 
 **Why now:** the app does powerful, irreversible things (send mail, delete files) with no access control and no test safety net. Every other improvement is riskier to ship until this is closed. Driven directly by `.planning/codebase/concerns.md` (HIGH-1/2/3).
 
@@ -16,15 +16,15 @@
 
 **Exit criteria:** no unauthenticated route can send mail or mutate files; no plaintext secret at rest; `supabase/migrations/` matches the live schema; `npm test` runs and green on the seams.
 
-## M2 — Agent Depth  *(sketched)*
+## Milestone 2 · Agent Depth  `[SHIPPED]`
 
-**Goal:** make the agent more capable and more reliable — richer memory (conversation summarization / semantic recall beyond keyword match), inline document understanding (read + summarize a drive file in one turn), and stronger confirm/undo affordances for destructive actions.
+**Goal:** make the agent more capable and more reliable — richer memory (conversation summarization / semantic recall beyond keyword match), inline document understanding (read + summarize a drive file in one turn), and stronger confirm/undo affordances for destructive actions. *Shipped: durable memory (ADR-002), inline doc understanding, enforced confirm/undo (ADR-003).*
 
-## M3 — Operations Polish  *(sketched)*
+## Milestone 3 · Operations Polish  `[SHIPPED]`
 
-**Goal:** observability (log which model/tools actually ran, surface tool-call traces), decide the two-mail-stack question (Graph/Outlook vs IMAP/SMTP — keep both or converge), and UX refinement across Emails / Files / Prep.
+**Goal:** observability (log which model/tools actually ran, surface tool-call traces), decide the two-mail-stack question (Graph/Outlook vs IMAP/SMTP — keep both or converge), and UX refinement across Emails / Files / Prep. *Shipped: agent traces (0011), mail-stack decision (ADR-004, 0012), bolt-style chat + visual polish.*
 
-## M4 — Handoff  `[FINAL]`
+## Milestone 4 · Handoff  `[CURRENT · FINAL]`
 
 Standard 4-phase Qualia handoff: documentation pass, deployment hardening + monitoring, knowledge transfer, and final acceptance.
 

@@ -368,7 +368,7 @@ export default function Home() {
                     />
                   ) : (
                     <span className={`file-icon${item.isFolder ? " folder" : ""}`} aria-hidden="true">
-                      <Icon size={18} strokeWidth={1.75} />
+                      <Icon size={20} strokeWidth={2} />
                     </span>
                   )}
                   {item.isFolder ? (

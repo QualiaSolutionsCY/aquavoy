@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
+import { type Recurrence, isRecurring, nextOccurrence } from "@/lib/scheduleRecurrence";
 
 /**
  * Persistence + runner for scheduled tasks / reminders. Rows live in
@@ -28,6 +29,8 @@ export interface ScheduledTask {
   sentAt: string | null;
   error: string | null;
   createdAt: string;
+  recurrence: Recurrence;
+  recurrenceUntil: string | null;
 }
 
 interface ScheduledTaskRow {
@@ -41,6 +44,8 @@ interface ScheduledTaskRow {
   sent_at: string | null;
   error: string | null;
   created_at: string;
+  recurrence: string;
+  recurrence_until: string | null;
 }
 
 function toScheduledTask(row: ScheduledTaskRow): ScheduledTask {
@@ -55,6 +60,8 @@ function toScheduledTask(row: ScheduledTaskRow): ScheduledTask {
     sentAt: row.sent_at,
     error: row.error,
     createdAt: row.created_at,
+    recurrence: (row.recurrence ?? "none") as Recurrence,
+    recurrenceUntil: row.recurrence_until,
   };
 }
 
@@ -66,6 +73,8 @@ interface ScheduleTaskInput {
   title: string;
   notes?: string;
   scheduledAt: string; // ISO-8601 with tz
+  recurrence?: Recurrence; // default 'none' = fire once
+  recurrenceUntil?: string; // ISO-8601 with tz; optional cap on recurrence
 }
 
 /**
@@ -98,6 +107,8 @@ export async function scheduleTask(input: ScheduleTaskInput): Promise<ScheduledT
       notes: input.notes ?? null,
       scheduled_at: input.scheduledAt,
       status: "pending",
+      recurrence: input.recurrence ?? "none",
+      recurrence_until: input.recurrenceUntil ?? null,
     })
     .select()
     .single();
@@ -115,7 +126,7 @@ export async function listTasks(principal: string): Promise<ScheduledTask[]> {
   // operator never sees another's queue.
   const { data, error } = await db
     .from(TABLE)
-    .select("id, principal, mailbox, title, notes, scheduled_at, status, sent_at, error, created_at")
+    .select("id, principal, mailbox, title, notes, scheduled_at, status, sent_at, error, created_at, recurrence, recurrence_until")
     .eq("principal", principal)
     .order("created_at", { ascending: false })
     .limit(50);
@@ -156,6 +167,30 @@ interface RunResult {
 }
 
 /**
+ * Compute the DB patch to apply after a reminder is successfully delivered.
+ * Non-recurring rows finalize as `sent` (unchanged behaviour). Recurring rows
+ * advance to the next occurrence and re-queue as `pending` — unless that
+ * occurrence falls past the `recurrence_until` cap, in which case they finalize
+ * as `sent`. The next occurrence is always strictly in the future, so it cannot
+ * double-fire within the same cron minute.
+ */
+function postSendPatch(
+  recurrence: Recurrence,
+  scheduledAt: string,
+  recurrenceUntil: string | null,
+  sentAt: string,
+): Record<string, unknown> {
+  if (!isRecurring(recurrence)) {
+    return { status: "sent", sent_at: sentAt };
+  }
+  const next = nextOccurrence(new Date(scheduledAt), recurrence);
+  if (recurrenceUntil && next.getTime() > new Date(recurrenceUntil).getTime()) {
+    return { status: "sent", sent_at: sentAt };
+  }
+  return { status: "pending", sent_at: sentAt, scheduled_at: next.toISOString() };
+}
+
+/**
  * Process due reminders: select pending rows with `scheduled_at <= now()`, limit
  * 20, and email each TO its stored mailbox (a self-email). Per-row error
  * handling — one failure never aborts the batch.
@@ -192,10 +227,13 @@ export async function runDueTasks(): Promise<RunResult> {
         body: row.notes ? `${row.title}\n\n${row.notes}` : row.title,
       });
 
-      await db
-        .from(TABLE)
-        .update({ status: "sent", sent_at: new Date().toISOString() })
-        .eq("id", row.id);
+      const patch = postSendPatch(
+        (row.recurrence ?? "none") as Recurrence,
+        row.scheduled_at,
+        row.recurrence_until,
+        new Date().toISOString(),
+      );
+      await db.from(TABLE).update(patch).eq("id", row.id);
 
       sent++;
     } catch (err) {

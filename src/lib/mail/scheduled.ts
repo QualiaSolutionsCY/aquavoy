@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
+import { type Recurrence, isRecurring, nextOccurrence } from "@/lib/scheduleRecurrence";
 
 /**
  * Persistence + runner for scheduled emails. Rows live in
@@ -24,6 +25,8 @@ export interface ScheduledEmail {
   error: string | null;
   createdBy: string | null;
   createdAt: string;
+  recurrence: Recurrence;
+  recurrenceUntil: string | null;
 }
 
 interface ScheduledRow {
@@ -38,6 +41,8 @@ interface ScheduledRow {
   error: string | null;
   created_by: string | null;
   created_at: string;
+  recurrence: string;
+  recurrence_until: string | null;
 }
 
 function toScheduledEmail(row: ScheduledRow): ScheduledEmail {
@@ -53,6 +58,8 @@ function toScheduledEmail(row: ScheduledRow): ScheduledEmail {
     error: row.error,
     createdBy: row.created_by,
     createdAt: row.created_at,
+    recurrence: (row.recurrence ?? "none") as Recurrence,
+    recurrenceUntil: row.recurrence_until,
   };
 }
 
@@ -65,6 +72,8 @@ interface ScheduleInput {
   body: string;
   scheduledAt: string; // ISO-8601 with tz
   createdBy?: string;
+  recurrence?: Recurrence; // default 'none' = fire once
+  recurrenceUntil?: string; // ISO-8601 with tz; optional cap on recurrence
 }
 
 /**
@@ -97,6 +106,8 @@ export async function scheduleEmail(input: ScheduleInput): Promise<ScheduledEmai
       scheduled_at: input.scheduledAt,
       status: "pending",
       created_by: input.createdBy ?? null,
+      recurrence: input.recurrence ?? "none",
+      recurrence_until: input.recurrenceUntil ?? null,
     })
     .select()
     .single();
@@ -112,7 +123,7 @@ export async function listScheduled(principal?: string): Promise<ScheduledEmail[
   const db = supabaseAdmin();
   let query = db
     .from(TABLE)
-    .select("id, from_email, to_email, subject, body, scheduled_at, status, sent_at, error, created_by, created_at")
+    .select("id, from_email, to_email, subject, body, scheduled_at, status, sent_at, error, created_by, created_at, recurrence, recurrence_until")
     .order("created_at", { ascending: false })
     .limit(50);
   // Principal isolation (REQ-3): when a principal is given, scope to their own
@@ -154,6 +165,30 @@ interface RunResult {
 }
 
 /**
+ * Compute the DB patch to apply after a successful send. Non-recurring rows
+ * finalize as `sent` (unchanged behaviour). Recurring rows advance to the next
+ * occurrence and re-queue as `pending` — unless that occurrence falls past the
+ * `recurrence_until` cap, in which case they finalize as `sent`. The next
+ * occurrence is always strictly in the future, so it cannot double-fire within
+ * the same cron minute.
+ */
+function postSendPatch(
+  recurrence: Recurrence,
+  scheduledAt: string,
+  recurrenceUntil: string | null,
+  sentAt: string,
+): Record<string, unknown> {
+  if (!isRecurring(recurrence)) {
+    return { status: "sent", sent_at: sentAt };
+  }
+  const next = nextOccurrence(new Date(scheduledAt), recurrence);
+  if (recurrenceUntil && next.getTime() > new Date(recurrenceUntil).getTime()) {
+    return { status: "sent", sent_at: sentAt };
+  }
+  return { status: "pending", sent_at: sentAt, scheduled_at: next.toISOString() };
+}
+
+/**
  * Process due emails: select pending rows with `scheduled_at <= now()`, limit
  * 20, and send each via SMTP. Per-row error handling — one failure never aborts
  * the batch.
@@ -190,10 +225,13 @@ export async function runDue(): Promise<RunResult> {
         body: row.body,
       });
 
-      await db
-        .from(TABLE)
-        .update({ status: "sent", sent_at: new Date().toISOString() })
-        .eq("id", row.id);
+      const patch = postSendPatch(
+        (row.recurrence ?? "none") as Recurrence,
+        row.scheduled_at,
+        row.recurrence_until,
+        new Date().toISOString(),
+      );
+      await db.from(TABLE).update(patch).eq("id", row.id);
 
       sent++;
     } catch (err) {

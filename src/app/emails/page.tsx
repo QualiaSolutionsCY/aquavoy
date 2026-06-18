@@ -30,6 +30,9 @@ interface ScheduledEmail {
   error: string | null;
   createdBy: string | null;
   createdAt: string;
+  /* Optional — a sibling agent is adding this to the API row.
+     Absent / "none" / unknown all mean a one-time send. */
+  recurrence?: "none" | "daily" | "weekly" | "monthly" | null;
 }
 
 type Envelope<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -68,6 +71,17 @@ const STATUS_BADGE: Record<string, string> = {
   failed: "err",
   cancelled: "muted",
 };
+
+const RECURRENCE_LABEL: Record<string, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+};
+
+/* Defensive: a missing / "none" / unknown cadence reads as a one-time send. */
+function recurrenceLabel(recurrence: ScheduledEmail["recurrence"]): string {
+  return (recurrence && RECURRENCE_LABEL[recurrence]) ?? "One-time";
+}
 
 function makeForm(email: string, group: "aquavoy.com" | "faialbv.com"): ConnectForm {
   const defaults = DOMAIN_DEFAULTS[group];
@@ -596,9 +610,12 @@ export default function Emails() {
                     </span>
                   )}
                 </div>
-                <span className={`badge ${STATUS_BADGE[item.status] ?? "muted"}`}>
-                  {item.status}
-                </span>
+                <div className="row" style={{ gap: "0.35rem" }}>
+                  <span className="badge muted">{recurrenceLabel(item.recurrence)}</span>
+                  <span className={`badge ${STATUS_BADGE[item.status] ?? "muted"}`}>
+                    {item.status}
+                  </span>
+                </div>
                 {item.status === "pending" && (
                   <button
                     className="btn danger sm"

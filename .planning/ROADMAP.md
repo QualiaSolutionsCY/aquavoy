@@ -1,10 +1,10 @@
-# Roadmap · Milestone 4 · Handoff
+# Roadmap · Milestone 5 · Client Meeting Build
 
 **Project:** Aquavoy
-**Milestone:** 4 of 4 (CURRENT — FINAL)
-**Created:** 2026-06-17
+**Milestone:** 5 of 5 (CURRENT)
+**Created:** 2026-06-18
 **Phases:** 4
-**Requirements covered:** REQ-19, REQ-20, REQ-21, REQ-22
+**Source:** client meeting 2026-06-18 + code audit. Phase 1 fully scoped in `.planning/m5-phase1-scope.md`; finance storage model locked in `.planning/decisions/ADR-005-finance-storage-hybrid.md`.
 
 See `JOURNEY.md` for the full project arc. This file is ONLY the current milestone's phases.
 
@@ -12,118 +12,134 @@ See `JOURNEY.md` for the full project arc. This file is ONLY the current milesto
 
 What "shipped" means for this milestone:
 
-- A new maintainer can orient themselves from the repo and docs alone — README, operator runbook, env-var reference, and ADR index all in place with no undocumented gaps.
-- Vercel prod config, cron, env vars, and all 12 Supabase migrations (0001–0012) are confirmed applied and documented; RLS is on for every table; no secret sits client-side.
-- End-to-end QA pass confirms all headline flows (auth, agent chat with tool trace, confirm/undo, mail send/schedule, OneDrive file ops, mobile layout on each management page) are verified with a pass/fail checklist.
-- Client holds all credentials and access needed to own the system independently; written acceptance sign-off obtained.
+- **Recurring scheduling works.** A schedule created with "every 5th of the month" or "every Monday 7pm" fires on time and re-arms its `next_run_at` for the next occurrence; `recurrence_end` is honored; one-off schedules behave exactly as before with no regression in `runDue` / `runDueTasks`.
+- **The inbox is legible from the app.** The agent can produce an on-demand inbox briefing (count, important shortlist, spam/ads excluded) over the existing read-only IMAP tools, and `/emails` has a real reader (left list + click-to-read detail) on top of its existing connection manager — all read-only.
+- **The money is legible.** Per-company and consolidated expense/income views render from a Supabase finance index that references (never replaces) the OneDrive documents, per ADR-005 — built only after the client provides company mappings + sample invoices.
+- **Bulk mail cleanup is fast.** The agent can search by sender and move matching mail to trash or to a folder in batch (the milestone's first mail-write surface), and recipient autocomplete is polished.
+- **No regression** in the M1–M4 surface (auth, encryption, agent traces, confirm/undo, mobile layout) — all M5 work ships behind the same gates.
 
 ---
 
 ## Phases
 
-| # | Phase | Goal | Requirements | Status |
-|---|-------|------|--------------|--------|
-| 1 | Documentation Pass | Write the repo-level docs a maintainer or operator needs to get oriented from scratch | REQ-19 | ready |
-| 2 | Deployment Hardening + Monitoring | Confirm and document the production deployment configuration; verify schema and security posture | REQ-20 | — |
-| 3 | Final QA | End-to-end verification of all headline flows across M1–M3; produce a signed-off pass/fail checklist | REQ-21 | — |
-| 4 | Knowledge Transfer + Acceptance | Operator walkthrough, credential handover, and written client acceptance sign-off | REQ-22 | — |
+| # | Phase | Goal | Status |
+|---|-------|------|--------|
+| 1 | Recurring scheduling | Make scheduled emails and tasks repeat — recurrence + `next_run_at` + re-arm in both runners | CURRENT |
+| 2 | Email intelligence | Agent inbox briefing (A4) + a real Emails reader tab (A5), both read-only | — |
+| 3 | Finance views | Per-company + consolidated expense/income via the ADR-005 hybrid (extract → Supabase index → render) | — |
+| 4 | Batch email actions | Search-by-sender bulk move-to-trash / move-to-folder (A1/A2) + recipient autocomplete polish | — |
 
 ## Phase Details
 
-### Phase 1: Documentation Pass
+### Phase 1: Recurring scheduling
 
-**Goal:** A developer or operator arriving at the repo cold can understand the app's architecture, operate the agent, and get a local dev environment running — without asking anyone — because the README, runbook, env-var reference, and ADR index are all accurate and complete.
+**Goal:** Both schedulers, which fire once and stop today, gain recurrence so a schedule repeats and re-arms after each fire. The headline use cases are Wency's *"every 5th of the month send all invoices to the accountant"* and *"every Monday 7pm email the crew."* One-off schedules must keep behaving exactly as they do now.
 
-**Requirements covered:**
-- REQ-19: Maintainer/operator can orient from repo and docs alone — README, runbook, env-var reference, ADR index all present and accurate
+**Detailed source:** `.planning/m5-phase1-scope.md` (A15) — read it for line-level file/table targets and the full acceptance list. Note: that scope doc bundles A4 + A5 into its "Phase 1" as the Monday client demo; in this roadmap A4/A5 are Phase 2 and A15 alone is Phase 1.
+
+**Touches:**
+- New migration `supabase/migrations/00XX_recurrence.sql` — add to `scheduled_emails` and `scheduled_tasks` a recurrence field (`recurrence_rule` RRULE or `frequency` enum + interval), `next_run_at timestamptz`, and a nullable `recurrence_end`; keep `scheduled_at` as the first/anchor occurrence; repoint the partial indexes (currently `0007_scheduled_emails.sql:30`, `0013_scheduled_tasks.sql:30`) to drive off `next_run_at`.
+- `src/lib/mail/scheduled.ts` — `runDue` (line 161): after sending a recurring row, compute the next occurrence and re-arm (reset to `pending` with a new `next_run_at`) instead of terminally marking `sent`; extend the insert path (line 97), row type (line 35), and select list (line 115) for the new columns.
+- `src/lib/agents/scheduledTasks.ts` — `runDueTasks` (line 163): mirror the same next-occurrence logic; extend insert (line 99), row type (line 39), select list (line 118).
+- Shared `nextOccurrence(rule, from)` helper — single source of truth for advancing a schedule (cite the chosen library, e.g. `rrule`, in an ADR if one is added).
+- Agent tool layer — extend the create-schedule tool input so the agent can set recurrence in natural language ("every 5th", "every Monday 7pm").
 
 **Success criteria** (observable behaviors):
-1. `README.md` at repo root covers: what Aquavoy is, local dev setup (clone → env pull → `npm run dev`), the four pages (Chat / Emails / Files / Prep), and pointers to the operator runbook and ADR index — a developer with Next.js experience can run the app locally following only the README.
-2. An operator runbook exists (e.g. `docs/operator-runbook.md`) covering: how to start and drive the agent chat, what the confirm/undo flow does and when it fires, how to read the tool-trace disclosure row, how to manage the 12 mailboxes from the Emails page, and how the OneDrive connection works (OAuth, what to do if the token expires).
-3. An env-var reference exists listing every environment variable the app reads, its purpose, where the value comes from, and whether it is required or optional — no variable is undocumented.
-4. `.planning/decisions/` contains ADR-001 through ADR-004; a short index in the README or a `docs/architecture.md` links to each ADR with a one-line summary so a reader knows what each decision covers without opening each file.
-5. No "TODO", "FIXME", or placeholder text remains in any doc file introduced or updated during this phase.
+1. A schedule "every 5th of the month" fires on the 5th and afterward has `next_run_at` set to the 5th of the **next** month (verified by re-running the runner past the first fire).
+2. A schedule "every Monday 7pm" fires Monday and re-arms for the following Monday.
+3. A one-off schedule (no recurrence) fires once and ends `sent` — no regression in `runDue` / `runDueTasks`.
+4. `recurrence_end` is honored: past the end date the schedule stops re-arming.
+5. Migration applies cleanly on a fresh DB and is idempotent against existing rows (existing one-off rows get a null recurrence and unchanged behavior).
 
-**Depends on:** M3 shipped (all features stable before docs are written as final).
+**Depends on:** M4 shipped (handoff complete; this is post-handoff client work).
 
 ---
 
-### Phase 2: Deployment Hardening + Monitoring
+### Phase 2: Email intelligence
 
-**Goal:** The production deployment is fully documented and verified: Vercel config and cron are correct, all 12 Supabase migrations are applied to prod, RLS is confirmed on every table, no secret is reachable from client code, and there is a documented monitoring approach so an incident does not go unnoticed.
+**Goal:** Make the inbox legible from inside the app, read-only. Two pieces: (a) an on-demand agent briefing that counts emails, flags the important ones, and filters spam/ads; and (b) a real Emails reader tab — `/emails` today only manages mailbox connections and never shows a message.
 
-**Requirements covered:**
-- REQ-20: Production deployment verified and documented — Vercel + cron config, all 12 migrations applied, RLS on every table, no secret client-side, monitoring approach documented
+**Touches:**
+- A4 (briefing): `src/lib/agents/onedriveTools.ts` — add a `briefing` / `inbox_summary` tool alongside the existing read tools (`list_emails` ~480, `read_email` ~509, `search_emails` ~537; handlers ~983 / 1001 / 1019), composing the read tools with no new IMAP surface; `src/lib/openrouter/client.ts` — register/describe the new tool in the agent tool catalogue (read tools described ~118–120). Optional scheduled daily push only if Phase 1's recurring runner is in place.
+- A5 (reader tab): `src/app/emails/page.tsx` — add a reader view (left-sidebar message list + right-side detail/read pane) while keeping the existing connection-manager UI reachable (`export default function Emails()` ~86, connect form ~37, `MAILBOXES` ~6); new read-only API route(s) under `src/app/api/emails/...` exposing `list_emails` / `read_email` / `search_emails` to the client; reuse `MAILBOXES` / `GROUPS` from `src/lib/mailboxes` for the picker.
 
 **Success criteria** (observable behaviors):
-1. `vercel.json` cron entry for the scheduled-email drain (`/api/mail/scheduled/run`) is present and the cron fires on schedule in production — confirmed by checking Vercel Dashboard cron logs for at least one successful run or by a `curl` triggering the endpoint with the correct `CRON_SECRET` and getting HTTP 200.
-2. `npx supabase db diff --linked` against the production database returns no schema drift — all 12 migrations (0001_onedrive_connections through 0012_mail_stack) are applied and the live schema matches the migration files on disk.
-3. Every table in production has RLS enabled — confirmed by `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public'` returning `rowsecurity = true` for all rows.
-4. A grep of the client bundle (`NEXT_PUBLIC_` variables and any files under `src/app/` or `src/components/`) finds zero references to `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `IMAP_*`, or `SMTP_*` — secrets are server-only.
-5. A monitoring approach is documented: at minimum, the UptimeRobot monitor URL (`https://stats.uptimerobot.com/bKudHy1pLs`) is recorded in the README or runbook with instructions for the client to check it; any additional Vercel error alerts or log-drain config is noted.
+1. Asking the agent "brief me on the inbox" returns a digest with a total count, an "important" shortlist, and spam/ads excluded — using only the existing read-only tools.
+2. The briefing degrades gracefully when a mailbox is unreachable (partial result + note, not a hard error).
+3. Opening `/emails` shows a list of recent messages for a connected mailbox (subject, sender, date) in a left sidebar; clicking a message loads its full body via `read_email`.
+4. Folder switching (inbox / sent / drafts / trash) and search (text / sender / date) work via the `list_emails` folder param and `search_emails`.
+5. Loading, empty (no messages), and error (mailbox unreachable) states are all handled; the tab is strictly read-only — no send / move / delete in this phase.
 
-**Depends on:** Phase 1 (docs in place before the deployment verification is recorded against them).
+**Depends on:** Phase 1 (so the briefing's optional scheduled push can ride the recurring runner; the on-demand path and the reader tab can otherwise proceed in parallel).
 
 ---
 
-### Phase 3: Final QA
+### Phase 3: Finance views
 
-**Goal:** Every headline user flow introduced across M1–M3 is manually exercised on the production URL and marked pass or fail on a written checklist; all items pass before the milestone closes.
+**Goal:** Render per-company and consolidated expense/income views per the ADR-005 hybrid storage model — OneDrive stays the document system-of-record, Supabase holds the finance index/ledger that powers the numbers. Filing-by-company already exists (`companyClause()` propose-then-confirm over OneDrive); this phase adds the totals folders cannot aggregate. The pipeline is **extract → index → render**.
 
-**Requirements covered:**
-- REQ-21: End-to-end QA checklist produced and all items verified pass on production — covering auth, agent chat with tool trace, confirm/undo, mail send/schedule, OneDrive file ops, and mobile layout on each management page
+**Touches:**
+- `supabase/migrations/*` — new finance index/ledger table(s): per document, a row of `company`, `amount`, `currency`, `date`, `type` (expense/income), and a reference back to the OneDrive item (ADR-005 §Decision). RLS on, per constitution.
+- `src/lib/agents/onedriveTools.ts` — extraction tooling that reads invoice/receipt PDFs from the connected OneDrive and proposes index rows (LLM-assisted, human-confirmable; reliable amount/date/type extraction is the named risk in ADR-005 §Consequences).
+- `src/lib/microsoft/onedrive.ts` — keep the index in sync when the agent moves / renames / deletes underlying files (index references, never duplicates, the document).
+- `src/app/finance/*` — render the consolidated view and the per-company drill-down, reusing the existing `COMPANIES` list (`src/app/finance/page.tsx`) — no new company master is invented.
 
 **Success criteria** (observable behaviors):
-1. A QA checklist document exists (e.g. `docs/qa-checklist.md`) with one row per flow covering: auth gate (login / wrong credentials rejected / logout), agent chat round-trip with a tool that calls OneDrive or mail and produces a visible tool-trace row, confirm/undo a destructive action (send or delete), send an email from a named mailbox, schedule an email and verify it drains via cron, list and download a OneDrive file, navigate each of the three management pages (Emails / Files / Prep) at 375 px without overflow.
-2. Every row in the QA checklist has a "Pass" or "Fail" result and a tester name + date — no row is blank or left as "TBD".
-3. All checklist items are marked Pass before this phase closes — any Fail must be resolved and re-tested within this milestone.
-4. The QA checklist is committed to the repo so the client and future maintainers have a record of what was verified at handoff.
+1. A consolidated view shows total expense and income across all 8 group companies for a period; a per-company view drills into one entity's figures.
+2. Every ledger figure traces back to a specific OneDrive document via its stored reference (extract → index → render, not derived from folders).
+3. Extraction is human-confirmable — proposed amount/date/type/company can be corrected before the row is committed.
+4. The index stays consistent when the agent moves / renames / deletes an underlying file (reconciled, not duplicated).
+5. Classification uses only the existing `COMPANIES` list and Wency's existing OneDrive folder structure.
 
-**Depends on:** Phase 2 (deployment verified before final QA runs against production).
+**Depends on:** Phase 2 (email surface stable) AND the client providing company mappings + sample invoices before the extract step runs. ADR-005 unblocks the storage decision but not the input data.
 
 ---
 
-### Phase 4: Knowledge Transfer + Acceptance
+### Phase 4: Batch email actions
 
-**Goal:** Wency and Jeanette can operate the system without Qualia assistance; the client holds every credential and access token needed to own the system; written acceptance sign-off is obtained tying back to the JOURNEY.md exit criteria.
+**Goal:** Make bulk mail cleanup fast — search by sender, then move matching messages to trash or to a folder in batch (A1 / A2). This is the milestone's first mail *write* surface, so it ships behind confirm/undo. Also polish recipient autocomplete.
 
-**Requirements covered:**
-- REQ-22: Operator walkthrough delivered, all credentials and ownership transferred to client, written acceptance sign-off obtained
+**Touches:**
+- `src/lib/agents/onedriveTools.ts` + `src/lib/openrouter/client.ts` — add batch move-to-trash / move-to-folder tools layered on a search-by-sender step, registered in the agent tool catalogue; these are writes, so they route through the existing confirm/undo affordance (M2, ADR-003).
+- Mail write path (`src/lib/mail/*` / the IMAP move surface) — implement the bulk move/trash operation; the existing read-only tools (`list_emails` / `search_emails`) supply the candidate set.
+- Recipient autocomplete UI (compose / Prep path) — polish suggestion behavior.
 
 **Success criteria** (observable behaviors):
-1. A walkthrough session is held with Wency and Jeanette (or documented asynchronously) covering: logging in, starting a chat, reading the tool-trace row, using confirm/undo, managing the Emails page, searching OneDrive from the Files page, and using the Prep page to draft an email — a walkthrough summary or checklist exists confirming the session occurred.
-2. A credential handover checklist exists and is completed, confirming the client holds: Supabase project credentials (URL + service role key), Vercel project access, Microsoft Azure app registration (client ID + secret for OneDrive OAuth), all 12 mailbox IMAP/SMTP credentials, OpenRouter API key, Gemini API key (if used directly), and Tavily API key.
-3. The client has Vercel project ownership (is added as a team member or owner) and can independently trigger a `vercel --prod` deployment without Qualia.
-4. A written acceptance sign-off document exists — signed (or explicitly acknowledged) by the client — stating that the delivered system meets the JOURNEY.md exit criteria for M1 (auth + encryption + migration integrity), M2 (memory + document understanding + confirm/undo), and M3 (observability + mail stack decision + mobile UX).
-5. Qualia's own access tokens and developer accounts are removed or downgraded to read-only after handover is confirmed — no lingering developer-level write access to production data.
+1. "Move all email from <sender> to trash" produces a confirmable batch that, on confirm, moves every matching message to trash; undo restores them.
+2. Moving matching mail to a named folder works the same way (search → confirm → batch move).
+3. The batch is shown before it runs (count + sample) so the operator confirms scope, not a blind action.
+4. Recipient autocomplete suggests known recipients responsively while composing.
+5. No write occurs without passing through the confirm/undo gate — consistent with the M2 destructive-action contract.
 
-**Depends on:** Phase 3 (QA pass confirms the product is ready to hand off).
+**Depends on:** Phase 2 (the read-only email surface and search are in place before the first bulk-write feature is built on top of them).
 
 ---
 
 ## Coverage Verification
 
-Every requirement in this milestone maps to exactly one phase.
+Every meeting-derived feature scheduled for this milestone maps to exactly one phase.
 
-| Requirement | Phase | Covered? |
-|-------------|-------|----------|
-| REQ-19 | Phase 1 | ✓ |
-| REQ-20 | Phase 2 | ✓ |
-| REQ-21 | Phase 3 | ✓ |
-| REQ-22 | Phase 4 | ✓ |
+| Feature (meeting ref) | Phase | Covered? |
+|-----------------------|-------|----------|
+| A15 Recurring scheduling | Phase 1 | ✓ |
+| A4 Inbox briefing | Phase 2 | ✓ |
+| A5 Emails reader tab | Phase 2 | ✓ |
+| Finance views (ADR-005) | Phase 3 | ✓ |
+| A1 / A2 Batch email actions + autocomplete polish | Phase 4 | ✓ |
+
+Deferred beyond M5 (not scheduled): A11 / A13 / A22 doc-gen + bank letter, A27 / A28 roles + hide-files, A26 multi-user auth, A29 voice agent.
 
 ---
 
 ## When This Milestone Closes
 
-This is the final milestone. On close:
+On close:
 
-1. All phase artifacts are archived to `.planning/archive/milestone-4-handoff/`
+1. All phase artifacts are archived to `.planning/archive/milestone-5-client-meeting-build/`
 2. `tracking.json` `milestones[]` gets a summary entry (num, name, phases_completed, shipped_url, closed_at)
-3. REQUIREMENTS.md marks M4 requirements as **Complete**
-4. Client acceptance sign-off document is committed to `.planning/archive/` or `docs/`
-5. Project is marked complete in `tracking.json`
+3. Deferred items (doc-gen, roles, multi-user auth, voice agent) are re-evaluated for a possible M6 against the latest client priorities
+4. ADR-005 gets OWNER ratification confirmation once the finance views ship (per ADR-005 §Deciders)
 
 ---
 
-*Last updated: 2026-06-17*
+*Last updated: 2026-06-18*

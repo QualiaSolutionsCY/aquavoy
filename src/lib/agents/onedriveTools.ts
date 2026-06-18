@@ -365,6 +365,12 @@ export const TOOL_DEFINITIONS = [
             description:
               "ISO-8601 datetime WITH timezone offset for when to send (e.g. 2026-06-12T09:00:00+02:00).",
           },
+          recurrence: {
+            type: "string",
+            enum: ["none", "daily", "weekly", "monthly"],
+            description:
+              "How often the email repeats. 'none' (default) sends once. 'daily'/'weekly'/'monthly' re-send on the same time-of-day at the matching cadence (monthly keeps the same day-of-month, clamping to the last day for short months). Use this for standing schedules, e.g. on the 5th of every month send the invoices to the accountant → sendAt the next 5th + recurrence 'monthly'.",
+          },
         },
         required: ["from", "to", "subject", "body", "sendAt"],
         additionalProperties: false,
@@ -432,6 +438,12 @@ export const TOOL_DEFINITIONS = [
           notes: {
             type: "string",
             description: "Optional extra detail included in the reminder email body.",
+          },
+          recurrence: {
+            type: "string",
+            enum: ["none", "daily", "weekly", "monthly"],
+            description:
+              "How often the reminder repeats. 'none' (default) fires once. 'daily'/'weekly'/'monthly' re-send on the same time-of-day at the matching cadence (monthly keeps the same day-of-month, clamping to the last day for short months). Use this for standing reminders, e.g. on the 5th of every month send the invoices to the accountant → scheduledAt the next 5th + recurrence 'monthly', or every Monday 7pm email the crew → recurrence 'weekly'.",
           },
         },
         required: ["title", "scheduledAt", "mailbox"],
@@ -745,8 +757,11 @@ function summarizeAction(name: string, args: Record<string, unknown>): string {
   switch (name) {
     case "send_email":
       return `Send email from ${s("from")} to ${s("to")} — "${s("subject")}"`;
-    case "schedule_email":
-      return `Schedule email from ${s("from")} to ${s("to")} — "${s("subject")}" at ${s("sendAt")}`;
+    case "schedule_email": {
+      const rec = s("recurrence");
+      const repeat = rec && rec !== "none" ? ` (repeats ${rec})` : "";
+      return `Schedule email from ${s("from")} to ${s("to")} — "${s("subject")}" at ${s("sendAt")}${repeat}`;
+    }
     case "delete_item":
       return `Delete OneDrive item ${s("itemId")} (moves to recycle bin)`;
     case "move_item":
@@ -951,12 +966,21 @@ export async function executeTool(
         if (!scheduledAt) return JSON.stringify({ error: "scheduledAt is required" });
         if (!mailbox) return JSON.stringify({ error: "mailbox is required" });
         const notes = typeof args.notes === "string" ? args.notes : undefined;
+        // Default to 'none' (fire once) unless the model passes a valid cadence;
+        // an unrecognised value falls back to 'none' rather than erroring.
+        const recurrence =
+          args.recurrence === "daily" ||
+          args.recurrence === "weekly" ||
+          args.recurrence === "monthly"
+            ? args.recurrence
+            : "none";
         const task = await scheduleTask({
           principal: sessionPrincipal,
           mailbox,
           title,
           notes,
           scheduledAt,
+          recurrence,
         });
         return JSON.stringify({
           scheduled: true,

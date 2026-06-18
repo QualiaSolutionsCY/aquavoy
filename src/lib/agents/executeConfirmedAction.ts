@@ -7,6 +7,7 @@ import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail } from "@/lib/mail/scheduled";
+import type { Recurrence } from "@/lib/scheduleRecurrence";
 
 /**
  * The real side-effects for destructive tools. This is the ONLY place the
@@ -136,12 +137,26 @@ export async function executeConfirmedAction(
       if (sendDate.getTime() <= Date.now())
         throw new Error("sendAt must be in the future");
 
+      // Optional recurrence — repeats the send (e.g. the monthly invoices to
+      // the accountant). Unknown/absent values fall back to a one-shot send.
+      const rawRecurrence = str(args, "recurrence");
+      const recurrence: Recurrence = (
+        ["none", "daily", "weekly", "monthly"] as const
+      ).includes(rawRecurrence as Recurrence)
+        ? (rawRecurrence as Recurrence)
+        : "none";
+      const rawUntil = str(args, "recurrenceUntil");
+      const recurrenceUntil =
+        rawUntil && !isNaN(new Date(rawUntil).getTime()) ? rawUntil : undefined;
+
       const row = await scheduleEmail({
         fromEmail: from,
         toEmail: to,
         subject,
         body,
         scheduledAt: sendAt,
+        recurrence,
+        recurrenceUntil,
         // Own the scheduled email by the verified principal so REQ-3-scoped
         // list/cancel can find it (and only its owner can cancel it).
         createdBy: principal,
@@ -154,6 +169,7 @@ export async function executeConfirmedAction(
           to: row.toEmail,
           subject: row.subject,
           scheduledAt: row.scheduledAt,
+          recurrence: row.recurrence,
         },
         // undo = cancel the queued row if still pending.
         undo_data: { scheduledId: row.id },

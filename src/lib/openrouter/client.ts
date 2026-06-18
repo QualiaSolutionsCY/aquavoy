@@ -345,6 +345,10 @@ export async function streamChatWithTools(
   const toolTraces: ToolCallTrace[] = [];
   let promptTokens = 0;
   let completionTokens = 0;
+  // The model's direct answer captured in the (non-streaming) tool loop. Kept as
+  // a safety net: if the final streaming call returns an empty completion, we
+  // emit this so the user never sees "(no response)".
+  let fallbackAnswer = "";
 
   try {
     // Working message history — starts with system + user messages.
@@ -388,13 +392,18 @@ export async function streamChatWithTools(
       const msg = choice.message;
       const toolCalls = msg.tool_calls;
 
-      // If no tool calls, the model is done reasoning — break to final stream.
+      // If no tool calls, the model is done reasoning — break to the final
+      // streaming call below, which regenerates the answer as SSE.
+      //
+      // IMPORTANT: do NOT append msg.content to history here. Appending it makes
+      // the final streaming call see a conversation that already ends with the
+      // assistant's answer, so the model streams an EMPTY completion — the
+      // "(no response)" bug. With nothing appended, history ends at the user
+      // message (direct answer) or the tool results (after tool use), so the
+      // streaming call always has something to generate. We keep the text as a
+      // fallback in case the streaming call still comes back empty.
       if (!toolCalls || toolCalls.length === 0 || choice.finish_reason !== "tool_calls") {
-        // Append the assistant's final text answer so context is complete for
-        // the streaming call.
-        if (msg.content) {
-          history.push({ role: "assistant", content: msg.content });
-        }
+        fallbackAnswer = msg.content ?? "";
         break;
       }
 
@@ -477,6 +486,7 @@ export async function streamChatWithTools(
       turnStart,
       basePromptTokens: promptTokens,
       baseCompletionTokens: completionTokens,
+      fallbackAnswer,
     });
 
     return new Response(wrapped, {
@@ -551,6 +561,8 @@ interface StreamTraceContext {
   turnStart: number;
   basePromptTokens: number;
   baseCompletionTokens: number;
+  /** Direct answer from the tool loop, emitted only if the stream has no content. */
+  fallbackAnswer: string;
 }
 
 /**
@@ -574,8 +586,12 @@ function wrapStreamWithTrace(
   let promptTokens = ctx.basePromptTokens;
   let completionTokens = ctx.baseCompletionTokens;
   let tracePersisted = false;
+  // Whether the upstream stream carried ANY assistant text. If it stays false,
+  // the model returned an empty completion and we emit ctx.fallbackAnswer so the
+  // user never sees "(no response)".
+  let sawContent = false;
 
-  /** Pull `usage` off a complete SSE data line if present. */
+  /** Pull `usage` (and detect content) off a complete SSE data line if present. */
   const sniffUsage = (line: string): void => {
     const trimmed = line.trimStart();
     if (!trimmed.startsWith("data:")) return;
@@ -584,14 +600,30 @@ function wrapStreamWithTrace(
     try {
       const obj = JSON.parse(payload) as {
         usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+        choices?: { delta?: { content?: string | null }; message?: { content?: string | null } }[];
       };
       if (obj.usage) {
         if (typeof obj.usage.prompt_tokens === "number") promptTokens = obj.usage.prompt_tokens;
         if (typeof obj.usage.completion_tokens === "number")
           completionTokens = obj.usage.completion_tokens;
       }
+      const piece = obj.choices?.[0]?.delta?.content ?? obj.choices?.[0]?.message?.content;
+      if (typeof piece === "string" && piece.length > 0) sawContent = true;
     } catch {
       // Not JSON (or a partial line not yet complete) — ignore.
+    }
+  };
+
+  /** SSE bytes that inject the fallback answer as one content delta. */
+  const fallbackDeltaBytes = (): Uint8Array =>
+    encoder.encode(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: ctx.fallbackAnswer } }] })}\n\n`,
+    );
+  /** Emit the fallback answer once, if the stream produced no content. */
+  const maybeEmitFallback = (controller: ReadableStreamDefaultController<Uint8Array>): void => {
+    if (!sawContent && ctx.fallbackAnswer) {
+      controller.enqueue(fallbackDeltaBytes());
+      sawContent = true;
     }
   };
 
@@ -630,8 +662,10 @@ function wrapStreamWithTrace(
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
-        // Stream ended without us having seen an explicit [DONE] chunk — emit
-        // the trace-id line now (still before close) so it is never omitted.
+        // Stream ended without us having seen an explicit [DONE] chunk — if the
+        // model produced no content, inject the fallback answer first, then emit
+        // the trace-id line (still before close) so it is never omitted.
+        maybeEmitFallback(controller);
         const id = await persistTrace();
         if (id) {
           controller.enqueue(
@@ -657,6 +691,10 @@ function wrapStreamWithTrace(
 
       // Forward everything up to (not including) the [DONE] marker untouched.
       if (idx > 0) controller.enqueue(value.subarray(0, idx));
+
+      // If the model streamed no content, inject the fallback answer before the
+      // terminal marker so the user never sees an empty reply.
+      maybeEmitFallback(controller);
 
       // Persist + announce the trace before the [DONE] bytes.
       const id = await persistTrace();

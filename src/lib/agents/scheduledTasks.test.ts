@@ -3,10 +3,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /**
  * Seam test for the scheduled-task (reminder) runner. Supabase, the account
  * store, and the SMTP sender are mocked. The critical assertion mirrors the
- * scheduled-email test: with two due rows where one send fails, runDueTasks()
- * returns {sent:1, failed:1} and the failing row is flagged 'failed' WITHOUT
+ * scheduled-email test: with three due rows where one send fails, runDueTasks()
+ * returns {sent:2, failed:1} and the failing row is flagged 'failed' WITHOUT
  * aborting the batch. We also assert each reminder is delivered as a self-email
  * (to === mailbox) with the "Reminder: <title>" subject.
+ *
+ * The third row is RECURRING ('monthly'): instead of being finalized as 'sent'
+ * after a successful send, it must be re-queued — status back to 'pending' with
+ * scheduled_at advanced to the next occurrence (the 5th of the next month).
  */
 
 // ── Chainable Supabase query-builder mock ───────────────────
@@ -36,6 +40,23 @@ const dueRows = [
     sent_at: null,
     error: null,
     created_at: "2026-06-01T00:00:00Z",
+  },
+  {
+    // Recurring monthly reminder: Wency's "every 5th of the month, send the
+    // invoices to the accountant". On a successful send it must re-queue, not
+    // finalize — status back to 'pending', scheduled_at advanced to Jul 5.
+    id: "row-recurring",
+    principal: "Wency",
+    mailbox: "info@aquavoy.com",
+    title: "Send invoices to the accountant",
+    notes: null,
+    scheduled_at: "2026-06-05T07:00:00.000Z",
+    status: "pending",
+    sent_at: null,
+    error: null,
+    created_at: "2026-06-01T00:00:00Z",
+    recurrence: "monthly",
+    recurrence_until: null,
   },
 ];
 
@@ -110,10 +131,11 @@ describe("agents/scheduledTasks runDueTasks", () => {
     vi.mocked(sendMail).mockClear();
   });
 
-  it("isolates per-row failure: {sent:1, failed:1}", async () => {
+  it("isolates per-row failure: {sent:2, failed:1}", async () => {
     const result = await runDueTasks();
-    expect(result).toEqual({ sent: 1, failed: 1 });
-    expect(sendMail).toHaveBeenCalledTimes(2);
+    // Two good rows (one one-shot, one recurring) send; the bad mailbox fails.
+    expect(result).toEqual({ sent: 2, failed: 1 });
+    expect(sendMail).toHaveBeenCalledTimes(3);
   });
 
   it("delivers each reminder as a self-email with a 'Reminder:' subject", async () => {
@@ -146,5 +168,18 @@ describe("agents/scheduledTasks runDueTasks", () => {
 
     expect(failUpdate?.patch.status).toBe("failed");
     expect(String(failUpdate?.patch.error)).toContain("550 mailbox unavailable");
+  });
+
+  it("re-queues a recurring task instead of finalizing it as sent", async () => {
+    await runDueTasks();
+
+    const recurringUpdate = updateCalls.find((u) => u.id === "row-recurring");
+
+    // A monthly recurrence must NOT be marked sent — it goes back to 'pending'
+    // with scheduled_at advanced to the next occurrence (Jun 5 → Jul 5, same
+    // time-of-day), and still records the send via sent_at.
+    expect(recurringUpdate?.patch.status).toBe("pending");
+    expect(recurringUpdate?.patch.scheduled_at).toBe("2026-07-05T07:00:00.000Z");
+    expect(recurringUpdate?.patch.sent_at).toEqual(expect.any(String));
   });
 });

@@ -274,7 +274,7 @@ export default function Chat() {
   /** Clear all stored messages for the current principal. */
   async function clearMemory() {
     if (!identity) return;
-    if (!confirm(`Clear all saved messages for ${identity}?`)) return;
+    if (!window.confirm(`Clear all saved messages for ${identity}?`)) return;
     try {
       await fetch(`/api/chat/history`, { method: "DELETE" });
     } catch (e) {
@@ -300,7 +300,7 @@ export default function Chat() {
    * successful `undo` drop the card. The returned action is merged into local
    * state by id so the transition is immediate, then `loadPending` reconciles.
    */
-  async function runAction(id: string, route: string, drop: boolean) {
+  async function runAction(id: string, route: string, drop: boolean): Promise<boolean> {
     setActionError(null);
     setActionBusy(id);
     try {
@@ -326,15 +326,26 @@ export default function Chat() {
         if (updated) return prev.map((a) => (a.id === id ? updated : a));
         return prev;
       });
+      return !undoDeclined;
     } catch (e) {
       setActionError((e as Error).message);
+      return false;
     } finally {
       setActionBusy(null);
     }
   }
 
   function confirm(id: string) {
-    return runAction(id, "/api/actions/confirm", false);
+    // Show the confirmed/sent state briefly (Undo stays reachable for reversible
+    // actions), then auto-dismiss the card so no green box lingers.
+    runAction(id, "/api/actions/confirm", false).then((ok) => {
+      if (ok) {
+        setTimeout(
+          () => setPending((prev) => prev.filter((a) => a.id !== id)),
+          4500,
+        );
+      }
+    });
   }
   function cancelAction(id: string) {
     return runAction(id, "/api/actions/cancel", true);

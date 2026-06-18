@@ -5,6 +5,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/tasks/scheduled/run",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/memory/sweep",
       "schedule": "*/5 * * * *"
     }

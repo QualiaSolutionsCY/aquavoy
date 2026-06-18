@@ -11,6 +11,7 @@ import { recallMemory } from "@/lib/agents/memoryTools";
 import { stagePendingAction } from "@/lib/agents/pendingActions";
 import { loadAccountWithSecretByEmail, listAccounts } from "@/lib/mail/accounts";
 import { listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
+import { scheduleTask, listTasks, cancelTask } from "@/lib/agents/scheduledTasks";
 import { listFolders, listEmails, readEmail, searchEmails } from "@/lib/mail/imap";
 
 /**
@@ -338,6 +339,74 @@ export const TOOL_DEFINITIONS = [
           id: {
             type: "string",
             description: "The UUID of the scheduled email to cancel.",
+          },
+        },
+        required: ["id"],
+        additionalProperties: false,
+      },
+    },
+  },
+
+  // ── Scheduled tasks / reminders ──
+  {
+    type: "function" as const,
+    function: {
+      name: "schedule_task",
+      description:
+        "Set a reminder that is EMAILED to a connected company mailbox at a future date/time. Use this when the user asks to be reminded of something (e.g. 'remind me tomorrow at 9 to call the harbour master'). Confirm the title and the exact time with the user in chat FIRST, but note this tool runs DIRECTLY — it is benign/additive and is NOT staged for confirmation (no confirm card). Do not call it before you have agreed the title and time with the user.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "Short reminder title — what to be reminded about.",
+          },
+          scheduledAt: {
+            type: "string",
+            description:
+              "ISO-8601 datetime WITH timezone offset for when the reminder is sent, e.g. 2026-06-19T09:00:00+02:00.",
+          },
+          mailbox: {
+            type: "string",
+            description:
+              "A connected company mailbox the reminder will be emailed to (e.g. info@aquavoy.com).",
+          },
+          notes: {
+            type: "string",
+            description: "Optional extra detail included in the reminder email body.",
+          },
+        },
+        required: ["title", "scheduledAt", "mailbox"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "list_scheduled_tasks",
+      description:
+        "List the most recent reminders with their statuses (pending, sent, failed, cancelled).",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "cancel_scheduled_task",
+      description:
+        "Cancel a reminder by its ID. Only works if the reminder is still pending.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "The UUID of the reminder to cancel.",
           },
         },
         required: ["id"],
@@ -724,6 +793,62 @@ export async function executeTool(
         const id = typeof args.id === "string" ? args.id : "";
         if (!id) return JSON.stringify({ error: "id is required" });
         const row = await cancelScheduled(id, sessionPrincipal);
+        return JSON.stringify({ cancelled: true, id: row.id, status: row.status });
+      }
+
+      // ── Scheduled tasks / reminders ──
+      // schedule_task is benign/additive (like create_folder): it runs DIRECTLY
+      // here and is intentionally NOT in the DESTRUCTIVE set — no confirm card.
+      case "schedule_task": {
+        // Principal isolation (REQ-3): the row is owned by the HMAC-verified
+        // session principal, never a value the model supplied.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
+        const title = typeof args.title === "string" ? args.title : "";
+        const scheduledAt = typeof args.scheduledAt === "string" ? args.scheduledAt : "";
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        if (!title) return JSON.stringify({ error: "title is required" });
+        if (!scheduledAt) return JSON.stringify({ error: "scheduledAt is required" });
+        if (!mailbox) return JSON.stringify({ error: "mailbox is required" });
+        const notes = typeof args.notes === "string" ? args.notes : undefined;
+        const task = await scheduleTask({
+          principal: sessionPrincipal,
+          mailbox,
+          title,
+          notes,
+          scheduledAt,
+        });
+        return JSON.stringify({
+          scheduled: true,
+          id: task.id,
+          scheduledAt: task.scheduledAt,
+        });
+      }
+
+      case "list_scheduled_tasks": {
+        // Principal isolation (REQ-3): only the session principal's own reminders.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
+        const tasks = await listTasks(sessionPrincipal);
+        const summary = tasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          mailbox: t.mailbox,
+          scheduledAt: t.scheduledAt,
+          status: t.status,
+          sentAt: t.sentAt,
+          error: t.error,
+        }));
+        return JSON.stringify(summary);
+      }
+
+      case "cancel_scheduled_task": {
+        // Principal isolation (REQ-3): an operator can only cancel their own.
+        if (!sessionPrincipal)
+          return JSON.stringify({ error: "no verified principal in session" });
+        const id = typeof args.id === "string" ? args.id : "";
+        if (!id) return JSON.stringify({ error: "id is required" });
+        const row = await cancelTask(id, sessionPrincipal);
         return JSON.stringify({ cancelled: true, id: row.id, status: row.status });
       }
 

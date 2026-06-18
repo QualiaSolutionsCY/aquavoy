@@ -90,6 +90,12 @@ function friendlyModel(provider: Provider, model: string): string {
   return slug || "OpenRouter";
 }
 
+/** Soft-fail log for fire-and-forget enhancement paths — dev console only, never
+ *  surfaced in the production browser console (LOW-1). */
+function devWarn(message: string, err: unknown): void {
+  if (process.env.NODE_ENV !== "production") console.warn(message, err);
+}
+
 export default function Chat() {
   const [identity, setIdentity] = useState<Principal | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -241,7 +247,7 @@ export default function Chat() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ principal, role, content, sessionId: sessionRef.current }),
-    }).catch((e) => console.warn("chat-history persist failed", e));
+    }).catch((e) => devWarn("chat-history persist failed", e));
   }
 
   /** Clear all stored messages for the current principal. */
@@ -251,7 +257,7 @@ export default function Chat() {
     try {
       await fetch(`/api/chat/history`, { method: "DELETE" });
     } catch (e) {
-      console.warn("chat-history clear failed", e);
+      devWarn("chat-history clear failed", e);
     }
     setMessages([greeting(identity)]);
   }
@@ -263,7 +269,7 @@ export default function Chat() {
       const json = await res.json();
       setPending(json.data?.actions ?? []);
     } catch (e) {
-      console.warn("pending-actions load failed", e);
+      devWarn("pending-actions load failed", e);
     }
   }
 

@@ -56,7 +56,7 @@ What "shipped" means for this milestone:
 - REQ-20: Production deployment verified and documented — Vercel + cron config, all 12 migrations applied, RLS on every table, no secret client-side, monitoring approach documented
 
 **Success criteria** (observable behaviors):
-1. `vercel.json` cron entry for the scheduled-email drain (`/api/cron/send-scheduled`) is present and the cron fires on schedule in production — confirmed by checking Vercel Dashboard cron logs for at least one successful run or by a `curl` triggering the endpoint with the correct `CRON_SECRET` and getting HTTP 200.
+1. `vercel.json` cron entry for the scheduled-email drain (`/api/mail/scheduled/run`) is present and the cron fires on schedule in production — confirmed by checking Vercel Dashboard cron logs for at least one successful run or by a `curl` triggering the endpoint with the correct `CRON_SECRET` and getting HTTP 200.
 2. `npx supabase db diff --linked` against the production database returns no schema drift — all 12 migrations (0001_onedrive_connections through 0012_mail_stack) are applied and the live schema matches the migration files on disk.
 3. Every table in production has RLS enabled — confirmed by `SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public'` returning `rowsecurity = true` for all rows.
 4. A grep of the client bundle (`NEXT_PUBLIC_` variables and any files under `src/app/` or `src/components/`) finds zero references to `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `IMAP_*`, or `SMTP_*` — secrets are server-only.

@@ -259,6 +259,72 @@ export const TOOL_DEFINITIONS = [
     },
   },
 
+  // ── Finance ledger (ADR-005 — confirm-before-write) ──
+  {
+    type: "function" as const,
+    function: {
+      name: "record_finance_entry",
+      description:
+        "Log ONE expense or income line to the finance ledger for one of the eight group companies, after you have read the invoice/receipt. The file itself stays in OneDrive; this records the structured NUMBER (amount + direction + company) that powers the per-company and consolidated finance views. IMPORTANT: this is CONFIRMED BEFORE SAVING — calling it stages a confirmation card; the entry is only written to the books after the human approves it, so a wrong parse never corrupts the accounts. Call it once per line. Read the document first to get the amount, then state what you read (company, amount, expense vs income, the invoice/source) before logging.",
+      parameters: {
+        type: "object",
+        properties: {
+          company: {
+            type: "string",
+            enum: [
+              "Aquavoy Holding",
+              "Aquavoy Shipping",
+              "Aquavoy Crewing",
+              "W&D Holding",
+              "W&D Trading",
+              "Denver Services BV",
+              "Faial BV",
+              "Novo Porto Scheepvaart BV",
+            ],
+            description: "Which of the eight group companies this line belongs to.",
+          },
+          direction: {
+            type: "string",
+            enum: ["expense", "income"],
+            description:
+              "'expense' for money the company paid out (a purchase invoice/receipt), 'income' for money it received (a sales invoice).",
+          },
+          amount: {
+            type: "number",
+            description:
+              "The line amount as a positive number, e.g. 12500 or 4250.50. Do not include the currency symbol or thousands separators.",
+          },
+          currency: {
+            type: "string",
+            description: "ISO currency code. Optional — defaults to EUR.",
+          },
+          date: {
+            type: "string",
+            description:
+              "Document/invoice date as an ISO date (YYYY-MM-DD). Optional — omit if not on the document.",
+          },
+          description: {
+            type: "string",
+            description:
+              "Optional short note, e.g. the invoice subject or what was billed.",
+          },
+          sourceName: {
+            type: "string",
+            description:
+              "Optional name of the source document the figure came from, e.g. the invoice file name.",
+          },
+          sourceRef: {
+            type: "string",
+            description:
+              "Optional reference back to the OneDrive item (the Graph item id) so the entry links to its file.",
+          },
+        },
+        required: ["company", "direction", "amount"],
+        additionalProperties: false,
+      },
+    },
+  },
+
   // ── Web research (Tavily) ──
   {
     type: "function" as const,
@@ -779,6 +845,9 @@ const DESTRUCTIVE = new Set([
   "delete_item",
   "move_item",
   "rename_item",
+  // Writing to the finance ledger is confirm-before-write (ADR-005): a wrong
+  // invoice parse must never silently book against the accounts.
+  "record_finance_entry",
 ]);
 
 /** Human-readable one-liner describing what a destructive action will do. */
@@ -798,6 +867,22 @@ function summarizeAction(name: string, args: Record<string, unknown>): string {
       return `Move OneDrive item ${s("itemId")} into folder ${s("newParentId")}`;
     case "rename_item":
       return `Rename OneDrive item ${s("itemId")} to "${s("newName")}"`;
+    case "record_finance_entry": {
+      const direction = s("direction") === "expense" ? "expense" : "income";
+      const currency = s("currency") || "EUR";
+      const rawAmount =
+        typeof args.amount === "number" ? args.amount : Number(args.amount);
+      const amount = Number.isFinite(rawAmount)
+        ? rawAmount.toLocaleString("en-US", {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          })
+        : s("amount");
+      const company = s("company");
+      const source = s("sourceName") || s("description");
+      const ref = source ? ` (${source})` : "";
+      return `Log ${direction} ${currency} ${amount} for ${company}${ref}`;
+    }
     default:
       return `Run ${name}`;
   }

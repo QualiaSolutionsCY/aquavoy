@@ -1604,6 +1604,198 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   max-width: 64ch;
 }
 
+/* ── Finance overview (ADR-005 read side) ──
+   Consolidated headline stats + a responsive per-company grid, fed by the
+   Supabase finance index. Reuses .panel-h/.btn/.notice/.empty/.skeleton; the
+   .fin-net-* tints are the only net-sentiment colour in the section, kept
+   subtle (success/danger tokens) so the panel reads as an instrument, not a
+   traffic light. All money values carry tabular numerals for column alignment. */
+.fin-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0 0 var(--sp-6);
+  padding-bottom: var(--sp-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.fin-overview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.fin-overview-head .panel-h {
+  margin: 0;
+}
+
+/* Consolidated roll-up — three headline numbers (income / expense / net). */
+.fin-consolidated {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-3);
+}
+.fin-stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.fin-stat-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.fin-stat-label svg {
+  flex-shrink: 0;
+}
+.fin-stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.fin-overview-meta {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Per-company breakdown — one card per group entity, multi-column on desktop. */
+.fin-company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+  gap: var(--sp-3);
+}
+.fin-company-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.fin-company-card:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow-1);
+}
+.fin-company-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.fin-company-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+.fin-company-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.fin-company-rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.fin-company-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  font-size: 0.875rem;
+}
+.fin-company-row dt {
+  color: var(--text-dim);
+}
+.fin-company-row dd {
+  margin: 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+.fin-company-row-net {
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.fin-company-row-net dt {
+  color: var(--text);
+  font-weight: 600;
+}
+.fin-company-row-net dd {
+  font-weight: 700;
+}
+
+/* Net sentiment — subtle, token-based. Zero stays neutral so an all-zero
+   ledger is not painted green. */
+.fin-net-pos { color: var(--success); }
+.fin-net-neg { color: var(--danger); }
+.fin-net-zero { color: var(--text-dim); }
+
+/* States — loading skeletons mirror the populated geometry; error pairs the
+   shared notice with a retry; empty reuses the .empty pattern. */
+.fin-overview-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.fin-overview-loading .fin-stat,
+.fin-overview-loading .fin-company-card {
+  gap: var(--sp-3);
+}
+.fin-overview-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.fin-overview-error .notice {
+  margin: 0;
+  width: 100%;
+}
+.fin-overview-empty {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-subtle);
+}
+
+@media (max-width: 720px) {
+  .fin-consolidated {
+    grid-template-columns: 1fr;
+  }
+  .fin-company-grid {
+    grid-template-columns: 1fr;
+  }
+  .fin-stat-value {
+    font-size: 1.375rem;
+  }
+}
+
 /* ── Web toggle ── */
 .web-toggle {
   background: transparent;

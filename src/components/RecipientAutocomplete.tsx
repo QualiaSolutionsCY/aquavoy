@@ -142,7 +142,16 @@ export default function RecipientAutocomplete({
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!open || items.length === 0) return;
+    if (!open) return;
+    // Escape must work even when the dropdown is open with zero items (loading
+    // "Searching…" or "No matching recipients") — WCAG 2.1 SC 1.4.13.
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setActive(-1);
+      return;
+    }
+    if (items.length === 0) return; // Arrow/Enter require a real item
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -157,11 +166,6 @@ export default function RecipientAutocomplete({
           e.preventDefault();
           choose(items[active]);
         }
-        break;
-      case "Escape":
-        e.preventDefault();
-        setOpen(false);
-        setActive(-1);
         break;
       default:
         break;

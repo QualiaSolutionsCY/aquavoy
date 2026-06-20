@@ -7,6 +7,7 @@ import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail } from "@/lib/mail/scheduled";
+import { recordFinanceEntry, type FinanceDirection } from "@/lib/finance/ledger";
 import type { Recurrence } from "@/lib/scheduleRecurrence";
 
 /**
@@ -173,6 +174,53 @@ export async function executeConfirmedAction(
         },
         // undo = cancel the queued row if still pending.
         undo_data: { scheduledId: row.id },
+      };
+    }
+
+    case "record_finance_entry": {
+      // Write one expense/income line to the finance ledger (ADR-005). This is
+      // the real insert, reached only after the human confirmed the staged
+      // action — a wrong invoice parse never books silently.
+      const direction = str(args, "direction") as FinanceDirection;
+      if (direction !== "expense" && direction !== "income")
+        throw new Error('direction must be "expense" or "income"');
+
+      const company = str(args, "company").trim();
+      if (!company) throw new Error("company is required");
+
+      const amount =
+        typeof args.amount === "number" ? args.amount : Number(args.amount);
+      if (!Number.isFinite(amount) || amount <= 0)
+        throw new Error("amount must be a finite number greater than 0");
+
+      const currency = str(args, "currency").trim() || undefined;
+      const docDate = str(args, "date").trim() || null;
+      const description = str(args, "description").trim() || null;
+      const sourceName = str(args, "sourceName").trim() || null;
+      const sourceRef = str(args, "sourceRef").trim() || null;
+
+      const { id } = await recordFinanceEntry({
+        company,
+        direction,
+        amount,
+        currency,
+        docDate,
+        description,
+        sourceName,
+        sourceRef,
+        // Attribute the booking to the HMAC-verified principal, never a value
+        // the model supplied.
+        createdBy: principal,
+      });
+      return {
+        result: { recorded: true, id, company, direction, amount },
+        // undo = delete the booked entry. The reversal is dispatched by
+        // pendingActions.undoAction (not in this builder's file set); that file
+        // owns the tool→reversal switch and is wired in a follow-up to call
+        // deleteFinanceEntry(financeEntryId). Until then record_finance_entry is
+        // absent from REVERSIBLE_TOOLS, so the confirm card shows "cannot undo"
+        // rather than offering a no-op Undo.
+        undo_data: { financeEntryId: id },
       };
     }
 

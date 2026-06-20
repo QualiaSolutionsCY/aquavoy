@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { updateItem } from "@/lib/microsoft/onedrive";
 import { cancelScheduled } from "@/lib/mail/scheduled";
+import { deleteFinanceEntry } from "@/lib/finance/ledger";
 import { executeConfirmedAction } from "@/lib/agents/executeConfirmedAction";
 
 /**
@@ -294,6 +295,17 @@ export async function undoAction(
 
     case "send_email":
       return { action, undone: false, reason: "send is irreversible" };
+
+    case "record_finance_entry": {
+      // Reverse a confirmed ledger entry by hard-deleting the row it created.
+      const entryId =
+        typeof undo.financeEntryId === "string" ? undo.financeEntryId : "";
+      if (!entryId) {
+        return { action, undone: false, reason: "finance entry id unavailable" };
+      }
+      await deleteFinanceEntry(entryId);
+      break;
+    }
 
     default:
       return { action, undone: false, reason: `no undo path for ${action.tool}` };

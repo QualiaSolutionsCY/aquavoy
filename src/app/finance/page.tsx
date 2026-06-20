@@ -1,9 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FolderTree, Sparkles, Send, Clock } from "lucide-react";
+import {
+  FolderTree,
+  Sparkles,
+  Send,
+  Clock,
+  TrendingUp,
+  TrendingDown,
+  Wallet,
+  RefreshCw,
+} from "lucide-react";
 
 import type { PendingAction } from "@/lib/agents/pendingActions";
+import type { FinanceSummary, FinanceCompanyTotals } from "@/lib/finance/ledger";
 
 type Principal = "Wency" | "Jeanette";
 
@@ -53,6 +63,7 @@ const REVERSIBLE_TOOLS = new Set([
   "rename_item",
   "delete_item",
   "schedule_email",
+  "record_finance_entry",
 ]);
 
 /* ── Lightweight Markdown rendering for the agent's proposal ──
@@ -117,6 +128,44 @@ function devWarn(message: string, err: unknown): void {
   if (process.env.NODE_ENV !== "production") console.warn(message, err);
 }
 
+/* ── Finance overview (ADR-005 read side) ──
+   The numbers come from the Supabase finance index via GET /api/finance/summary;
+   the FILES stay in OneDrive. This section is the consolidated + per-company
+   ledger view that the scan/propose flow below feeds into. */
+
+/* Coerce a possibly-missing numeric field to a finite number — the summary is
+   read defensively so a malformed total never NaNs the whole panel. */
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+/* Format a money amount with the ledger's currency and grouped thousands.
+   Falls back to a plain grouped number if the currency code is unusable, so an
+   odd/blank currency from the index never throws in render. */
+function formatMoney(amount: number, currency: string): string {
+  const value = num(amount);
+  const code = (currency || "EUR").trim().toUpperCase();
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+    }).format(value);
+  } catch {
+    return `${new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value)} ${code}`;
+  }
+}
+
+/* Net is the headline signal per company and consolidated — tint positive
+   (success) vs negative (danger) subtly; zero stays neutral so an all-zero
+   ledger doesn't read as a wall of green/red. */
+function netClass(net: number): string {
+  if (net > 0) return "fin-net-pos";
+  if (net < 0) return "fin-net-neg";
+  return "fin-net-zero";
+}
+
 export default function Finance() {
   const [identity, setIdentity] = useState<Principal | null>(null);
   const [company, setCompany] = useState<string | null>(null);
@@ -125,6 +174,13 @@ export default function Finance() {
   const [hasRun, setHasRun] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Financial overview (ADR-005 read side) ──
+  // Consolidated + per-company income/expense/net, loaded from the Supabase
+  // finance index on mount. Independent of the scan/propose flow below.
+  const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // ── Staged destructive actions (ADR-003) ──
   // The agent's proposed moves/renames/folder-creations arrive auto-staged and
@@ -150,6 +206,33 @@ export default function Finance() {
       setPending(json.data?.actions ?? []);
     } catch (e) {
       devWarn("pending-actions load failed", e);
+    }
+  }
+
+  /**
+   * Load the consolidated + per-company finance summary (ADR-005). Read on
+   * mount and re-runnable from the error-state retry. The principal gate lives
+   * on the route; a 401 here means the session lapsed — bounce to /login like
+   * the identity check does.
+   */
+  async function loadSummary() {
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const res = await fetch("/api/finance/summary");
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      const json = await res.json();
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error ?? `Failed to load finance overview (${res.status})`);
+      }
+      setSummary((json.data ?? null) as FinanceSummary | null);
+    } catch (e) {
+      setSummaryError((e as Error).message);
+    } finally {
+      setSummaryLoading(false);
     }
   }
 
@@ -298,6 +381,7 @@ export default function Finance() {
         if (json.ok && principal) {
           setIdentity(principal);
           loadPending();
+          loadSummary();
         } else {
           window.location.href = "/login";
         }
@@ -348,6 +432,13 @@ export default function Finance() {
           </button>
         </div>
       </div>
+
+      <FinanceOverview
+        summary={summary}
+        loading={summaryLoading}
+        error={summaryError}
+        onRetry={loadSummary}
+      />
 
       <p className="fin-intro">
         Ask Aquavoy to tidy up the accounting drive. It inspects the current
@@ -529,5 +620,186 @@ export default function Finance() {
         </p>
       </div>
     </main>
+  );
+}
+
+/* ── Financial overview section (ADR-005 read side) ──
+   Consolidated income/expense/net + a per-company breakdown, fed by the
+   Supabase finance index. The eight group companies always render (the API
+   includes zeroed entities), so the grid is the full group even before any
+   invoice is logged — but when EVERYTHING is zero we show a friendly empty
+   state instead of a wall of zeros. */
+function FinanceOverview({
+  summary,
+  loading,
+  error,
+  onRetry,
+}: {
+  summary: FinanceSummary | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const currency = summary?.currency || "EUR";
+  const companies: FinanceCompanyTotals[] = Array.isArray(summary?.companies)
+    ? summary!.companies
+    : [];
+
+  const consolidated = {
+    income: num(summary?.consolidated?.income),
+    expense: num(summary?.consolidated?.expense),
+    net: num(summary?.consolidated?.net),
+    count: num(summary?.consolidated?.count),
+  };
+
+  // Empty when there is genuinely nothing logged across the whole group —
+  // every consolidated total and the entry count are zero.
+  const isEmpty =
+    !loading &&
+    !error &&
+    summary !== null &&
+    consolidated.count === 0 &&
+    consolidated.income === 0 &&
+    consolidated.expense === 0 &&
+    consolidated.net === 0;
+
+  return (
+    <section className="fin-overview" aria-label="Financial overview">
+      <div className="fin-overview-head">
+        <span className="panel-h">Financial overview</span>
+        {!loading && !error && summary && (
+          <button
+            type="button"
+            className="btn ghost sm"
+            onClick={onRetry}
+            aria-label="Refresh financial overview"
+          >
+            <RefreshCw size={14} aria-hidden="true" />
+            Refresh
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <div className="fin-overview-loading" role="status" aria-label="Loading financial overview">
+          <div className="fin-consolidated">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="fin-stat">
+                <span className="skeleton" style={{ width: "4.5rem", height: "0.75rem" }} />
+                <span className="skeleton" style={{ width: "7rem", height: "1.5rem" }} />
+              </div>
+            ))}
+          </div>
+          <div className="fin-company-grid">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="fin-company-card">
+                <span className="skeleton" style={{ width: "60%", height: "0.875rem" }} />
+                <span className="skeleton" style={{ width: "100%", height: "2.5rem" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="fin-overview-error">
+          <div className="notice err" role="alert">
+            {error}
+          </div>
+          <button type="button" className="btn" onClick={onRetry} aria-label="Retry loading financial overview">
+            <RefreshCw size={16} aria-hidden="true" />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {isEmpty && (
+        <div className="fin-overview-empty empty">
+          <Wallet className="empty-icon" size={30} strokeWidth={1.5} aria-hidden="true" />
+          No finance entries yet — ask the agent to log invoices, e.g.
+          &ldquo;log this invoice to Aquavoy Shipping&rdquo;.
+          <span className="empty-hint">
+            Logged invoices appear here as consolidated and per-company totals.
+          </span>
+        </div>
+      )}
+
+      {!loading && !error && summary && !isEmpty && (
+        <>
+          <div className="fin-consolidated" role="group" aria-label="Consolidated totals">
+            <div className="fin-stat">
+              <span className="fin-stat-label">
+                <TrendingUp size={14} aria-hidden="true" />
+                Total income
+              </span>
+              <span className="fin-stat-value fin-net-pos">
+                {formatMoney(consolidated.income, currency)}
+              </span>
+            </div>
+            <div className="fin-stat">
+              <span className="fin-stat-label">
+                <TrendingDown size={14} aria-hidden="true" />
+                Total expense
+              </span>
+              <span className="fin-stat-value fin-net-neg">
+                {formatMoney(consolidated.expense, currency)}
+              </span>
+            </div>
+            <div className="fin-stat">
+              <span className="fin-stat-label">
+                <Wallet size={14} aria-hidden="true" />
+                Net
+              </span>
+              <span className={`fin-stat-value ${netClass(consolidated.net)}`}>
+                {formatMoney(consolidated.net, currency)}
+              </span>
+            </div>
+          </div>
+
+          <p className="fin-overview-meta">
+            Across {companies.length} {companies.length === 1 ? "company" : "companies"} ·{" "}
+            {consolidated.count} {consolidated.count === 1 ? "entry" : "entries"} ·{" "}
+            {currency}
+          </p>
+
+          <div className="fin-company-grid" role="list" aria-label="Per-company breakdown">
+            {companies.map((c, i) => {
+              const income = num(c?.income);
+              const expense = num(c?.expense);
+              const net = num(c?.net);
+              const count = num(c?.count);
+              return (
+                <div
+                  className="fin-company-card"
+                  role="listitem"
+                  key={c?.company ?? i}
+                >
+                  <div className="fin-company-card-head">
+                    <span className="fin-company-name">{c?.company ?? "—"}</span>
+                    <span className="fin-company-count">
+                      {count} {count === 1 ? "entry" : "entries"}
+                    </span>
+                  </div>
+                  <dl className="fin-company-rows">
+                    <div className="fin-company-row">
+                      <dt>Income</dt>
+                      <dd className="fin-net-pos">{formatMoney(income, currency)}</dd>
+                    </div>
+                    <div className="fin-company-row">
+                      <dt>Expense</dt>
+                      <dd className="fin-net-neg">{formatMoney(expense, currency)}</dd>
+                    </div>
+                    <div className="fin-company-row fin-company-row-net">
+                      <dt>Net</dt>
+                      <dd className={netClass(net)}>{formatMoney(net, currency)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
   );
 }

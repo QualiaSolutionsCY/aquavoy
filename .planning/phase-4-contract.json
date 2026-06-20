@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "phase": 4,
+  "goal": "Make bulk mail cleanup fast — search by sender, then batch-move matching messages to trash or a named folder, behind the existing confirm/undo gate; plus polish recipient autocomplete.",
+  "why": "This is the milestone's first mail write surface; it must preserve the M2/ADR-003 destructive-action contract — nothing mutates the mailbox without a human confirming the exact scope (count + sample), and every batch move is reversible.",
+  "generated_at": "2026-06-20T12:04:55Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:99ef74fd55ac7a82d1781fa7bbcbd26c5a6500c8ec90304331cbe201c95f358f",
+  "success_criteria": [
+    "\"Move all email from <sender> to trash\" produces a confirmable batch that, on confirm, moves every matching message to trash; undo restores them.",
+    "Moving matching mail to a named folder works the same way — search → confirm → batch move.",
+    "The confirm card shows the batch BEFORE it runs (count + sample subjects), so the operator confirms scope, not a blind action.",
+    "Recipient autocomplete suggests known recipients responsively while composing — visible loading + no-match states.",
+    "No mailbox write occurs without passing through the DESTRUCTIVE → stagePendingAction → confirm gate, consistent with the M2/ADR-003 contract."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "IMAP move adapter + sender-match preview",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/mail/imap.ts",
+        "src/lib/mail/imap.test.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "previewSenderMatches(email, folderHint, from, sampleSize) returns { folderPath, total, sample } where total counts messages whose sender matches from and sample is up to sampleSize newest envelope summaries.",
+        "moveMessages(email, sourceFolderHint, uids, destFolderHint) opens the source folder read-write, moves those uids to the resolved destination, and returns { movedCount, destFolderPath, uidMap } from imapflow messageMove CopyResponseObject.uidMap.",
+        "Trash routing resolves the \\Trash special-use folder via the existing resolveFolder logic.",
+        "The seam test mocks imapflow (no socket) and asserts the preview count+sample and that moveMessages calls client.messageMove(uidRange, destPath, { uid: true }) returning the uidMap."
+      ],
+      "action": "Add SenderMatchPreview/MoveResult interfaces and exported previewSenderMatches + moveMessages to imap.ts, reusing withClient/fetchFolderList/resolveFolder. preview runs client.search({from},{uid:true}) read-only and fetches the last sampleSize envelopes. moveMessages opens the source read-write (omit readOnly:true), calls client.messageMove(uids.join(','),destPath,{uid:true}), maps res.uidMap via Object.fromEntries. Extend imap.test.ts fake client with messageMove + two it() cases.",
+      "context_files": [
+        "src/lib/mail/imap.ts",
+        "src/lib/mail/imap.test.ts",
+        "src/lib/mail/accounts.ts",
+        "node_modules/imapflow/lib/imap-flow.js"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/imap.ts",
+          "pattern": "export async function moveMessages|export async function previewSenderMatches",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/imap.ts",
+          "pattern": "messageMove",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx vitest run src/lib/mail/imap.test.ts",
+          "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "previewSenderMatches",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "moveMessages",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "moveMessages",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Batch move-to-trash / move-to-folder agent tools (confirm-gated, undoable)",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/openrouter/client.ts",
+        "src/app/page.tsx",
+        "src/app/finance/page.tsx"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Two new TOOL_DEFINITIONS — batch_move_to_trash (mailbox, from, optional folder) and batch_move_to_folder (mailbox, from, destFolder, optional folder) — both added to the DESTRUCTIVE Set.",
+        "executeTool's DESTRUCTIVE branch first calls previewSenderMatches to resolve matched UIDs+count+sample, then stages a pending_actions row whose summary shows count + destination + sample subjects and whose args carry mailbox, sourceFolderPath, uids[], destFolderPath.",
+        "On confirm, executeConfirmedAction moves the captured UIDs via moveMessages and stores undo_data = { mailbox, destFolderPath, sourceFolderPath, uidMap }.",
+        "undoAction moves messages back: moveMessages(mailbox, destFolderPath, Object.values(uidMap), sourceFolderPath); row flips to undone.",
+        "REVERSIBLE_TOOLS in BOTH src/app/page.tsx and src/app/finance/page.tsx include the two batch tools so the Undo button renders.",
+        "The OpenRouter system-prompt catalogue names the two tools as confirm-staged writes.",
+        "A zero-match search stages NO action and returns a readable no-match result to the model."
+      ],
+      "action": "Add both tool defs after generate_inbox_briefing; add names to DESTRUCTIVE. In executeTool DESTRUCTIVE branch special-case them: call previewSenderMatches; zero matches return no_match JSON without staging; else build destFolderPath, collect uids, compose summary, stagePendingAction args {mailbox,sourceFolderPath,uids,destFolderPath,from}. Add execute + undo cases (import moveMessages). Name tools as staged in client.ts prompt. Add both to REVERSIBLE_TOOLS in page.tsx + finance/page.tsx.",
+      "context_files": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/openrouter/client.ts",
+        "src/app/page.tsx",
+        "src/app/finance/page.tsx",
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "batch_move_to_trash|batch_move_to_folder",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "batch_move_to_trash|batch_move_to_folder",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "batch_move_to_trash|batch_move_to_folder",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "batch_move_to_trash",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/finance/page.tsx",
+          "pattern": "batch_move_to_trash",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "batch_move_to_trash|batch_move_to_folder",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Recipient autocomplete polish",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "frontend",
+      "files_modify": [
+        "src/components/RecipientAutocomplete.tsx",
+        "src/app/page.tsx"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "While a debounced fetch for the current token is in flight, the dropdown shows a loading affordance (skeleton or Searching label) instead of staying blank.",
+        "When an address-like token returns zero matches, the dropdown shows a single non-selectable 'No matching recipients' row distinct from the closed state.",
+        "Selection, Arrow/Enter/Escape keyboard nav, and the reqId stale-response guard continue working unchanged.",
+        "New states use existing design tokens only — no new hardcoded colors, no Inter/system-ui.",
+        "Loading and empty rows are NOT role=option and aria-activedescendant only ever points at a real suggestion."
+      ],
+      "action": "Add isLoading set true when a valid looksLikeAddress token starts a debounce window, false on resolve/catch (guarded by myReq stale check). Open when isLoading OR items present OR a completed fetch returned zero for an address-like token. Render a Searching row while loading and a muted aria-disabled 'No matching recipients' row (not role=option) on zero match. Keep onKeyDown/onSelect unchanged. Add .ra-loading/.ra-empty styled-jsx with existing tokens; sonar-sweep behind prefers-reduced-motion.",
+      "context_files": [
+        "src/components/RecipientAutocomplete.tsx",
+        "src/app/page.tsx",
+        "src/lib/recipients.ts",
+        "src/app/api/recipients/route.ts",
+        ".planning/DESIGN.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/components/RecipientAutocomplete.tsx",
+          "pattern": "isLoading|No matching|Searching",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/components/RecipientAutocomplete.tsx",
+          "pattern": "Inter|system-ui|#[0-9a-fA-F]{3,6}",
+          "expect": "absent"
+        }
+      ]
+    }
+  ]
+}

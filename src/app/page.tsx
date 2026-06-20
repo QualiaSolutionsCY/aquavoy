@@ -64,6 +64,8 @@ const REVERSIBLE_TOOLS = new Set([
   "rename_item",
   "delete_item",
   "schedule_email",
+  "batch_move_to_trash",
+  "batch_move_to_folder",
 ]);
 
 interface Msg {

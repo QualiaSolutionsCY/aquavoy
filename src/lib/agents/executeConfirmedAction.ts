@@ -8,6 +8,7 @@ import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail } from "@/lib/mail/scheduled";
 import { recordFinanceEntry, type FinanceDirection } from "@/lib/finance/ledger";
+import { moveMessages } from "@/lib/mail/imap";
 import type { Recurrence } from "@/lib/scheduleRecurrence";
 
 /**
@@ -221,6 +222,39 @@ export async function executeConfirmedAction(
         // absent from REVERSIBLE_TOOLS, so the confirm card shows "cannot undo"
         // rather than offering a no-op Undo.
         undo_data: { financeEntryId: id },
+      };
+    }
+
+    case "batch_move_to_trash":
+    case "batch_move_to_folder": {
+      // The matched UID set was captured at STAGE time (previewSenderMatches),
+      // so this confirm step just performs the move the user approved. The move
+      // is reversible — undo (pendingActions) moves the dest UIDs back to the
+      // source folder using the uidMap captured here.
+      const mailbox = str(args, "mailbox");
+      const sourceFolderPath = str(args, "sourceFolderPath");
+      const destFolderPath = str(args, "destFolderPath");
+      if (!mailbox || !sourceFolderPath || !destFolderPath)
+        throw new Error("mailbox, sourceFolderPath, and destFolderPath are required");
+
+      const rawUids = Array.isArray(args.uids) ? args.uids : [];
+      const uids = rawUids.filter(
+        (u): u is number => typeof u === "number" && Number.isFinite(u),
+      );
+      if (uids.length === 0)
+        throw new Error("no message UIDs staged to move");
+
+      const res = await moveMessages(mailbox, sourceFolderPath, uids, destFolderPath);
+      return {
+        result: { moved: res.movedCount, destFolderPath },
+        // undo = move the destination UIDs back to the source folder. The uidMap
+        // (source UID → dest UID) lets undo target the messages at their new home.
+        undo_data: {
+          mailbox,
+          sourceFolderPath,
+          destFolderPath,
+          uidMap: res.uidMap,
+        },
       };
     }
 

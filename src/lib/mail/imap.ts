@@ -225,6 +225,19 @@ export interface EmailDetail {
   body: string;
 }
 
+export interface SenderMatchPreview {
+  folderPath: string;
+  total: number;
+  sample: EmailSummary[];
+  uids: number[];
+}
+
+export interface MoveResult {
+  movedCount: number;
+  destFolderPath: string;
+  uidMap: Record<number, number>;
+}
+
 /**
  * List all folders/mailboxes for an account — paths + special-use flags.
  */
@@ -396,5 +409,98 @@ export async function searchEmails(
     });
 
     return messages;
+  });
+}
+
+// ── Write API (move) ───────────────────────────────────────
+
+/**
+ * Preview which messages in a folder match a given sender BEFORE moving them.
+ * Opens the resolved folder read-only, searches by sender, and returns the
+ * full matched UID set plus a sample of the newest envelopes for confirmation.
+ */
+export async function previewSenderMatches(
+  email: string,
+  folderHint: string | undefined,
+  from: string,
+  sampleSize = 5,
+): Promise<SenderMatchPreview> {
+  const size = Math.max(sampleSize, 0);
+
+  return withClient(email, async (client) => {
+    const folders = await fetchFolderList(client);
+    const folderPath = resolveFolder(folders, folderHint);
+    await client.mailboxOpen(folderPath, { readOnly: true });
+
+    const found = await client.search({ from }, { uid: true });
+    const uids = (found ?? []) as number[];
+    if (uids.length === 0) {
+      return { folderPath, total: 0, sample: [], uids: [] };
+    }
+
+    const sample: EmailSummary[] = [];
+    if (size > 0) {
+      // Take the newest `size` UIDs (search returns ascending UID order).
+      const sampleUids = uids.slice(-size);
+      for await (const msg of client.fetch(
+        sampleUids.join(","),
+        { uid: true, envelope: true, flags: true },
+        { uid: true },
+      )) {
+        sample.push(fmtEnvelope(msg));
+      }
+      sample.sort((a, b) => {
+        if (a.date && b.date) return b.date.localeCompare(a.date);
+        return b.uid - a.uid;
+      });
+    }
+
+    return { folderPath, total: uids.length, sample, uids };
+  });
+}
+
+/**
+ * Resolve the mailbox's Trash special-use folder path for an account.
+ * Uses the same resolveFolder logic as the read ops.
+ */
+export async function resolveTrashFolder(email: string): Promise<string> {
+  return withClient(email, async (client) => {
+    const folders = await fetchFolderList(client);
+    return resolveFolder(folders, "trash");
+  });
+}
+
+/**
+ * Move a set of UIDs from a source folder to a destination folder. Opens the
+ * source folder read-WRITE and uses imapflow `messageMove`. Returns the count
+ * moved, the resolved destination path, and the source→dest UID map (present
+ * when the server has the UIDPLUS extension).
+ */
+export async function moveMessages(
+  email: string,
+  sourceFolderHint: string | undefined,
+  uids: number[],
+  destFolderHint: string,
+): Promise<MoveResult> {
+  if (uids.length === 0) {
+    throw new Error("moveMessages requires at least one UID");
+  }
+
+  return withClient(email, async (client) => {
+    const folders = await fetchFolderList(client);
+    const sourcePath = resolveFolder(folders, sourceFolderHint);
+    const destPath = resolveFolder(folders, destFolderHint);
+
+    // Read-WRITE: MOVE expels messages from the source mailbox.
+    await client.mailboxOpen(sourcePath);
+
+    const res = await client.messageMove(uids.join(","), destPath, {
+      uid: true,
+    });
+    const uidMap = Object.fromEntries(
+      res && res.uidMap ? res.uidMap : new Map<number, number>(),
+    ) as Record<number, number>;
+
+    return { movedCount: uids.length, destFolderPath: destPath, uidMap };
   });
 }

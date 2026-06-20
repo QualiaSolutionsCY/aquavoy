@@ -11,6 +11,7 @@ const h = vi.hoisted(() => {
   const folders = [
     { path: "INBOX", name: "INBOX", specialUse: undefined, flags: new Set<string>() },
     { path: "Sent Items", name: "Sent Items", specialUse: "\\Sent", flags: new Set<string>() },
+    { path: "Trash", name: "Trash", specialUse: "\\Trash", flags: new Set<string>() },
   ];
 
   const inboxMessages = [
@@ -22,6 +23,7 @@ const h = vi.hoisted(() => {
         from: [{ name: "Alice", address: "alice@example.com" }],
         to: [{ name: null, address: "info@aquavoy.com" }],
         subject: "First",
+        messageId: "<msg-11@example.com>",
       },
     },
     {
@@ -32,6 +34,7 @@ const h = vi.hoisted(() => {
         from: [{ name: "Bob", address: "bob@example.com" }],
         to: [{ name: null, address: "info@aquavoy.com" }],
         subject: "Second",
+        messageId: "<msg-12@example.com>",
       },
     },
   ];
@@ -50,6 +53,7 @@ const h = vi.hoisted(() => {
         })(),
       })),
       search: vi.fn(async () => [11, 12]),
+      messageMove: vi.fn(async () => ({ uidMap: new Map([[11, 101], [12, 102]]) })),
       logout: vi.fn(async () => undefined),
       close: vi.fn(() => undefined),
     };
@@ -94,7 +98,16 @@ vi.mock("./accounts", () => ({
   })),
 }));
 
-import { listFolders, listEmails, readEmail, searchEmails } from "./imap";
+import {
+  listFolders,
+  listEmails,
+  readEmail,
+  searchEmails,
+  previewSenderMatches,
+  moveMessages,
+  moveMessagesByMessageId,
+  resolveTrashFolder,
+} from "./imap";
 import { loadAccountWithSecretByEmail } from "./accounts";
 
 describe("mail/imap read adapter", () => {
@@ -109,6 +122,7 @@ describe("mail/imap read adapter", () => {
     expect(result).toEqual([
       { path: "INBOX", name: "INBOX", specialUse: null, flags: [] },
       { path: "Sent Items", name: "Sent Items", specialUse: "\\Sent", flags: [] },
+      { path: "Trash", name: "Trash", specialUse: "\\Trash", flags: [] },
     ]);
   });
 
@@ -141,5 +155,94 @@ describe("mail/imap read adapter", () => {
     await expect(listFolders("nobody@nowhere.com")).rejects.toThrow(
       /No stored IMAP account/,
     );
+  });
+
+  it("previewSenderMatches returns matched count, sample, and full uid set", async () => {
+    const preview = await previewSenderMatches(
+      "info@aquavoy.com",
+      "inbox",
+      "alice@example.com",
+      5,
+    );
+    expect(h.ref.current.mailboxOpen).toHaveBeenCalledWith("INBOX", { readOnly: true });
+    expect(h.ref.current.search).toHaveBeenCalledWith(
+      { from: "alice@example.com" },
+      { uid: true },
+    );
+    expect(preview.folderPath).toBe("INBOX");
+    expect(preview.total).toBe(2);
+    expect(preview.uids).toEqual([11, 12]);
+    expect(preview.messageIds).toEqual({
+      11: "<msg-11@example.com>",
+      12: "<msg-12@example.com>",
+    });
+    expect(preview.sample).toHaveLength(2);
+    expect(preview.sample[0].subject).toBe("Second"); // newest first
+  });
+
+  it("previewSenderMatches returns empty shape when no messages match", async () => {
+    h.ref.current.search = vi.fn(async () => []);
+    const preview = await previewSenderMatches(
+      "info@aquavoy.com",
+      "inbox",
+      "nobody@example.com",
+    );
+    expect(preview).toEqual({
+      folderPath: "INBOX",
+      total: 0,
+      sample: [],
+      uids: [],
+      messageIds: {},
+    });
+  });
+
+  it("resolveTrashFolder resolves the \\Trash special-use folder", async () => {
+    const path = await resolveTrashFolder("info@aquavoy.com");
+    expect(path).toBe("Trash");
+  });
+
+  it("moveMessages opens source read-write, moves UIDs, returns uidMap", async () => {
+    const result = await moveMessages("info@aquavoy.com", "inbox", [11, 12], "trash");
+    // Source opened read-WRITE (no readOnly option).
+    expect(h.ref.current.mailboxOpen).toHaveBeenCalledWith("INBOX");
+    expect(h.ref.current.messageMove).toHaveBeenCalledWith("11,12", "Trash", {
+      uid: true,
+    });
+    expect(result.movedCount).toBe(2);
+    expect(result.destFolderPath).toBe("Trash");
+    expect(result.uidMap).toEqual({ 11: 101, 12: 102 });
+  });
+
+  it("moveMessages rejects an empty UID set", async () => {
+    await expect(
+      moveMessages("info@aquavoy.com", "inbox", [], "trash"),
+    ).rejects.toThrow(/at least one UID/);
+  });
+
+  it("moveMessagesByMessageId re-locates by Message-ID header and moves back", async () => {
+    h.ref.current.search = vi.fn(async () => [201]);
+    const result = await moveMessagesByMessageId(
+      "info@aquavoy.com",
+      "trash",
+      ["<msg-11@example.com>"],
+      "inbox",
+    );
+    // Source (trash) opened read-WRITE (no readOnly option).
+    expect(h.ref.current.mailboxOpen).toHaveBeenCalledWith("Trash");
+    expect(h.ref.current.search).toHaveBeenCalledWith(
+      { header: { "message-id": "<msg-11@example.com>" } },
+      { uid: true },
+    );
+    expect(h.ref.current.messageMove).toHaveBeenCalledWith("201", "INBOX", {
+      uid: true,
+    });
+    expect(result.movedCount).toBe(1);
+    expect(result.destFolderPath).toBe("INBOX");
+  });
+
+  it("moveMessagesByMessageId rejects an empty Message-ID set", async () => {
+    await expect(
+      moveMessagesByMessageId("info@aquavoy.com", "trash", [], "inbox"),
+    ).rejects.toThrow(/at least one Message-ID/);
   });
 });

@@ -3,6 +3,7 @@ import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { updateItem } from "@/lib/microsoft/onedrive";
 import { cancelScheduled } from "@/lib/mail/scheduled";
 import { deleteFinanceEntry } from "@/lib/finance/ledger";
+import { moveMessages, moveMessagesByMessageId } from "@/lib/mail/imap";
 import { executeConfirmedAction } from "@/lib/agents/executeConfirmedAction";
 
 /**
@@ -304,6 +305,52 @@ export async function undoAction(
         return { action, undone: false, reason: "finance entry id unavailable" };
       }
       await deleteFinanceEntry(entryId);
+      break;
+    }
+
+    case "batch_move_to_trash":
+    case "batch_move_to_folder": {
+      // Reverse a confirmed batch move by moving the messages back to the source
+      // folder. The dest UIDs come from the uidMap captured at confirm time
+      // (source UID → dest UID); we move those dest UIDs from dest → source.
+      const mailbox = typeof undo.mailbox === "string" ? undo.mailbox : "";
+      const sourceFolderPath =
+        typeof undo.sourceFolderPath === "string" ? undo.sourceFolderPath : "";
+      const destFolderPath =
+        typeof undo.destFolderPath === "string" ? undo.destFolderPath : "";
+      const uidMap =
+        undo.uidMap && typeof undo.uidMap === "object"
+          ? (undo.uidMap as Record<string, number>)
+          : {};
+      const destUids = Object.values(uidMap).filter(
+        (u): u is number => typeof u === "number" && Number.isFinite(u),
+      );
+      if (!mailbox || !sourceFolderPath || !destFolderPath) {
+        return { action, undone: false, reason: "move metadata unavailable" };
+      }
+      if (destUids.length > 0) {
+        // Fast path: server had UIDPLUS, so we know each message's new UID.
+        await moveMessages(mailbox, destFolderPath, destUids, sourceFolderPath);
+      } else {
+        // §A1: no uidMap (server lacks UIDPLUS) — re-locate by Message-ID, which
+        // survives a folder move, and move those messages back to the source.
+        const messageIdMap =
+          undo.messageIds && typeof undo.messageIds === "object"
+            ? (undo.messageIds as Record<string, string>)
+            : {};
+        const messageIdValues = Object.values(messageIdMap).filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        );
+        if (messageIdValues.length === 0) {
+          return { action, undone: false, reason: "no moved messages to restore" };
+        }
+        await moveMessagesByMessageId(
+          mailbox,
+          destFolderPath,
+          messageIdValues,
+          sourceFolderPath,
+        );
+      }
       break;
     }
 

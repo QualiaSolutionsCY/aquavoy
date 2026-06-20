@@ -57,24 +57,41 @@ export default function RecipientAutocomplete({
   const [items, setItems] = useState<Suggestion[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  const [isLoading, setIsLoading] = useState(false);
+  // True once a fetch for a still-address-like token has resolved with zero
+  // matches — drives the non-selectable "No matching recipients" row.
+  const [noMatches, setNoMatches] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const reqId = useRef(0);
   const listId = useId();
   const optionId = (i: number) => `${listId}-opt-${i}`;
 
   // Debounced search on the trailing address-like token of the current value.
-  // All state writes happen asynchronously (in the timeout callback) so this
-  // never sets state synchronously in the effect body.
+  // When the token is address-like we open the dropdown synchronously into a
+  // loading state (so fast typers see a "Searching…" affordance during the
+  // debounce + fetch window); the fetch result then replaces it. Non-matching
+  // tokens collapse the dropdown in the (async) timeout callback as before.
   useEffect(() => {
     const token = value.trim().split(/\s+/).pop() ?? "";
     const myReq = ++reqId.current;
+    const tokenIsAddress = !disabled && looksLikeAddress(token);
+    if (tokenIsAddress) {
+      // Show the dropdown's loading affordance immediately, not only after the
+      // fetch resolves. Clear any prior "no matches" verdict for the new token.
+      setIsLoading(true);
+      setNoMatches(false);
+      setActive(-1);
+      setOpen(true);
+    }
     const handle = setTimeout(async () => {
       // Not an address-like token (or disabled) → collapse the dropdown.
-      if (disabled || !looksLikeAddress(token)) {
+      if (!tokenIsAddress) {
         if (myReq !== reqId.current) return;
         setItems([]);
         setOpen(false);
         setActive(-1);
+        setIsLoading(false);
+        setNoMatches(false);
         return;
       }
       try {
@@ -85,13 +102,18 @@ export default function RecipientAutocomplete({
         const data: Suggestion[] = json?.ok && Array.isArray(json.data) ? json.data : [];
         const next = data.slice(0, MAX_RESULTS);
         setItems(next);
-        setOpen(next.length > 0);
+        setIsLoading(false);
+        // Keep the dropdown open for results OR the explicit empty verdict.
+        setNoMatches(next.length === 0);
+        setOpen(true);
         setActive(next.length > 0 ? 0 : -1);
       } catch {
         if (myReq !== reqId.current) return;
         setItems([]);
         setOpen(false);
         setActive(-1);
+        setIsLoading(false);
+        setNoMatches(false);
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(handle);
@@ -115,10 +137,21 @@ export default function RecipientAutocomplete({
     setItems([]);
     setOpen(false);
     setActive(-1);
+    setIsLoading(false);
+    setNoMatches(false);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (!open || items.length === 0) return;
+    if (!open) return;
+    // Escape must work even when the dropdown is open with zero items (loading
+    // "Searching…" or "No matching recipients") — WCAG 2.1 SC 1.4.13.
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setActive(-1);
+      return;
+    }
+    if (items.length === 0) return; // Arrow/Enter require a real item
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -133,11 +166,6 @@ export default function RecipientAutocomplete({
           e.preventDefault();
           choose(items[active]);
         }
-        break;
-      case "Escape":
-        e.preventDefault();
-        setOpen(false);
-        setActive(-1);
         break;
       default:
         break;
@@ -168,29 +196,44 @@ export default function RecipientAutocomplete({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         onFocus={() => {
-          if (items.length > 0) setOpen(true);
+          // Reopen if we have prior results (or an outstanding loading window).
+          if (items.length > 0 || isLoading) setOpen(true);
         }}
       />
-      {open && items.length > 0 && (
+      {open && (
         <ul className="ra-list" id={listId} role="listbox" aria-label="Email suggestions">
-          {items.map((item, i) => (
-            <li
-              key={`${item.email}-${i}`}
-              id={optionId(i)}
-              role="option"
-              aria-selected={i === active}
-              className={`ra-option${i === active ? " active" : ""}`}
-              // Pointer down (not click) so the input's blur doesn't beat the pick.
-              onPointerDown={(e) => {
-                e.preventDefault();
-                choose(item);
-              }}
-              onMouseEnter={() => setActive(i)}
-            >
-              <span className="ra-name">{item.name}</span>
-              <span className="ra-email">{item.email}</span>
+          {isLoading ? (
+            // Non-selectable loading affordance — NOT role=option, so the
+            // listbox never points aria-activedescendant at it.
+            <li className="ra-loading" aria-disabled="true">
+              <span className="ra-skeleton" aria-hidden="true" />
+              <span className="ra-loading-label">Searching…</span>
             </li>
-          ))}
+          ) : items.length > 0 ? (
+            items.map((item, i) => (
+              <li
+                key={`${item.email}-${i}`}
+                id={optionId(i)}
+                role="option"
+                aria-selected={i === active}
+                className={`ra-option${i === active ? " active" : ""}`}
+                // Pointer down (not click) so the input's blur doesn't beat the pick.
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  choose(item);
+                }}
+                onMouseEnter={() => setActive(i)}
+              >
+                <span className="ra-name">{item.name}</span>
+                <span className="ra-email">{item.email}</span>
+              </li>
+            ))
+          ) : noMatches ? (
+            // Explicit empty verdict for an address-like token — NOT role=option.
+            <li className="ra-empty" aria-disabled="true">
+              No matching recipients
+            </li>
+          ) : null}
         </ul>
       )}
 
@@ -280,6 +323,55 @@ export default function RecipientAutocomplete({
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+        }
+        /* In-flight + empty rows: shared geometry with .ra-option, but inert. */
+        .ra-loading,
+        .ra-empty {
+          display: flex;
+          align-items: center;
+          gap: var(--sp-2);
+          padding: var(--sp-2) var(--sp-3);
+          border-radius: var(--radius-sm);
+          color: var(--text-muted);
+          font-size: 0.8125rem;
+          font-family: var(--font-mono, monospace);
+          line-height: 1.2;
+          cursor: default;
+          user-select: none;
+        }
+        .ra-loading-label {
+          color: var(--text-muted);
+        }
+        /* sonar-sweep skeleton bar — keyframes live in globals.css. */
+        .ra-skeleton {
+          position: relative;
+          flex-shrink: 0;
+          width: 1.75rem;
+          height: 0.75rem;
+          border-radius: var(--radius-sm);
+          background: var(--surface-2);
+          overflow: hidden;
+        }
+        .ra-skeleton::after {
+          content: "";
+          position: absolute;
+          inset: 0;
+          transform: translateX(-100%);
+          background: linear-gradient(
+            90deg,
+            transparent,
+            var(--accent-subtle) 45%,
+            var(--accent-subtle) 55%,
+            transparent
+          );
+          animation: sonar-sweep 1.6s var(--ease-out) infinite;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .ra-skeleton::after {
+            animation: none;
+            transform: translateX(0);
+            background: var(--accent-subtle);
+          }
         }
       `}</style>
     </div>

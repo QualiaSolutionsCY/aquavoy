@@ -15,7 +15,14 @@ import { stagePendingAction } from "@/lib/agents/pendingActions";
 import { loadAccountWithSecretByEmail, listAccounts } from "@/lib/mail/accounts";
 import { listScheduled, cancelScheduled } from "@/lib/mail/scheduled";
 import { scheduleTask, listTasks, cancelTask } from "@/lib/agents/scheduledTasks";
-import { listFolders, listEmails, readEmail, searchEmails } from "@/lib/mail/imap";
+import {
+  listFolders,
+  listEmails,
+  readEmail,
+  searchEmails,
+  previewSenderMatches,
+  resolveTrashFolder,
+} from "@/lib/mail/imap";
 import { generateInboxBriefing } from "@/lib/mail/briefing";
 
 /**
@@ -320,6 +327,73 @@ export const TOOL_DEFINITIONS = [
           },
         },
         required: ["company", "direction", "amount"],
+        additionalProperties: false,
+      },
+    },
+  },
+
+  // ── Mailbox batch move (ADR-003 — confirm-before-write, undoable) ──
+  {
+    type: "function" as const,
+    function: {
+      name: "batch_move_to_trash",
+      description:
+        "Move ALL emails from a given sender, in one folder of a connected mailbox, to that mailbox's Trash. Use this for 'delete/trash all emails from X' requests. IMPORTANT: this is CONFIRMED BEFORE MOVING — calling it stages a confirmation card that shows the matched count and a sample of subjects; nothing is moved until the human approves it in the UI, and the move is reversible (undo restores the messages to the source folder). Call it ONCE and relay the returned summary; do NOT re-call after the user says yes — confirming is the UI's job.",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description:
+              "The email address of the connected mailbox (e.g. info@aquavoy.com).",
+          },
+          from: {
+            type: "string",
+            description:
+              "The sender address or name to match — every message from this sender in the folder is moved.",
+          },
+          folder: {
+            type: "string",
+            description:
+              'Folder hint to search: "inbox", "sent", "drafts", "trash", or an explicit IMAP path. Defaults to inbox.',
+          },
+        },
+        required: ["mailbox", "from"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "batch_move_to_folder",
+      description:
+        "Move ALL emails from a given sender, in one folder of a connected mailbox, to a different destination folder. Use this for 'file/move all emails from X into folder Y' requests. IMPORTANT: this is CONFIRMED BEFORE MOVING — calling it stages a confirmation card that shows the matched count and a sample of subjects; nothing is moved until the human approves it in the UI, and the move is reversible (undo moves the messages back to the source folder). Call it ONCE and relay the returned summary; do NOT re-call after the user says yes — confirming is the UI's job.",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description:
+              "The email address of the connected mailbox (e.g. info@aquavoy.com).",
+          },
+          from: {
+            type: "string",
+            description:
+              "The sender address or name to match — every message from this sender in the source folder is moved.",
+          },
+          destFolder: {
+            type: "string",
+            description:
+              'The destination folder to move matched messages into: a hint ("archive", "trash", etc.) or an explicit IMAP path.',
+          },
+          folder: {
+            type: "string",
+            description:
+              'Source folder hint to search: "inbox", "sent", "drafts", "trash", or an explicit IMAP path. Defaults to inbox.',
+          },
+        },
+        required: ["mailbox", "from", "destFolder"],
         additionalProperties: false,
       },
     },
@@ -848,6 +922,11 @@ const DESTRUCTIVE = new Set([
   // Writing to the finance ledger is confirm-before-write (ADR-005): a wrong
   // invoice parse must never silently book against the accounts.
   "record_finance_entry",
+  // Batch mailbox moves are the milestone's first mail WRITE surface (ADR-003):
+  // a blind "trash everything from X" must be confirmed against a shown count +
+  // sample before any message moves, and is reversible (undo moves them back).
+  "batch_move_to_trash",
+  "batch_move_to_folder",
 ]);
 
 /** Human-readable one-liner describing what a destructive action will do. */
@@ -909,6 +988,77 @@ export async function executeTool(
     if (DESTRUCTIVE.has(name)) {
       if (!sessionPrincipal)
         return JSON.stringify({ error: "no verified principal in session" });
+
+      // Batch mailbox moves capture the matched message set NOW (at stage time)
+      // so the confirm card shows the real count + a sample, not a blind action
+      // (criterion 3). A zero-match search stages NOTHING and returns a readable
+      // no-match result — the user never confirms an empty move.
+      if (name === "batch_move_to_trash" || name === "batch_move_to_folder") {
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        const from = typeof args.from === "string" ? args.from : "";
+        if (!mailbox) return JSON.stringify({ error: "mailbox (email address) is required" });
+        if (!from) return JSON.stringify({ error: "from (sender to match) is required" });
+
+        const acct = await loadAccountWithSecretByEmail(mailbox);
+        if (!acct) {
+          const accounts = await listAccounts();
+          return JSON.stringify({
+            error: `No connected mail account for "${mailbox}".`,
+            connected_addresses: accounts.map((a) => a.email),
+          });
+        }
+
+        const folderHint = typeof args.folder === "string" && args.folder ? args.folder : "inbox";
+        const preview = await previewSenderMatches(mailbox, folderHint, from);
+        if (preview.total === 0) {
+          return JSON.stringify({
+            status: "no_match",
+            message: `No emails from ${from} in ${folderHint}.`,
+          });
+        }
+
+        // Destination: Trash for the trash variant, otherwise the named folder.
+        const destFolderPath =
+          name === "batch_move_to_trash"
+            ? await resolveTrashFolder(mailbox)
+            : typeof args.destFolder === "string"
+              ? args.destFolder
+              : "";
+        if (name === "batch_move_to_folder" && !destFolderPath) {
+          return JSON.stringify({ error: "destFolder is required" });
+        }
+
+        const sampleSubjects = preview.sample
+          .slice(0, 3)
+          .map((m) => `"${m.subject}"`)
+          .join(", ");
+        const destLabel =
+          name === "batch_move_to_trash" ? "Trash" : destFolderPath;
+        const summary =
+          `Move ${preview.total} email${preview.total === 1 ? "" : "s"} from ${from} ` +
+          `(${preview.folderPath} → ${destLabel})` +
+          (sampleSubjects ? ` — e.g. ${sampleSubjects}` : "");
+
+        const row = await stagePendingAction({
+          principal: sessionPrincipal,
+          tool: name,
+          args: {
+            mailbox,
+            sourceFolderPath: preview.folderPath,
+            uids: preview.uids,
+            messageIds: preview.messageIds,
+            destFolderPath,
+            from,
+          },
+          summary,
+        });
+        return JSON.stringify({
+          status: "confirmation_required",
+          action_id: row.id,
+          summary,
+        });
+      }
+
       const summary = summarizeAction(name, args);
       const row = await stagePendingAction({
         principal: sessionPrincipal,

@@ -1,0 +1,126 @@
+{
+  "version": 1,
+  "phase": 4,
+  "type": "gap-closure",
+  "goal": "Batch sender-move undo restores messages on ANY IMAP server (with or without UIDPLUS), and the recipient autocomplete dropdown is dismissible via Escape in every state.",
+  "why": "The phase goal promises 'undo that puts the messages back' but it silently fails on IMAP servers without UIDPLUS (uidMap empty), and the polished autocomplete traps Escape in the new loading/no-match states (WCAG 2.1 SC 1.4.13). Both block the phase verdict.",
+  "generated_at": "2026-06-20T12:50:15Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:a4491fc4fed047e4ed7b585989c5b03ad4d3580c2f0de0e7077e9f80381321ca",
+  "success_criteria": [
+    "Undoing a confirmed batch move on an IMAP server without UIDPLUS restores every message to the source folder (undo returns undone:true).",
+    "Undo on a UIDPLUS server is unchanged and still uses the uidMap fast path.",
+    "No new migration; undo state rides the existing pending_actions.undo_data JSON (messageIds added to the JSON only).",
+    "Escape closes the recipient autocomplete dropdown in the loading and no-match states; Arrow/Enter still no-op without items.",
+    "npx tsc --noEmit reports 0 errors and npx vitest run passes."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Capability-independent batch-move undo (Message-ID fallback)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/mail/imap.ts",
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/mail/imap.test.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "On an IMAP server without UIDPLUS (messageMove returns no uidMap), confirming a batch move then undoing restores every moved message to the source folder; undo returns undone:true, not 'no moved messages to restore'.",
+        "On a server with UIDPLUS, undo still uses the fast uidMap path with no extra search and no behavior change.",
+        "Staged action args and persisted undo_data both carry a messageIds map (source UID -> Message-ID) captured at stage time.",
+        "previewSenderMatches returns a messageIds:Record<number,string> field covering the full matched UID set, not just the sample."
+      ],
+      "action": "previewSenderMatches (imap.ts:422): capture messageId for the full matched UID set; add messageIds to SenderMatchPreview (228). Add exported moveMessagesByMessageId locating UIDs via client.search({header:{'message-id':id}}) (imap-flow.js:2518) then messageMove back. onedriveTools.ts: add messageIds to staged args. executeConfirmedAction.ts: carry into undo_data. pendingActions.ts undo: keep uidMap path; on empty destUids use the new helper; false only if both empty. Add tests. See plan.md.",
+      "context_files": [
+        "src/lib/mail/imap.ts",
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/mail/imap.test.ts",
+        ".planning/phase-4-verification.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/imap.ts",
+          "pattern": "moveMessagesByMessageId",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "moveMessagesByMessageId",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "messageIds",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "messageIds",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/mail/imap.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Escape dismisses autocomplete in loading and no-match states",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "ux",
+      "files_modify": [
+        "src/components/RecipientAutocomplete.tsx"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Pressing Escape during the loading state (Searching..., items.length===0) closes the dropdown and resets the active index.",
+        "Pressing Escape during the no-match state (No matching recipients, items.length===0) closes the dropdown.",
+        "ArrowUp/ArrowDown/Enter still no-op when there are no real items (no crash, no index move).",
+        "When items.length>0, selection and navigation behave exactly as before with no regression."
+      ],
+      "action": "In onKeyDown (RecipientAutocomplete.tsx:144) replace 'if (!open || items.length === 0) return;' (line 145) with 'if (!open) return;' followed by an Escape handler (e.preventDefault; setOpen(false); setActive(-1); return) placed BEFORE 'if (items.length === 0) return;'. Leave the existing switch intact; do not touch the pointer-down close handler, choose(), or other state setters.",
+      "context_files": [
+        "src/components/RecipientAutocomplete.tsx",
+        ".planning/phase-4-verification.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/components/RecipientAutocomplete.tsx",
+          "pattern": "if \\(!open\\) return",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    }
+  ]
+}

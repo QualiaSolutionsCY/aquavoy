@@ -23,6 +23,7 @@ const h = vi.hoisted(() => {
         from: [{ name: "Alice", address: "alice@example.com" }],
         to: [{ name: null, address: "info@aquavoy.com" }],
         subject: "First",
+        messageId: "<msg-11@example.com>",
       },
     },
     {
@@ -33,6 +34,7 @@ const h = vi.hoisted(() => {
         from: [{ name: "Bob", address: "bob@example.com" }],
         to: [{ name: null, address: "info@aquavoy.com" }],
         subject: "Second",
+        messageId: "<msg-12@example.com>",
       },
     },
   ];
@@ -103,6 +105,7 @@ import {
   searchEmails,
   previewSenderMatches,
   moveMessages,
+  moveMessagesByMessageId,
   resolveTrashFolder,
 } from "./imap";
 import { loadAccountWithSecretByEmail } from "./accounts";
@@ -169,6 +172,10 @@ describe("mail/imap read adapter", () => {
     expect(preview.folderPath).toBe("INBOX");
     expect(preview.total).toBe(2);
     expect(preview.uids).toEqual([11, 12]);
+    expect(preview.messageIds).toEqual({
+      11: "<msg-11@example.com>",
+      12: "<msg-12@example.com>",
+    });
     expect(preview.sample).toHaveLength(2);
     expect(preview.sample[0].subject).toBe("Second"); // newest first
   });
@@ -185,6 +192,7 @@ describe("mail/imap read adapter", () => {
       total: 0,
       sample: [],
       uids: [],
+      messageIds: {},
     });
   });
 
@@ -209,5 +217,32 @@ describe("mail/imap read adapter", () => {
     await expect(
       moveMessages("info@aquavoy.com", "inbox", [], "trash"),
     ).rejects.toThrow(/at least one UID/);
+  });
+
+  it("moveMessagesByMessageId re-locates by Message-ID header and moves back", async () => {
+    h.ref.current.search = vi.fn(async () => [201]);
+    const result = await moveMessagesByMessageId(
+      "info@aquavoy.com",
+      "trash",
+      ["<msg-11@example.com>"],
+      "inbox",
+    );
+    // Source (trash) opened read-WRITE (no readOnly option).
+    expect(h.ref.current.mailboxOpen).toHaveBeenCalledWith("Trash");
+    expect(h.ref.current.search).toHaveBeenCalledWith(
+      { header: { "message-id": "<msg-11@example.com>" } },
+      { uid: true },
+    );
+    expect(h.ref.current.messageMove).toHaveBeenCalledWith("201", "INBOX", {
+      uid: true,
+    });
+    expect(result.movedCount).toBe(1);
+    expect(result.destFolderPath).toBe("INBOX");
+  });
+
+  it("moveMessagesByMessageId rejects an empty Message-ID set", async () => {
+    await expect(
+      moveMessagesByMessageId("info@aquavoy.com", "trash", [], "inbox"),
+    ).rejects.toThrow(/at least one Message-ID/);
   });
 });

@@ -1046,6 +1046,7 @@ export async function executeTool(
             mailbox,
             sourceFolderPath: preview.folderPath,
             uids: preview.uids,
+            messageIds: preview.messageIds,
             destFolderPath,
             from,
           },

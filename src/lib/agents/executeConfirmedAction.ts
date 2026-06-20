@@ -244,16 +244,26 @@ export async function executeConfirmedAction(
       if (uids.length === 0)
         throw new Error("no message UIDs staged to move");
 
+      // Message-IDs captured at stage time (source UID → Message-ID). They give
+      // undo a capability-independent way to re-locate the moved messages when
+      // the server lacks UIDPLUS and the uidMap comes back empty (§A1).
+      const messageIds =
+        args.messageIds && typeof args.messageIds === "object"
+          ? (args.messageIds as Record<string, string>)
+          : {};
+
       const res = await moveMessages(mailbox, sourceFolderPath, uids, destFolderPath);
       return {
         result: { moved: res.movedCount, destFolderPath },
         // undo = move the destination UIDs back to the source folder. The uidMap
-        // (source UID → dest UID) lets undo target the messages at their new home.
+        // (source UID → dest UID) lets undo target the messages at their new home;
+        // messageIds is the fallback when the server lacks UIDPLUS.
         undo_data: {
           mailbox,
           sourceFolderPath,
           destFolderPath,
           uidMap: res.uidMap,
+          messageIds,
         },
       };
     }

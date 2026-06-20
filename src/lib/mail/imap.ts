@@ -230,6 +230,7 @@ export interface SenderMatchPreview {
   total: number;
   sample: EmailSummary[];
   uids: number[];
+  messageIds: Record<number, string>;
 }
 
 export interface MoveResult {
@@ -435,7 +436,20 @@ export async function previewSenderMatches(
     const found = await client.search({ from }, { uid: true });
     const uids = (found ?? []) as number[];
     if (uids.length === 0) {
-      return { folderPath, total: 0, sample: [], uids: [] };
+      return { folderPath, total: 0, sample: [], uids: [], messageIds: {} };
+    }
+
+    // Capture the Message-ID (RFC822 header) for every matched UID. Message-IDs
+    // survive a folder move, so undo can re-locate the moved messages on servers
+    // that lack the UIDPLUS extension (§A1: uidMap is then empty).
+    const messageIds: Record<number, string> = {};
+    for await (const msg of client.fetch(
+      uids.join(","),
+      { uid: true, envelope: true },
+      { uid: true },
+    )) {
+      const id = msg.envelope?.messageId ?? "";
+      if (id) messageIds[msg.uid] = id;
     }
 
     const sample: EmailSummary[] = [];
@@ -455,7 +469,7 @@ export async function previewSenderMatches(
       });
     }
 
-    return { folderPath, total: uids.length, sample, uids };
+    return { folderPath, total: uids.length, sample, uids, messageIds };
   });
 }
 
@@ -502,5 +516,48 @@ export async function moveMessages(
     ) as Record<number, number>;
 
     return { movedCount: uids.length, destFolderPath: destPath, uidMap };
+  });
+}
+
+/**
+ * Reverse a batch move using Message-IDs instead of UIDs. Capability-independent
+ * undo path (§A1): when the server lacks UIDPLUS, the forward move returns no
+ * uidMap, so undo cannot target the messages by their new UID. Message-IDs
+ * (RFC822 header) survive the move, so we open the folder the messages now live
+ * in, search each Message-ID, and move the matched UIDs back to the destination.
+ */
+export async function moveMessagesByMessageId(
+  email: string,
+  fromFolderHint: string,
+  messageIds: string[],
+  destFolderHint: string,
+): Promise<{ movedCount: number; destFolderPath: string }> {
+  if (messageIds.length === 0) {
+    throw new Error("moveMessagesByMessageId requires at least one Message-ID");
+  }
+
+  return withClient(email, async (client) => {
+    const folders = await fetchFolderList(client);
+    const fromPath = resolveFolder(folders, fromFolderHint);
+    const destPath = resolveFolder(folders, destFolderHint);
+
+    // Read-WRITE: MOVE expels messages from the source mailbox.
+    await client.mailboxOpen(fromPath);
+
+    const found = new Set<number>();
+    for (const id of messageIds) {
+      const matched = await client.search(
+        { header: { "message-id": id } },
+        { uid: true },
+      );
+      for (const uid of (matched ?? []) as number[]) found.add(uid);
+    }
+
+    const foundUids = Array.from(found);
+    if (foundUids.length > 0) {
+      await client.messageMove(foundUids.join(","), destPath, { uid: true });
+    }
+
+    return { movedCount: foundUids.length, destFolderPath: destPath };
   });
 }

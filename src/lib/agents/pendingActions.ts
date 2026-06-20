@@ -3,7 +3,7 @@ import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { updateItem } from "@/lib/microsoft/onedrive";
 import { cancelScheduled } from "@/lib/mail/scheduled";
 import { deleteFinanceEntry } from "@/lib/finance/ledger";
-import { moveMessages } from "@/lib/mail/imap";
+import { moveMessages, moveMessagesByMessageId } from "@/lib/mail/imap";
 import { executeConfirmedAction } from "@/lib/agents/executeConfirmedAction";
 
 /**
@@ -328,10 +328,29 @@ export async function undoAction(
       if (!mailbox || !sourceFolderPath || !destFolderPath) {
         return { action, undone: false, reason: "move metadata unavailable" };
       }
-      if (destUids.length === 0) {
-        return { action, undone: false, reason: "no moved messages to restore" };
+      if (destUids.length > 0) {
+        // Fast path: server had UIDPLUS, so we know each message's new UID.
+        await moveMessages(mailbox, destFolderPath, destUids, sourceFolderPath);
+      } else {
+        // §A1: no uidMap (server lacks UIDPLUS) — re-locate by Message-ID, which
+        // survives a folder move, and move those messages back to the source.
+        const messageIdMap =
+          undo.messageIds && typeof undo.messageIds === "object"
+            ? (undo.messageIds as Record<string, string>)
+            : {};
+        const messageIdValues = Object.values(messageIdMap).filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        );
+        if (messageIdValues.length === 0) {
+          return { action, undone: false, reason: "no moved messages to restore" };
+        }
+        await moveMessagesByMessageId(
+          mailbox,
+          destFolderPath,
+          messageIdValues,
+          sourceFolderPath,
+        );
       }
-      await moveMessages(mailbox, destFolderPath, destUids, sourceFolderPath);
       break;
     }
 

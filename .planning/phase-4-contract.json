@@ -54,7 +54,8 @@
         },
         {
           "type": "command-exit",
-          "command": "npx vitest run src/lib/mail/imap.test.ts",
+          "command": "npx",
+          "args": ["vitest", "run", "src/lib/mail/imap.test.ts"],
           "expected_exit": 0
         },
         {

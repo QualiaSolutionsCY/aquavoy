@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/http";
 import { runDue } from "@/lib/mail/scheduled";
+import * as Sentry from "@sentry/nextjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
     const result = await runDue();
     return ok(result);
   } catch (err) {
+    Sentry.captureException(err);
     const message = err instanceof Error ? err.message : "Cron runner failed";
     return fail(message, 500);
   }

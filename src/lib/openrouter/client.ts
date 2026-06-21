@@ -1,6 +1,7 @@
 import { getOpenRouterEnv } from "@/lib/env";
 import { TOOL_DEFINITIONS, executeTool } from "@/lib/agents/onedriveTools";
 import { insertTrace, type ToolCallTrace } from "@/lib/agents/traces";
+import * as Sentry from "@sentry/nextjs";
 
 /**
  * Adapter over the OpenRouter chat-completions API. The rest of the app calls
@@ -556,6 +557,8 @@ export async function streamChatWithTools(
     // Criterion 3: even when the loop throws mid-turn (e.g. upstream 502), still
     // persist a trace with the thrown message + whatever tool calls completed,
     // then re-throw so route.ts keeps its 502 behavior.
+    // Caught here, so onRequestError won't see it — report the failed turn.
+    Sentry.captureException(err);
     const message = err instanceof Error ? err.message : "Chat turn failed";
     await insertTrace({
       principal: tracePrincipal,
@@ -570,6 +573,7 @@ export async function streamChatWithTools(
       // Trace persistence must never mask the original upstream error — but log
       // it (visible in Vercel logs) so a failing trace insert isn't fully silent.
       console.error("[aquavoy] trace persistence failed (error path):", traceErr);
+      Sentry.captureException(traceErr);
     });
     throw err;
   }
@@ -714,6 +718,7 @@ function wrapStreamWithTrace(
       // Persistence failure must not break the stream the user is reading, but
       // log it (Vercel logs) so the lost audit row isn't fully silent.
       console.error("[aquavoy] trace persistence failed (stream path):", traceErr);
+      Sentry.captureException(traceErr);
       return "";
     }
   };

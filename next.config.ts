@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -29,4 +30,14 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: "qualiasolutions",
+  project: "javascript-nextjs",
+  // Source-map upload for readable stack traces — runs only when SENTRY_AUTH_TOKEN
+  // is present (absent → skipped, no error).
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  // No tunnelRoute on purpose: a tunnel path would have to be added to the
+  // ALLOWLIST in src/proxy.ts or the proxy would 401 Sentry's own events. Events
+  // go straight to the ingest domain instead. Revisit if ad-blockers strip them.
+});

@@ -406,7 +406,13 @@ export default function Prep() {
                   className="btn"
                   onClick={sendEmail}
                   disabled={sending || !canSend}
-                  title={!hasConnectedAccount ? "Connect a mailbox on the Emails page first" : undefined}
+                  title={
+                    !hasConnectedAccount
+                      ? "Connect a mailbox on the Emails page first"
+                      : !canSend
+                        ? "Fill in recipient, subject, and message to send"
+                        : undefined
+                  }
                 >
                   {sending ? "Sending..." : "Send"}
                 </button>

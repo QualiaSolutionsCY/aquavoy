@@ -67,21 +67,28 @@ export default function RecipientAutocomplete({
   const optionId = (i: number) => `${listId}-opt-${i}`;
 
   // Debounced search on the trailing address-like token of the current value.
-  // When the token is address-like we open the dropdown synchronously into a
-  // loading state (so fast typers see a "Searching…" affordance during the
-  // debounce + fetch window); the fetch result then replaces it. Non-matching
-  // tokens collapse the dropdown in the (async) timeout callback as before.
+  // When the token is address-like we open the dropdown into a loading state
+  // (so fast typers see a "Searching…" affordance during the debounce + fetch
+  // window); the fetch result then replaces it. Non-matching tokens collapse
+  // the dropdown in the (async) timeout callback as before.
   useEffect(() => {
     const token = value.trim().split(/\s+/).pop() ?? "";
     const myReq = ++reqId.current;
     const tokenIsAddress = !disabled && looksLikeAddress(token);
+    // Show the dropdown's loading affordance promptly (not only after the fetch
+    // resolves), but schedule it as a separate async task rather than mutating
+    // state synchronously in the effect body — a synchronous setState here would
+    // trigger a cascading render on every keystroke (react-hooks/set-state-in-effect).
+    let loadingHandle: ReturnType<typeof setTimeout> | undefined;
     if (tokenIsAddress) {
-      // Show the dropdown's loading affordance immediately, not only after the
-      // fetch resolves. Clear any prior "no matches" verdict for the new token.
-      setIsLoading(true);
-      setNoMatches(false);
-      setActive(-1);
-      setOpen(true);
+      loadingHandle = setTimeout(() => {
+        if (myReq !== reqId.current) return;
+        // Clear any prior "no matches" verdict for the new token.
+        setIsLoading(true);
+        setNoMatches(false);
+        setActive(-1);
+        setOpen(true);
+      }, 0);
     }
     const handle = setTimeout(async () => {
       // Not an address-like token (or disabled) → collapse the dropdown.
@@ -116,7 +123,10 @@ export default function RecipientAutocomplete({
         setNoMatches(false);
       }
     }, DEBOUNCE_MS);
-    return () => clearTimeout(handle);
+    return () => {
+      if (loadingHandle !== undefined) clearTimeout(loadingHandle);
+      clearTimeout(handle);
+    };
   }, [value, disabled]);
 
   // Close when focus/click leaves the component.

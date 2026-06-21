@@ -566,8 +566,10 @@ export async function streamChatWithTools(
       promptTokens,
       completionTokens,
       error: message,
-    }).catch(() => {
-      // Trace persistence must never mask the original upstream error.
+    }).catch((traceErr) => {
+      // Trace persistence must never mask the original upstream error — but log
+      // it (visible in Vercel logs) so a failing trace insert isn't fully silent.
+      console.error("[aquavoy] trace persistence failed (error path):", traceErr);
     });
     throw err;
   }
@@ -708,8 +710,10 @@ function wrapStreamWithTrace(
         completionTokens,
         error: null,
       });
-    } catch {
-      // Persistence failure must not break the stream the user is reading.
+    } catch (traceErr) {
+      // Persistence failure must not break the stream the user is reading, but
+      // log it (Vercel logs) so the lost audit row isn't fully silent.
+      console.error("[aquavoy] trace persistence failed (stream path):", traceErr);
       return "";
     }
   };

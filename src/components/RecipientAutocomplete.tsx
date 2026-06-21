@@ -215,7 +215,7 @@ export default function RecipientAutocomplete({
           {isLoading ? (
             // Non-selectable loading affordance — NOT role=option, so the
             // listbox never points aria-activedescendant at it.
-            <li className="ra-loading" aria-disabled="true">
+            <li className="ra-loading">
               <span className="ra-skeleton" aria-hidden="true" />
               <span className="ra-loading-label">Searching…</span>
             </li>
@@ -240,7 +240,7 @@ export default function RecipientAutocomplete({
             ))
           ) : noMatches ? (
             // Explicit empty verdict for an address-like token — NOT role=option.
-            <li className="ra-empty" aria-disabled="true">
+            <li className="ra-empty">
               No matching recipients
             </li>
           ) : null}

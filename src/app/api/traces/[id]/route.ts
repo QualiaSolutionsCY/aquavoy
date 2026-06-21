@@ -21,11 +21,17 @@ export async function GET(
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await params;
-  const trace = await getTrace(id, principal);
-  if (!trace) {
-    return NextResponse.json({ ok: false }, { status: 404 });
-  }
+  try {
+    const { id } = await params;
+    const trace = await getTrace(id, principal);
+    if (!trace) {
+      return NextResponse.json({ ok: false }, { status: 404 });
+    }
 
-  return NextResponse.json({ ok: true, data: trace });
+    return NextResponse.json({ ok: true, data: trace });
+  } catch (err) {
+    // getTrace throws on DB failure — return the standard envelope, not a raw 500.
+    const message = err instanceof Error ? err.message : "Failed to load trace";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
 }

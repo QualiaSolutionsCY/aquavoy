@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { ok, fail } from "@/lib/http";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { extractFacts } from "@/lib/agents/memoryStore";
+import * as Sentry from "@sentry/nextjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -104,6 +105,7 @@ export async function GET(req: NextRequest) {
 
     return ok({ processed, failed });
   } catch (err) {
+    Sentry.captureException(err);
     const message = err instanceof Error ? err.message : "Memory sweep failed";
     return fail(message, 500);
   }

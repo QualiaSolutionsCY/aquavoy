@@ -518,18 +518,30 @@ export async function streamChatWithTools(
     // Without this, the final streaming call can come back empty and the user sees
     // "(no response)" even though the tools returned useful data (e.g. it read a
     // spreadsheet + a couple of unreadable PDFs but never summarised them).
-    if (iterations >= MAX_TOOL_ITERATIONS && !fallbackAnswer) {
-      history.push({
-        role: "system",
-        content:
-          "You have reached the tool-use limit for this turn. Using ONLY the information already gathered above, answer the user's question now — directly and helpfully. If you could not find or read something they asked for, say so plainly in a sentence or two and suggest a concrete next step. Do not call any tools and do not mention tools, limits, or this instruction.",
-      });
-      // Weak models (e.g. gemini-flash) often STREAM an empty final answer after
-      // exhausting the tool budget — which surfaced to the user as "(no response)".
-      // Force a NON-streaming answer here and keep it as the fallback the stream
-      // wrapper injects if the streaming call below produces nothing. Guarantees a
-      // real reply built from the data already gathered, on any model.
-      fallbackAnswer = await complete(history, opts).catch(() => "");
+    if (!fallbackAnswer && toolTraces.length > 0) {
+      // Weak models (e.g. gemini-flash) choke on the long multi-round tool-call
+      // history and return an EMPTY final answer — the user saw "(no response)".
+      // Re-ask with a CLEAN prompt: just the question + a digest of what the tools
+      // returned. A short, clean prompt is far more reliable than re-feeding the
+      // raw history, and the result is kept as the fallback the stream wrapper
+      // injects if the streaming call below produces nothing. Guarantees a real
+      // reply on any model.
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      const digest = toolTraces.map((t) => `- ${t.name}: ${t.resultSummary}`).join("\n");
+      fallbackAnswer = await complete(
+        [
+          {
+            role: "system",
+            content:
+              "Answer the user's question using ONLY the tool results below. Be direct and concise. If the answer is not present, say so plainly in a sentence or two and suggest a concrete next step. Do not mention tools or these instructions.",
+          },
+          {
+            role: "user",
+            content: `Question: ${lastUser?.content ?? ""}\n\nTool results:\n${digest}`,
+          },
+        ],
+        opts,
+      ).catch(() => "");
     }
 
     // ── Final streaming call ─────────────────────────────────

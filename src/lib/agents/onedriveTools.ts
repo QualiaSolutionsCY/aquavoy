@@ -824,7 +824,18 @@ async function extractText(
   name: string,
   response: Response,
 ): Promise<string> {
-  const lower = name.toLowerCase();
+  // OneDrive often hands us a URL-ENCODED name (e.g. "Fam%20J%20Alves%2Epdf").
+  // That broke every extension check below — ".pdf" never matches "%2epdf" — so
+  // real PDFs/Word/Excel fell through to the "unknown binary" branch and read_file
+  // returned no usable text (the agent then went silent: "(no response)"). Decode
+  // first so the type sniffing and the user-facing names both work.
+  let decoded = name;
+  try {
+    decoded = decodeURIComponent(name);
+  } catch {
+    // A literal "%" that isn't a valid escape throws — keep the raw name.
+  }
+  const lower = decoded.toLowerCase();
 
   // .docx — mammoth converts to plain text
   if (lower.endsWith(".docx")) {
@@ -847,12 +858,12 @@ async function extractText(
       const parser = new PDFParse({ data: buf });
       const result = await parser.getText();
       if (!result.text || !result.text.trim()) {
-        return `[The PDF "${name}" contains no extractable text — it is most likely a scanned image. Text/OCR extraction is not available for scanned PDFs yet.]`;
+        return `[The PDF "${decoded}" contains no extractable text — it is most likely a scanned image. Text/OCR extraction is not available for scanned PDFs yet.]`;
       }
       return truncate(result.text);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return `[Could not read the PDF "${name}": ${message}. It may be password-protected, corrupted, or in an unsupported format.]`;
+      return `[Could not read the PDF "${decoded}": ${message}. It may be password-protected, corrupted, or in an unsupported format.]`;
     }
   }
 
@@ -880,7 +891,7 @@ async function extractText(
 
   // Unsupported binary
   const ext = lower.includes(".") ? lower.slice(lower.lastIndexOf(".")) : "(unknown)";
-  return `Cannot extract text from ${ext} file "${name}". This is a binary format that the assistant cannot read directly.`;
+  return `Cannot extract text from ${ext} file "${decoded}". This is a binary format that the assistant cannot read directly.`;
 }
 
 // ── Resolve connection (with friendly no-connection message) ─

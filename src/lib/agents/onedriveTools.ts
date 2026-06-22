@@ -105,7 +105,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "read_file",
       description:
-        "Download a file from OneDrive and extract its text content. Supports .docx (via mammoth), .pdf (via pdf-parse), .xlsx/.xls (spreadsheets — all sheets as CSV), and text-like files (txt, md, csv, json, code files, etc.). Returns extracted text capped at ~12000 chars. For unsupported binary formats returns a message instead of content.",
+        "Download a file from OneDrive and extract its text content. Supports .docx (via mammoth), .pdf (via unpdf), .xlsx/.xls (spreadsheets — all sheets as CSV), and text-like files (txt, md, csv, json, code files, etc.). Returns extracted text capped at ~12000 chars. For unsupported binary formats returns a message instead of content.",
       parameters: {
         type: "object",
         properties: {
@@ -845,22 +845,24 @@ async function extractText(
     return truncate(result.value);
   }
 
-  // .pdf — pdf-parse v2 uses a class-based API.
-  // Wrapped so the read_file tool ALWAYS returns a non-empty, informative string
-  // to the model: a parse failure (password-protected / corrupted / unsupported)
-  // or an empty result (scanned, image-only PDF) must never surface as "no
-  // response". Both branches return a human-readable sentinel instead of throwing
-  // or returning "".
+  // .pdf — extract text with `unpdf`, a SERVERLESS-NATIVE pdf.js build. The old
+  // `pdf-parse` used Mozilla pdf.js's browser build, which calls `DOMMatrix` — a
+  // DOM global that does NOT exist in the Vercel Node runtime — so every real PDF
+  // failed with "DOMMatrix is not defined" (it only ever looked like "scanned /
+  // unreadable" files). unpdf ships the Node polyfills baked in.
+  // Wrapped so read_file ALWAYS returns a non-empty, informative string: a parse
+  // failure or an empty result (truly scanned, image-only PDF) must never surface
+  // as "(no response)".
   if (lower.endsWith(".pdf")) {
     try {
-      const { PDFParse } = await import("pdf-parse");
+      const { extractText: extractPdfText, getDocumentProxy } = await import("unpdf");
       const buf = new Uint8Array(await response.arrayBuffer());
-      const parser = new PDFParse({ data: buf });
-      const result = await parser.getText();
-      if (!result.text || !result.text.trim()) {
+      const pdf = await getDocumentProxy(buf);
+      const { text } = await extractPdfText(pdf, { mergePages: true });
+      if (!text || !text.trim()) {
         return `[The PDF "${decoded}" contains no extractable text — it is most likely a scanned image. Text/OCR extraction is not available for scanned PDFs yet.]`;
       }
-      return truncate(result.text);
+      return truncate(text);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return `[Could not read the PDF "${decoded}": ${message}. It may be password-protected, corrupted, or in an unsupported format.]`;

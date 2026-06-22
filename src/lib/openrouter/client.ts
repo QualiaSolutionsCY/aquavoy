@@ -513,6 +513,19 @@ export async function streamChatWithTools(
       iterations++;
     }
 
+    // If the tool budget was exhausted (the model kept calling tools and never
+    // produced a final answer), nudge it to answer from what it already gathered.
+    // Without this, the final streaming call can come back empty and the user sees
+    // "(no response)" even though the tools returned useful data (e.g. it read a
+    // spreadsheet + a couple of unreadable PDFs but never summarised them).
+    if (iterations >= MAX_TOOL_ITERATIONS && !fallbackAnswer) {
+      history.push({
+        role: "system",
+        content:
+          "You have reached the tool-use limit for this turn. Using ONLY the information already gathered above, answer the user's question now — directly and helpfully. If you could not find or read something they asked for, say so plainly in a sentence or two and suggest a concrete next step. Do not call any tools and do not mention tools, limits, or this instruction.",
+      });
+    }
+
     // ── Final streaming call ─────────────────────────────────
     // Drop tool definitions on the final call so the model just answers.
     // include_usage makes the terminal SSE chunk carry token counts.

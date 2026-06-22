@@ -294,6 +294,20 @@ describe("agents/onedriveTools read_file — inline document understanding (M2-P
     expect(JSON.parse(out).content).toBe("PDF TEXT");
   });
 
+  it("AC6b: a URL-ENCODED OneDrive name still dispatches by extension (regression: '(unknown) file' bug)", async () => {
+    // OneDrive hands back the name percent-encoded, so ".pdf" arrives as "%2Epdf".
+    // Before the decode fix this matched no branch and fell through to the
+    // unknown-binary message — read_file returned no usable text and the agent
+    // went silent ("(no response)") on real employee/file lookups.
+    downloadContentMock.mockResolvedValueOnce(
+      fileResponse("binary", "Fam%20J%20Alves%20Monteiro%2Epdf"),
+    );
+    const out = await executeTool("read_file", { itemId: "item-enc" }, "conn-1");
+    const parsed = JSON.parse(out);
+    expect(parsed.content).toBe("PDF TEXT");
+    expect(parsed.content).not.toContain("Cannot extract text");
+  });
+
   it("A10: a scanned/image-only PDF (empty parse) returns an explanatory message, never empty", async () => {
     // pdf-parse yields whitespace-only text for a scanned, image-only PDF.
     pdfTextMock.mockResolvedValueOnce({ text: "   \n  " });

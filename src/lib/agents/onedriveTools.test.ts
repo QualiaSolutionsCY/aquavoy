@@ -27,15 +27,17 @@ vi.mock("@/lib/agents/memoryTools", () => ({ recallMemory: vi.fn() }));
 // not the vendor libraries themselves (rules/architecture.md §6).
 vi.mock("mammoth", () => ({ extractRawText: vi.fn(async () => ({ value: "DOCX TEXT" })) }));
 
-// pdf-parse's getText() result is controllable per-test so we can exercise the
-// empty-text branch (scanned/image-only PDF) without a real vendor parse.
+// unpdf's extractText() result is controllable per-test so we can exercise the
+// empty-text branch (scanned/image-only PDF) and the throw branch without a real
+// vendor parse.
 const { pdfTextMock } = vi.hoisted(() => ({
+  // extractText only reads `.text`; the mock returns just that (real unpdf also
+  // returns totalPages, which our code ignores).
   pdfTextMock: vi.fn(async () => ({ text: "PDF TEXT" })),
 }));
-vi.mock("pdf-parse", () => ({
-  PDFParse: class {
-    getText = pdfTextMock;
-  },
+vi.mock("unpdf", () => ({
+  getDocumentProxy: vi.fn(async () => ({})),
+  extractText: pdfTextMock,
 }));
 vi.mock("xlsx", () => ({
   read: vi.fn(() => ({ SheetNames: ["Sheet1"], Sheets: { Sheet1: {} } })),
@@ -288,7 +290,7 @@ describe("agents/onedriveTools read_file — inline document understanding (M2-P
     expect(JSON.parse(out).content).toBe("DOCX TEXT");
   });
 
-  it("AC6: dispatches .pdf to the pdf-parse branch", async () => {
+  it("AC6: dispatches .pdf to the unpdf branch", async () => {
     downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "report.pdf"));
     const out = await executeTool("read_file", { itemId: "item-6" }, "conn-1");
     expect(JSON.parse(out).content).toBe("PDF TEXT");
@@ -309,7 +311,7 @@ describe("agents/onedriveTools read_file — inline document understanding (M2-P
   });
 
   it("A10: a scanned/image-only PDF (empty parse) returns an explanatory message, never empty", async () => {
-    // pdf-parse yields whitespace-only text for a scanned, image-only PDF.
+    // unpdf yields whitespace-only text for a scanned, image-only PDF.
     pdfTextMock.mockResolvedValueOnce({ text: "   \n  " });
     downloadContentMock.mockResolvedValueOnce(fileResponse("binary", "contract.pdf"));
     const out = await executeTool("read_file", { itemId: "item-scan" }, "conn-1");

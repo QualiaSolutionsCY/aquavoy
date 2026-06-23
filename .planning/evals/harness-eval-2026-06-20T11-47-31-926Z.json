@@ -1,0 +1,117 @@
+{
+  "ok": false,
+  "status": "FAIL",
+  "score": 70,
+  "phase": 3,
+  "generated_at": "2026-06-20T11:47:31.926Z",
+  "checks": [
+    {
+      "name": "planning_state",
+      "weight": 15,
+      "status": "pass",
+      "score": 15,
+      "evidence": "state.js check returned ok",
+      "state": {
+        "ok": true,
+        "phase": 3,
+        "phase_name": "Finance Views",
+        "total_phases": 4,
+        "status": "built",
+        "assigned_to": "Profile: standard",
+        "profile": "standard",
+        "milestone": 5,
+        "milestone_name": "Client Meeting Build",
+        "milestones": [
+          {
+            "num": 2,
+            "name": "Agent Depth",
+            "total_phases": 3,
+            "phases_completed": 3,
+            "tasks_completed": 5,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-17T10:42:43.999Z"
+          },
+          {
+            "num": 3,
+            "name": "Operations Polish",
+            "total_phases": 3,
+            "phases_completed": 3,
+            "tasks_completed": 7,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-17T12:35:03.110Z"
+          },
+          {
+            "num": 4,
+            "name": "Handoff",
+            "total_phases": 4,
+            "phases_completed": 4,
+            "tasks_completed": 9,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-17T13:20:17.304Z"
+          }
+        ],
+        "lifetime": {
+          "tasks_completed": 33,
+          "phases_completed": 12,
+          "milestones_completed": 3,
+          "total_phases": 10,
+          "last_closed_milestone": 4
+        },
+        "verification": "pending",
+        "gap_cycles": 0,
+        "gap_cycle_limit": 2,
+        "tasks_done": 4,
+        "tasks_total": 4,
+        "deployed_url": "https://aquavoy.vercel.app",
+        "next_command": "/qualia-verify 3"
+      }
+    },
+    {
+      "name": "state_ledger",
+      "weight": 10,
+      "status": "pass",
+      "score": 10,
+      "evidence": "91 hash-chained event(s)"
+    },
+    {
+      "name": "plan_contract",
+      "weight": 20,
+      "status": "fail",
+      "score": 0,
+      "evidence": "Missing .planning/phase-3-contract.json"
+    },
+    {
+      "name": "machine_evidence",
+      "weight": 20,
+      "status": "not_applicable",
+      "score": 20,
+      "evidence": "No contract to execute"
+    },
+    {
+      "name": "verification_report",
+      "weight": 15,
+      "status": "pass",
+      "score": 15,
+      "evidence": ".planning/phase-3-verification.md verdict=pass"
+    },
+    {
+      "name": "framework_trust_score",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "trust-score=75/100 status=DEGRADED",
+      "trust_score": 75
+    },
+    {
+      "name": "erp_linkage",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "project key exists, ERP UUID missing"
+    }
+  ],
+  "artifacts": {
+    "json": ".planning/evals/harness-eval-2026-06-20T11-47-31-926Z.json",
+    "markdown": ".planning/evals/harness-eval-2026-06-20T11-47-31-926Z.md"
+  }
+}

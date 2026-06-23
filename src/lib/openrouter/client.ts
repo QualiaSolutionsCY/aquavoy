@@ -338,17 +338,24 @@ interface ChatProvider {
 }
 
 /**
- * Resolve the chat provider. A funded GOOGLE_API_KEY routes straight to
- * Gemini's OpenAI-compatible endpoint; otherwise OpenRouter. The endpoint is
- * OpenAI-wire-compatible either way, so the tool loop works unchanged.
+ * Resolve the chat provider. Direct Gemini (Google's OpenAI-compatible endpoint)
+ * is used ONLY when a chat model is explicitly configured via GEMINI_MODEL —
+ * never merely because GOOGLE_API_KEY is present. GOOGLE_API_KEY is also required
+ * by the embeddings layer (memory recall/sweep), so keying chat routing off its
+ * mere presence would silently hijack the whole chat pipeline onto direct Gemini
+ * the moment embeddings are enabled. Default chat stays on OpenRouter
+ * (OPENROUTER_MODEL, e.g. "google/gemini-3.5-flash"); set GEMINI_MODEL to a valid
+ * Google model id to opt into direct Gemini. The endpoint is OpenAI-wire-
+ * compatible either way, so the tool loop works unchanged.
  */
 function chatProvider(): ChatProvider {
   const google = process.env.GOOGLE_API_KEY;
-  if (google) {
+  const geminiModel = process.env.GEMINI_MODEL;
+  if (google && geminiModel) {
     return {
       url: GOOGLE_OPENAI_URL,
       key: google,
-      model: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+      model: geminiModel,
       openrouter: false,
     };
   }

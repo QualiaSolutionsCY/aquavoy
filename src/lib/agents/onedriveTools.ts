@@ -558,7 +558,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "schedule_task",
       description:
-        "Set a reminder that is EMAILED to a connected company mailbox at a future date/time. Use this when the user asks to be reminded of something (e.g. 'remind me tomorrow at 9 to call the harbour master'). Confirm the title and the exact time with the user in chat FIRST, but note this tool runs DIRECTLY — it is benign/additive and is NOT staged for confirmation (no confirm card). Do not call it before you have agreed the title and time with the user.",
+        "Set a reminder that is EMAILED to a connected company mailbox at a future date/time. Use this when the user asks to be reminded of something (e.g. 'remind me tomorrow at 9 to call the harbour master'). Supports REPEATING reminders via the `recurrence` field — one call sets up the whole recurring series (e.g. 'every Monday 7pm email the crew' → scheduledAt the next Monday 19:00 + recurrence 'weekly'); use 'none' only for a true one-off, and never claim a reminder can only run once. Confirm the title and the exact time (and cadence, when recurring) with the user in chat FIRST, but note this tool runs DIRECTLY — it is benign/additive and is NOT staged for confirmation (no confirm card). Do not call it before you have agreed the title and time with the user.",
       parameters: {
         type: "object",
         properties: {
@@ -1264,6 +1264,11 @@ export async function executeTool(
           scheduled: true,
           id: task.id,
           scheduledAt: task.scheduledAt,
+          // Echo the cadence back so the model relays it ("repeats weekly") and
+          // never claims it only set a single occurrence — a recurring reminder
+          // re-arms itself after each fire (see runDueTasks).
+          recurrence,
+          repeats: recurrence !== "none",
         });
       }
 

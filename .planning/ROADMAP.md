@@ -1,10 +1,10 @@
-# Roadmap · Milestone 5 · Client Meeting Build
+# Roadmap · Milestone 6 · Invoice Automation
 
 **Project:** Aquavoy
-**Milestone:** 5 of 5 (CURRENT)
-**Created:** 2026-06-18
-**Phases:** 4
-**Source:** client meeting 2026-06-18 + code audit. Phase 1 fully scoped in `.planning/m5-phase1-scope.md`; finance storage model locked in `.planning/decisions/ADR-005-finance-storage-hybrid.md`.
+**Milestone:** 6 (CURRENT)
+**Created:** 2026-06-28
+**Phases:** 6
+**Source:** 2026-06-25 client meeting (transcript + summary) + code audit. Full scope in `.planning/scope-m6.md`; decisions in ADR-006 (voyage storage), ADR-007 (invoice templating), ADR-008 (notifications). Builds on ADR-003 (confirm/undo) and ADR-005 (OneDrive + Supabase hybrid).
 
 See `JOURNEY.md` for the full project arc. This file is ONLY the current milestone's phases.
 
@@ -12,11 +12,12 @@ See `JOURNEY.md` for the full project arc. This file is ONLY the current milesto
 
 What "shipped" means for this milestone:
 
-- **Recurring scheduling works.** A schedule created with "every 5th of the month" or "every Monday 7pm" fires on time and re-arms its `next_run_at` for the next occurrence; `recurrence_end` is honored; one-off schedules behave exactly as before with no regression in `runDue` / `runDueTasks`.
-- **The inbox is legible from the app.** The agent can produce an on-demand inbox briefing (count, important shortlist, spam/ads excluded) over the existing read-only IMAP tools, and `/emails` has a real reader (left list + click-to-read detail) on top of its existing connection manager — all read-only.
-- **The money is legible.** Per-company and consolidated expense/income views render from a Supabase finance index that references (never replaces) the OneDrive documents, per ADR-005 — built only after the client provides company mappings + sample invoices.
-- **Bulk mail cleanup is fast.** The agent can search by sender and move matching mail to trash or to a folder in batch (the milestone's first mail-write surface), and recipient autocomplete is polished.
-- **No regression** in the M1–M4 surface (auth, encryption, agent traces, confirm/undo, mobile layout) — all M5 work ships behind the same gates.
+- **The invoice pipeline works end-to-end behind confirm.** The agent can take a credit-note email → save its PDF to OneDrive → generate the correct per-company invoice from Wency's template → stage a finance entry — each step one-click confirm, nothing financial auto-executed (ADR-003).
+- **It runs unattended.** An inbox-scan cron checks mail ~4×/day, classifies invoice/credit-note/voyage-summary, is idempotent, and queues proposals in the action-stack.
+- **The money is shipping-legible.** Voyage economics — route, cargo, tonnage, price/ton, handler provisions, waiting-time, oil surcharge — are recordable (confirm-before-write) and visible per company (Aquavoy Shipping, Novo Porto).
+- **The agreed UX cleanups landed.** Prep page gone; a `/tasks` oversight page exists; the app installs as a standalone PWA on iPhone.
+- **Wency gets told.** A web-push notification fires when something needs his confirm (WhatsApp deferred per ADR-008).
+- **No regression** in the M1–M5 surface (auth, encryption, traces, confirm/undo, recurring scheduling, inbox briefing, finance views, batch mail, mobile layout).
 
 ---
 
@@ -24,122 +25,96 @@ What "shipped" means for this milestone:
 
 | # | Phase | Goal | Status |
 |---|-------|------|--------|
-| 1 | Recurring scheduling | Make scheduled emails and tasks repeat — recurrence + `next_run_at` + re-arm in both runners | CURRENT |
-| 2 | Email intelligence | Agent inbox briefing (A4) + a real Emails reader tab (A5), both read-only | — |
-| 3 | Finance views | Per-company + consolidated expense/income via the ADR-005 hybrid (extract → Supabase index → render) | — |
-| 4 | Batch email actions | Search-by-sender bulk move-to-trash / move-to-folder (A1/A2) + recipient autocomplete polish | — |
+| 1 | Quick wins | Remove prep page; add `/tasks` oversight page; ship PWA manifest | CURRENT |
+| 2 | Attachment → OneDrive | `save_email_attachment` tool: extract IMAP attachment → OneDrive, confirm + undo | — |
+| 3 | Invoice from template | Read PDF → extract → fill Wency's template (docxtemplater) → OneDrive, per-company, confirm | — |
+| 4 | Voyage finance schema | `voyage_entries` table + `record_voyage_entry` + Excel-register import + finance drill-down | — |
+| 5 | Automated inbox scanning | `~6h` cron classifies + stages invoice/credit-note proposals (idempotent) | — |
+| 6 | Notifications | Web-push (PWA) on staged actions + preferences/quiet hours (WhatsApp deferred) | — |
 
 ## Phase Details
 
-### Phase 1: Recurring scheduling
+### Phase 1: Quick wins
 
-**Goal:** Both schedulers, which fire once and stop today, gain recurrence so a schedule repeats and re-arms after each fire. The headline use cases are Wency's *"every 5th of the month send all invoices to the accountant"* and *"every Monday 7pm email the crew."* One-off schedules must keep behaving exactly as they do now.
+**Goal:** Land the three agreed, no-client-input wins before Wency's office visit — clean the prep page out, give him a scheduled-tasks oversight page over the existing backend, and make the app install like a real app on iPhone.
 
-**Detailed source:** `.planning/m5-phase1-scope.md` (A15) — read it for line-level file/table targets and the full acceptance list. Note: that scope doc bundles A4 + A5 into its "Phase 1" as the Monday client demo; in this roadmap A4/A5 are Phase 2 and A15 alone is Phase 1.
+**Touches:** `src/app/prep/*` (delete), `src/components/Nav.tsx` + `Footer.tsx`, `src/app/globals.css`, `src/app/api/outlook/draft/route.ts` (delete), `src/lib/agents/draftEmail.ts` (verify-then-maybe-delete), new `src/app/tasks/page.tsx` + `src/app/api/tasks/list/route.ts` + `src/app/api/tasks/cancel/route.ts`, `public/manifest.json`, `src/app/layout.tsx`.
 
-**Touches:**
-- New migration `supabase/migrations/00XX_recurrence.sql` — add to `scheduled_emails` and `scheduled_tasks` a recurrence field (`recurrence_rule` RRULE or `frequency` enum + interval), `next_run_at timestamptz`, and a nullable `recurrence_end`; keep `scheduled_at` as the first/anchor occurrence; repoint the partial indexes (currently `0007_scheduled_emails.sql:30`, `0013_scheduled_tasks.sql:30`) to drive off `next_run_at`.
-- `src/lib/mail/scheduled.ts` — `runDue` (line 161): after sending a recurring row, compute the next occurrence and re-arm (reset to `pending` with a new `next_run_at`) instead of terminally marking `sent`; extend the insert path (line 97), row type (line 35), and select list (line 115) for the new columns.
-- `src/lib/agents/scheduledTasks.ts` — `runDueTasks` (line 163): mirror the same next-occurrence logic; extend insert (line 99), row type (line 39), select list (line 118).
-- Shared `nextOccurrence(rule, from)` helper — single source of truth for advancing a schedule (cite the chosen library, e.g. `rrule`, in an ADR if one is added).
-- Agent tool layer — extend the create-schedule tool input so the agent can set recurrence in natural language ("every 5th", "every Monday 7pm").
+**Success criteria:**
+1. `/prep` returns 404; no `/prep` link in Nav or Footer; `.prep-grid` styles and the draft API route are deleted; a grep confirms no agent tool path breaks.
+2. `/tasks` renders a merged reminders+scheduled-emails timeline with status, type, mailbox/owner, recurrence, and a cancel action that hits `DELETE /api/tasks/cancel`; both new routes are auth-gated and principal-scoped (an operator sees only their own); page has loading/error/empty states.
+3. `public/manifest.json` is served with name, `start_url`, `display: standalone`, and icons; `layout.tsx` emits `apple-mobile-web-app` meta; iOS add-to-home-screen launches standalone (no browser chrome).
 
-**Success criteria** (observable behaviors):
-1. A schedule "every 5th of the month" fires on the 5th and afterward has `next_run_at` set to the 5th of the **next** month (verified by re-running the runner past the first fire).
-2. A schedule "every Monday 7pm" fires Monday and re-arms for the following Monday.
-3. A one-off schedule (no recurrence) fires once and ends `sent` — no regression in `runDue` / `runDueTasks`.
-4. `recurrence_end` is honored: past the end date the schedule stops re-arming.
-5. Migration applies cleanly on a fresh DB and is idempotent against existing rows (existing one-off rows get a null recurrence and unchanged behavior).
+**Requirements:** REQ-23, REQ-24, REQ-25.
 
-**Depends on:** M4 shipped (handoff complete; this is post-handoff client work).
+### Phase 2: Email attachment → OneDrive
 
----
+**Goal:** Build the missing foundation — let the agent move an email's PDF attachment into the right OneDrive folder, staged for confirmation and undoable. Everything downstream (invoice generation, finance recording) depends on this.
 
-### Phase 2: Email intelligence
+**Touches:** `src/lib/mail/imap.ts` (attachment extraction + `downloadAttachment`), `src/lib/agents/onedriveTools.ts` (`save_email_attachment` in `TOOL_DEFINITIONS` + `DESTRUCTIVE` set + stage path), `src/lib/agents/executeConfirmedAction.ts` (execute + undo), `src/lib/openrouter/client.ts` (system prompt), tests in `imap.test.ts` + `executeConfirmedAction.test.ts`.
 
-**Goal:** Make the inbox legible from inside the app, read-only. Two pieces: (a) an on-demand agent briefing that counts emails, flags the important ones, and filters spam/ads; and (b) a real Emails reader tab — `/emails` today only manages mailbox connections and never shows a message.
+**Success criteria:**
+1. `readEmail()` returns an `attachments[]` array; `downloadAttachment(mailbox, uid, filename)` returns the attachment bytes + content-type.
+2. Calling `save_email_attachment` in the agent loop returns `confirmation_required` with an `action_id` and a summary — **without** uploading.
+3. Confirming runs the upload to OneDrive and returns the new `itemId`/`webUrl`; an undo deletes the uploaded item.
+4. No regression in existing mail-read or OneDrive-read tools.
 
-**Touches:**
-- A4 (briefing): `src/lib/agents/onedriveTools.ts` — add a `briefing` / `inbox_summary` tool alongside the existing read tools (`list_emails` ~480, `read_email` ~509, `search_emails` ~537; handlers ~983 / 1001 / 1019), composing the read tools with no new IMAP surface; `src/lib/openrouter/client.ts` — register/describe the new tool in the agent tool catalogue (read tools described ~118–120). Optional scheduled daily push only if Phase 1's recurring runner is in place.
-- A5 (reader tab): `src/app/emails/page.tsx` — add a reader view (left-sidebar message list + right-side detail/read pane) while keeping the existing connection-manager UI reachable (`export default function Emails()` ~86, connect form ~37, `MAILBOXES` ~6); new read-only API route(s) under `src/app/api/emails/...` exposing `list_emails` / `read_email` / `search_emails` to the client; reuse `MAILBOXES` / `GROUPS` from `src/lib/mailboxes` for the picker.
+**Requirements:** REQ-26. **Decision:** ADR-003 (confirm-before-write). **Minor client confirm:** OneDrive folder layout (non-blocking).
 
-**Success criteria** (observable behaviors):
-1. Asking the agent "brief me on the inbox" returns a digest with a total count, an "important" shortlist, and spam/ads excluded — using only the existing read-only tools.
-2. The briefing degrades gracefully when a mailbox is unreachable (partial result + note, not a hard error).
-3. Opening `/emails` shows a list of recent messages for a connected mailbox (subject, sender, date) in a left sidebar; clicking a message loads its full body via `read_email`.
-4. Folder switching (inbox / sent / drafts / trash) and search (text / sender / date) work via the `list_emails` folder param and `search_emails`.
-5. Loading, empty (no messages), and error (mailbox unreachable) states are all handled; the tab is strictly read-only — no send / move / delete in this phase.
+### Phase 3: Invoice generation from template
 
-**Depends on:** Phase 1 (so the briefing's optional scheduled push can ride the recurring runner; the on-demand path and the reader tab can otherwise proceed in parallel).
+**Goal:** The #1 ask — generate an invoice from Wency's actual template. Read a credit-note PDF, extract the fields, fill the per-company template, save to OneDrive, confirm-before-finalize.
 
----
+**Touches:** new `src/lib/agents/invoiceExtraction.ts` + `invoiceTemplate.ts`, `supabase/migrations/*` (`invoice_templates`), new `scripts/load-invoice-templates.ts`, `onedriveTools.ts` (`generate_invoice_from_template`), `executeConfirmedAction.ts`, e2e test.
 
-### Phase 3: Finance views
+**Success criteria:**
+1. Given a credit-note/voyage PDF, the system extracts `company, amount, currency, date, voyage_id, shipper, receiver` (LLM-assisted from `unpdf` text), schema-validated.
+2. `generate_invoice_from_template` stages a pending action showing the extracted fields + matched template; does not execute until confirmed.
+3. On confirm, Wency's template is filled (docxtemplater) and the invoice uploaded to OneDrive; the correct template is selected per company (GEFO vs others) from `invoice_templates`; undo deletes the generated file.
+4. E2E: read PDF → extract → fill → upload → confirm passes on a sample.
 
-**Goal:** Render per-company and consolidated expense/income views per the ADR-005 hybrid storage model — OneDrive stays the document system-of-record, Supabase holds the finance index/ledger that powers the numbers. Filing-by-company already exists (`companyClause()` propose-then-confirm over OneDrive); this phase adds the totals folders cannot aggregate. The pipeline is **extract → index → render**.
+**Requirements:** REQ-27. **Decision:** ADR-007. **`[NEEDS CLIENT INPUT — blocking]`** templates + field mapping + company→template + output format/folder (July meeting). Scaffold now, wire after.
 
-**Touches:**
-- `supabase/migrations/*` — new finance index/ledger table(s): per document, a row of `company`, `amount`, `currency`, `date`, `type` (expense/income), and a reference back to the OneDrive item (ADR-005 §Decision). RLS on, per constitution.
-- `src/lib/agents/onedriveTools.ts` — extraction tooling that reads invoice/receipt PDFs from the connected OneDrive and proposes index rows (LLM-assisted, human-confirmable; reliable amount/date/type extraction is the named risk in ADR-005 §Consequences).
-- `src/lib/microsoft/onedrive.ts` — keep the index in sync when the agent moves / renames / deletes underlying files (index references, never duplicates, the document).
-- `src/app/finance/*` — render the consolidated view and the per-company drill-down, reusing the existing `COMPANIES` list (`src/app/finance/page.tsx`) — no new company master is invented.
+### Phase 4: Voyage finance schema + Excel register
 
-**Success criteria** (observable behaviors):
-1. A consolidated view shows total expense and income across all 8 group companies for a period; a per-company view drills into one entity's figures.
-2. Every ledger figure traces back to a specific OneDrive document via its stored reference (extract → index → render, not derived from folders).
-3. Extraction is human-confirmable — proposed amount/date/type/company can be corrected before the row is committed.
-4. The index stays consistent when the agent moves / renames / deletes an underlying file (reconciled, not duplicated).
-5. Classification uses only the existing `COMPANIES` list and Wency's existing OneDrive folder structure.
+**Goal:** Capture shipping economics the generic ledger can't — provisions, waiting time, oil, per-voyage route/cargo/tonnage — and surface them per company.
 
-**Depends on:** Phase 2 (email surface stable) AND the client providing company mappings + sample invoices before the extract step runs. ADR-005 unblocks the storage decision but not the input data.
+**Touches:** `supabase/migrations/*` (`voyage_entries`), new `src/lib/finance/voyageLedger.ts` + `excelRegisterParser.ts`, `onedriveTools.ts` (`record_voyage_entry`, `import_voyage_register`), `executeConfirmedAction.ts`, `src/app/finance/page.tsx`.
 
----
+**Success criteria:**
+1. `voyage_entries` table exists, RLS service-role only, with the voyage-economics fields (final columns per the client's register).
+2. `record_voyage_entry` stages a confirm-before-write row; on confirm it inserts; an example voyage (route, cargo, tonnage, €/ton, handler fee, waiting days+rate, fuel surcharge) appears in the finance page drill-down with correct per-company aggregation.
+3. `import_voyage_register` reads an xlsx from OneDrive and stages each row for confirmation; multi-email bundling is a user-driven merge in the UI, not silent grouping.
 
-### Phase 4: Batch email actions
+**Requirements:** REQ-28. **Decision:** ADR-006. **`[NEEDS CLIENT INPUT — blocking]`** register schema + sample file + company mappings + bundling examples + validation rules (July meeting).
 
-**Goal:** Make bulk mail cleanup fast — search by sender, then move matching messages to trash or to a folder in batch (A1 / A2). This is the milestone's first mail *write* surface, so it ships behind confirm/undo. Also polish recipient autocomplete.
+### Phase 5: Automated inbox scanning
 
-**Touches:**
-- `src/lib/agents/onedriveTools.ts` + `src/lib/openrouter/client.ts` — add batch move-to-trash / move-to-folder tools layered on a search-by-sender step, registered in the agent tool catalogue; these are writes, so they route through the existing confirm/undo affordance (M2, ADR-003).
-- Mail write path (`src/lib/mail/*` / the IMAP move surface) — implement the bulk move/trash operation; the existing read-only tools (`list_emails` / `search_emails`) supply the candidate set.
-- Recipient autocomplete UI (compose / Prep path) — polish suggestion behavior.
+**Goal:** Make it run itself — check mail ~4×/day, classify financial documents, and stage proposals into the confirm/undo queue (never auto-execute a financial write).
 
-**Success criteria** (observable behaviors):
-1. "Move all email from <sender> to trash" produces a confirmable batch that, on confirm, moves every matching message to trash; undo restores them.
-2. Moving matching mail to a named folder works the same way (search → confirm → batch move).
-3. The batch is shown before it runs (count + sample) so the operator confirms scope, not a blind action.
-4. Recipient autocomplete suggests known recipients responsively while composing.
-5. No write occurs without passing through the confirm/undo gate — consistent with the M2 destructive-action contract.
+**Touches:** new `src/app/api/mail/scan/run/route.ts`, `src/proxy.ts` (allowlist — prior bug), `vercel.json` (cron), new `src/lib/mail/inboxClassifier.ts` + `inboxScan.ts` + `processedMessages.ts`, `supabase/migrations/*` (`processed_messages`), `executeConfirmedAction.ts`.
 
-**Depends on:** Phase 2 (the read-only email surface and search are in place before the first bulk-write feature is built on top of them).
+**Success criteria:**
+1. `GET /api/mail/scan/run` with a valid `CRON_SECRET` returns 200 + a scan summary; without it, 401; the path is in `proxy.ts` allowlist and `vercel.json` crons (~every 6h).
+2. New inbox mail is LLM-classified as invoice/credit-note/voyage-summary; each financial message stages exactly one pending action with a human-readable summary into the home-page action-stack.
+3. Running the scan twice on the same message produces no duplicate staging (idempotent on `(mailbox, uid)` + Message-ID; `markProcessed` commits before staging).
+4. A single per-message error is caught/logged and never aborts the batch.
 
----
+**Requirements:** REQ-29. **Depends on:** Phases 2–4 for execution of the staged actions (staging + cron + classification ship independently).
 
-## Coverage Verification
+### Phase 6: Notifications
 
-Every meeting-derived feature scheduled for this milestone maps to exactly one phase.
+**Goal:** Tell Wency when a proposal needs his confirm. Ship web-push as the MVP; design the seam so WhatsApp drops in later.
 
-| Feature (meeting ref) | Phase | Covered? |
-|-----------------------|-------|----------|
-| A15 Recurring scheduling | Phase 1 | ✓ |
-| A4 Inbox briefing | Phase 2 | ✓ |
-| A5 Emails reader tab | Phase 2 | ✓ |
-| Finance views (ADR-005) | Phase 3 | ✓ |
-| A1 / A2 Batch email actions + autocomplete polish | Phase 4 | ✓ |
+**Touches:** new `src/lib/notify/adapter.ts` + `webpush.ts` + `triggers.ts`, `supabase/migrations/*` (`notification_preferences`, `notification_log`), `src/lib/agents/pendingActions.ts` (trigger hook), `src/app/api/notify/preferences/*`, a preferences UI surface, `public/manifest.json` (shared with P1).
 
-Deferred beyond M5 (not scheduled): A11 / A13 / A22 doc-gen + bank letter, A27 / A28 roles + hide-files, A26 multi-user auth, A29 voice agent.
+**Success criteria:**
+1. When an action stages for confirmation, a web-push notification is sent to the principal's active channel within seconds, carrying the action summary.
+2. The operator can set channel + per-event opt-in + quiet hours; preferences persist and are principal-scoped (RLS); GET/POST `/api/notify/preferences` enforce the session principal.
+3. Delivery failures are logged to `notification_log` (fire-and-forget) and never fail the underlying stage; quiet hours suppress sends (logged as suppressed).
+
+**Requirements:** REQ-30. **Decision:** ADR-008 (web-push MVP; WhatsApp/Telnyx deferred to a follow-on pending the business decision). **iOS caveat:** web-push needs the installed PWA; email-digest fallback tested on Wency's device.
 
 ---
 
-## When This Milestone Closes
-
-On close:
-
-1. All phase artifacts are archived to `.planning/archive/milestone-5-client-meeting-build/`
-2. `tracking.json` `milestones[]` gets a summary entry (num, name, phases_completed, shipped_url, closed_at)
-3. Deferred items (doc-gen, roles, multi-user auth, voice agent) are re-evaluated for a possible M6 against the latest client priorities
-4. ADR-005 gets OWNER ratification confirmation once the finance views ship (per ADR-005 §Deciders)
-
----
-
-*Last updated: 2026-06-18*
+*Progressive detail: each phase gets task-level breakdown at `/qualia-plan {N}`. Phases 3–4 carry blocking `[NEEDS CLIENT INPUT]` gates resolved at the July office meeting — Phase 1 ships before then; Phases 2, 5 (scaffold), 6 are buildable now.*

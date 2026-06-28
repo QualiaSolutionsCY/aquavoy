@@ -1,22 +1,22 @@
 {
   "ok": true,
   "phase": 2,
-  "goal": "Production deployment is verified and documented: Vercel cron config correct, all 12 Supabase migrations applied, RLS on every table, no secret reachable client-side, monitoring approach recorded with a stable health target.",
-  "checked": 10,
+  "goal": "Build the save_email_attachment agent tool: extract an email's PDF attachment via IMAP and upload it to OneDrive, staged for confirmation (ADR-003) and undoable.",
+  "checked": 12,
   "failed": 0,
-  "generated_at": "2026-06-17T13:02:27.125Z",
+  "generated_at": "2026-06-28T11:28:02.527Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Add /api/health route + document the monitoring approach",
+      "task_title": "IMAP attachment extraction (downloadAttachment + readEmail attachments[])",
       "index": 0,
-      "type": "file-exists",
+      "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T1",
-      "task_title": "Add /api/health route + document the monitoring approach",
+      "task_title": "IMAP attachment extraction (downloadAttachment + readEmail attachments[])",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,67 +24,86 @@
     },
     {
       "task_id": "T1",
-      "task_title": "Add /api/health route + document the monitoring approach",
+      "task_title": "IMAP attachment extraction (downloadAttachment + readEmail attachments[])",
       "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "Add /api/health route + document the monitoring approach",
-      "index": 3,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "Add /api/health route + document the monitoring approach",
-      "index": 4,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 3630,
-      "stdout": "",
+      "duration_ms": 2004,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  15 passed (15)\n   Start at  14:27:59\n   Duration  688ms (transform 181ms, setup 63ms, import 187ms, tests 51ms, environment 0ms)\n\n",
       "stderr": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Deployment hardening audit document",
+      "task_title": "save_email_attachment tool definition + DESTRUCTIVE registration + stage path + summary",
       "index": 0,
-      "type": "file-exists",
+      "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Deployment hardening audit document",
+      "task_title": "save_email_attachment tool definition + DESTRUCTIVE registration + stage path + summary",
       "index": 1,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T2",
-      "task_title": "Deployment hardening audit document",
+      "task_id": "T3",
+      "task_title": "Confirm-time execute (upload) + undo (delete) for save_email_attachment",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Confirm-time execute (upload) + undo (delete) for save_email_attachment",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Confirm-time execute (upload) + undo (delete) for save_email_attachment",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T2",
-      "task_title": "Deployment hardening audit document",
+      "task_id": "T3",
+      "task_title": "Confirm-time execute (upload) + undo (delete) for save_email_attachment",
       "index": 3,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T2",
-      "task_title": "Deployment hardening audit document",
+      "task_id": "T3",
+      "task_title": "Confirm-time execute (upload) + undo (delete) for save_email_attachment",
       "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 2237,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  32 passed (32)\n   Start at  14:28:01\n   Duration  735ms (transform 211ms, setup 63ms, import 208ms, tests 50ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Document save_email_attachment in the SYSTEM_PROMPT",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Document save_email_attachment in the SYSTEM_PROMPT",
+      "index": 1,
       "type": "grep-match",
       "ok": true,
       "detail": ""

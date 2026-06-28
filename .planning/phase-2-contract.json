@@ -1,0 +1,220 @@
+{
+  "version": 1,
+  "phase": 2,
+  "goal": "Build the save_email_attachment agent tool: extract an email's PDF attachment via IMAP and upload it to OneDrive, staged for confirmation (ADR-003) and undoable.",
+  "why": "The agent reads mail and reads drive files but has no path to carry an attachment from one to the other; this phase builds that bridge — the missing foundation of invoice automation (REQ-26).",
+  "generated_at": "2026-06-28T11:08:07Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:6916844f6e77a4650bc35adb943602b9a9e45d87bab106c01a272a3756abba7d",
+  "success_criteria": [
+    "readEmail() returns an attachments[] array; downloadAttachment(mailbox, uid, filename) returns the attachment bytes + content-type.",
+    "Calling save_email_attachment in the agent loop returns confirmation_required with an action_id and a summary — WITHOUT uploading.",
+    "Confirming runs the upload to OneDrive and returns the new itemId/webUrl; an undo deletes the uploaded item.",
+    "No regression in existing mail-read or OneDrive-read tools (imap.test.ts + executeConfirmedAction.test.ts green; tsc clean).",
+    "The SYSTEM_PROMPT documents save_email_attachment so the agent uses it."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "IMAP attachment extraction (downloadAttachment + readEmail attachments[])",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/mail/imap.ts",
+        "src/lib/mail/imap.test.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "readEmail() returns an attachments array; each entry has filename, contentType, and size — and NO content bytes (metadata only).",
+        "downloadAttachment(mailbox, folder, uid, filename) returns { filename, contentType, bytes } where bytes is a Uint8Array of the matching attachment.",
+        "downloadAttachment throws a readable error when no attachment matches the filename.",
+        "No regression: existing imap.test.ts cases still pass."
+      ],
+      "action": "Add AttachmentInfo + attachments[] to EmailDetail; map parsed.attachments in readEmail (drop content). Add+export downloadAttachment using the same withClient + resolveFolder + read-only download + simpleParser flow, finding the attachment by filename and returning its bytes as Uint8Array. Extend the mailparser mock with an attachments array and add tests for metadata, byte download, and not-found.",
+      "context_files": [
+        "src/lib/mail/imap.ts",
+        "src/lib/mail/imap.test.ts",
+        ".planning/scope-m6.md",
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/imap.ts",
+          "pattern": "export async function downloadAttachment",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/imap.ts",
+          "pattern": "attachments",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "expected_exit": 0,
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/mail/imap.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "save_email_attachment tool definition + DESTRUCTIVE registration + stage path + summary",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/onedriveTools.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "save_email_attachment is in TOOL_DEFINITIONS with params mailbox (req), uid (req), attachmentFilename (req), folder (opt), targetFolderId (opt), targetFolderPath (opt); description states CONFIRMED BEFORE SAVING and cites Verzonden Facturen/{year}.",
+        "executeTool returns status confirmation_required with action_id + summary and performs NO upload.",
+        "No sessionPrincipal returns { error: no verified principal in session }.",
+        "Missing mailbox/uid/attachmentFilename returns a readable error without staging.",
+        "Nonexistent mailbox returns the no-account shape (error + connected_addresses)."
+      ],
+      "action": "Add the tool object to TOOL_DEFINITIONS; add save_email_attachment to the DESTRUCTIVE set; add a stage-time branch in the DESTRUCTIVE block of executeTool (alongside the batch-move branch) that validates args, resolves the account, builds a summary, and calls stagePendingAction with metadata-only args; add a matching summarizeAction case.",
+      "context_files": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/pendingActions.ts",
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md",
+        ".planning/scope-m6.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "save_email_attachment",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "DESTRUCTIVE",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Confirm-time execute (upload) + undo (delete) for save_email_attachment",
+      "wave": 2,
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/agents/executeConfirmedAction.test.ts",
+        "src/app/page.tsx",
+        "src/app/finance/page.tsx"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Confirming calls downloadAttachment then uploadFile and returns result { saved, itemId, name, webUrl }.",
+        "Destination parent is { itemId } / { path } / {} based on targetFolderId / targetFolderPath / neither.",
+        "undo_data is { uploadedItemId }.",
+        "Missing mailbox/uid/attachmentFilename throws without calling downloadAttachment or uploadFile.",
+        "undoAction deletes the uploaded item and moves the row to undone; missing uploadedItemId returns a readable reason.",
+        "save_email_attachment is in REVERSIBLE_TOOLS in src/app/page.tsx and src/app/finance/page.tsx."
+      ],
+      "action": "Add a save_email_attachment case to executeConfirmedAction that downloads the bytes at confirm time and uploads to OneDrive (parent from targetFolderId/targetFolderPath), returning itemId/webUrl and undo_data { uploadedItemId }. Add a save_email_attachment undoAction case that deletes the uploaded item. Add the tool to REVERSIBLE_TOOLS in both UI files. Mock downloadAttachment + uploadFile in the test; assert download then upload, parent resolution, undo_data, and the missing-arg guard.",
+      "context_files": [
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/executeConfirmedAction.test.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/microsoft/onedrive.ts",
+        "src/app/page.tsx",
+        "src/app/finance/page.tsx",
+        ".planning/decisions/ADR-005-finance-storage-hybrid.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "save_email_attachment",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "save_email_attachment",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "save_email_attachment",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/finance/page.tsx",
+          "pattern": "save_email_attachment",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "expected_exit": 0,
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/agents/executeConfirmedAction.test.ts"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Document save_email_attachment in the SYSTEM_PROMPT",
+      "wave": 2,
+      "depends_on": [
+        "T2"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/openrouter/client.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "SYSTEM_PROMPT contains a paragraph naming save_email_attachment, stating it is staged for confirmation and is reversible.",
+        "The paragraph tells the model to get attachmentFilename from read_email's attachments list and to pass targetFolderId/targetFolderPath citing the Verzonden Facturen/{year} layout.",
+        "The destructive-tools enumeration includes save_email_attachment.",
+        "tsc is clean."
+      ],
+      "action": "Add save_email_attachment to the destructive-tools enumeration sentence and add a new capability block (5e) documenting the read_email then attachments then save_email_attachment flow, the confirm-before-save behavior, reversibility, and the Verzonden Facturen/{year} destination layout.",
+      "context_files": [
+        "src/lib/openrouter/client.ts",
+        "src/lib/agents/onedriveTools.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "save_email_attachment",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/openrouter/client.ts",
+          "pattern": "Verzonden Facturen",
+          "expect": "present"
+        }
+      ]
+    }
+  ]
+}

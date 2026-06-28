@@ -1,0 +1,23 @@
+{
+  "ok": true,
+  "verdict": "PASS",
+  "phase": 2,
+  "counts": {
+    "CRITICAL": 0,
+    "HIGH": 0,
+    "MEDIUM": 0,
+    "LOW": 0
+  },
+  "score": 5,
+  "per_lens_scores": {
+    "correctness": 5,
+    "security": 5
+  },
+  "surviving": [],
+  "killed": [],
+  "totals": {
+    "findings": 0,
+    "surviving": 0,
+    "killed": 0
+  }
+}

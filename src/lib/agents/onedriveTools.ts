@@ -399,6 +399,53 @@ export const TOOL_DEFINITIONS = [
     },
   },
 
+  // ── Save email attachment to OneDrive (ADR-003 — confirm-before-write) ──
+  {
+    type: "function" as const,
+    function: {
+      name: "save_email_attachment",
+      description:
+        "Save an email attachment (e.g. a PDF invoice or credit note) from a connected mailbox into a OneDrive folder. CONFIRMED BEFORE SAVING — calling it stages a confirmation card showing the file name and the destination path; nothing is uploaded until the human approves it in the UI, and it is reversible (undo deletes the uploaded file). Pass the source mailbox + message uid + the exact attachmentFilename (from read_email's attachments list). For the destination, pass targetFolderId OR targetFolderPath; for sent invoices the layout is 'Verzonden Facturen/{year}' (under alle firma's > Aquavoy Ltd). Call ONCE and relay the returned summary; do NOT re-call after the user says yes — confirming is the UI's job.",
+      parameters: {
+        type: "object",
+        properties: {
+          mailbox: {
+            type: "string",
+            description:
+              "The email address of the connected mailbox containing the message (e.g. info@aquavoy.com).",
+          },
+          uid: {
+            type: "number",
+            description:
+              "The UID of the email message that contains the attachment (from list_emails or search_emails results).",
+          },
+          attachmentFilename: {
+            type: "string",
+            description:
+              "The exact filename of the attachment to save, as returned in read_email's attachments list (e.g. 'Factuur_2026-001.pdf').",
+          },
+          folder: {
+            type: "string",
+            description:
+              'Folder hint for the source mailbox folder: "inbox", "sent", "drafts", "trash", or an explicit IMAP path. Defaults to inbox.',
+          },
+          targetFolderId: {
+            type: "string",
+            description:
+              "The Graph item ID of the OneDrive destination folder. Provide this OR targetFolderPath.",
+          },
+          targetFolderPath: {
+            type: "string",
+            description:
+              "Human-readable OneDrive destination path, e.g. \"/alle firma's/Aquavoy Ltd/Verzonden Facturen/2026\". Provide this OR targetFolderId.",
+          },
+        },
+        required: ["mailbox", "uid", "attachmentFilename"],
+        additionalProperties: false,
+      },
+    },
+  },
+
   // ── Web research (Tavily) ──
   {
     type: "function" as const,
@@ -940,6 +987,9 @@ const DESTRUCTIVE = new Set([
   // sample before any message moves, and is reversible (undo moves them back).
   "batch_move_to_trash",
   "batch_move_to_folder",
+  // Email attachment → OneDrive upload (ADR-003 confirm-before-write): bytes are
+  // fetched at confirm time, never in the model loop — only metadata is staged here.
+  "save_email_attachment",
 ]);
 
 /** Human-readable one-liner describing what a destructive action will do. */
@@ -974,6 +1024,12 @@ function summarizeAction(name: string, args: Record<string, unknown>): string {
       const source = s("sourceName") || s("description");
       const ref = source ? ` (${source})` : "";
       return `Log ${direction} ${currency} ${amount} for ${company}${ref}`;
+    }
+    case "save_email_attachment": {
+      const attachmentFilename = s("attachmentFilename");
+      const mailbox = s("mailbox");
+      const dest = s("targetFolderPath") || s("targetFolderId") || "OneDrive root";
+      return `Save attachment "${attachmentFilename}" from ${mailbox} → ${dest}`;
     }
     default:
       return `Run ${name}`;
@@ -1063,6 +1119,56 @@ export async function executeTool(
             destFolderPath,
             from,
           },
+          summary,
+        });
+        return JSON.stringify({
+          status: "confirmation_required",
+          action_id: row.id,
+          summary,
+        });
+      }
+
+      // Save email attachment — stage metadata only; bytes are fetched at confirm
+      // time in executeConfirmedAction, never here (ADR-003 confirm-before-write).
+      if (name === "save_email_attachment") {
+        const mailbox = typeof args.mailbox === "string" ? args.mailbox : "";
+        const uid = Number(args.uid);
+        const attachmentFilename =
+          typeof args.attachmentFilename === "string" ? args.attachmentFilename : "";
+        if (!mailbox)
+          return JSON.stringify({ error: "mailbox (email address) is required" });
+        if (!uid || !Number.isFinite(uid))
+          return JSON.stringify({ error: "uid (message UID) is required" });
+        if (!attachmentFilename)
+          return JSON.stringify({ error: "attachmentFilename is required" });
+
+        const acct = await loadAccountWithSecretByEmail(mailbox);
+        if (!acct) {
+          const accounts = await listAccounts();
+          return JSON.stringify({
+            error: `No connected mail account for "${mailbox}".`,
+            connected_addresses: accounts.map((a) => a.email),
+          });
+        }
+
+        const folder =
+          typeof args.folder === "string" && args.folder ? args.folder : undefined;
+        const targetFolderId =
+          typeof args.targetFolderId === "string" && args.targetFolderId
+            ? args.targetFolderId
+            : undefined;
+        const targetFolderPath =
+          typeof args.targetFolderPath === "string" && args.targetFolderPath
+            ? args.targetFolderPath
+            : undefined;
+
+        const dest = targetFolderPath || targetFolderId || "OneDrive root";
+        const summary = `Save attachment "${attachmentFilename}" from ${mailbox} → ${dest}`;
+
+        const row = await stagePendingAction({
+          principal: sessionPrincipal,
+          tool: "save_email_attachment",
+          args: { mailbox, uid, attachmentFilename, folder, targetFolderId, targetFolderPath },
           summary,
         });
         return JSON.stringify({

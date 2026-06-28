@@ -6,7 +6,7 @@ const LINKS = [
   { href: "/", label: "Chat" },
   { href: "/emails", label: "Emails" },
   { href: "/files", label: "Files" },
-  { href: "/prep", label: "Prep" },
+  { href: "/tasks", label: "Tasks" },
 ] as const;
 
 export default function Footer() {

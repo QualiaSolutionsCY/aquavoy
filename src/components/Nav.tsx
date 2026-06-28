@@ -10,7 +10,7 @@ const LINKS = [
   { href: "/emails", label: "Emails" },
   { href: "/files", label: "Files" },
   { href: "/finance", label: "Finance" },
-  { href: "/prep", label: "Prep" },
+  { href: "/tasks", label: "Tasks" },
 ] as const;
 
 export default function Nav() {

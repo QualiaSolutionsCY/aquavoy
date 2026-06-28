@@ -1161,6 +1161,14 @@ export async function executeTool(
           typeof args.targetFolderPath === "string" && args.targetFolderPath
             ? args.targetFolderPath
             : undefined;
+        // Reject path-traversal: `..` segments would escape the user's drive root
+        // once spliced into the Graph `/me/drive/root:/…` URL (encodeURIComponent
+        // does not encode `.`). Defense-in-depth over Graph's own scoping.
+        if (targetFolderPath && targetFolderPath.split("/").some((seg) => seg === "..")) {
+          return JSON.stringify({
+            error: "targetFolderPath must not contain '..' path-traversal segments",
+          });
+        }
 
         const dest = targetFolderPath || targetFolderId || "OneDrive root";
         const summary = `Save attachment "${attachmentFilename}" from ${mailbox} → ${dest}`;

@@ -66,6 +66,7 @@ const REVERSIBLE_TOOLS = new Set([
   "record_finance_entry",
   "batch_move_to_trash",
   "batch_move_to_folder",
+  "save_email_attachment",
 ]);
 
 /* ── Lightweight Markdown rendering for the agent's proposal ──

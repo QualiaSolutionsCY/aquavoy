@@ -20,6 +20,7 @@ vi.mock("@/lib/microsoft/onedrive", () => ({
   getItem: vi.fn(),
   updateItem: vi.fn(),
   deleteItem: vi.fn(),
+  uploadFile: vi.fn(),
 }));
 
 vi.mock("@/lib/mail/accounts", () => ({
@@ -40,24 +41,27 @@ vi.mock("@/lib/finance/ledger", () => ({
 
 vi.mock("@/lib/mail/imap", () => ({
   moveMessages: vi.fn(),
+  downloadAttachment: vi.fn(),
 }));
 
 import { executeConfirmedAction } from "./executeConfirmedAction";
-import { getItem, updateItem, deleteItem } from "@/lib/microsoft/onedrive";
+import { getItem, updateItem, deleteItem, uploadFile } from "@/lib/microsoft/onedrive";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail } from "@/lib/mail/scheduled";
 import { recordFinanceEntry } from "@/lib/finance/ledger";
-import { moveMessages } from "@/lib/mail/imap";
+import { moveMessages, downloadAttachment } from "@/lib/mail/imap";
 
 const getItemMock = vi.mocked(getItem);
 const updateItemMock = vi.mocked(updateItem);
 const deleteItemMock = vi.mocked(deleteItem);
+const uploadFileMock = vi.mocked(uploadFile);
 const loadAccountMock = vi.mocked(loadAccountWithSecretByEmail);
 const sendMailMock = vi.mocked(sendMail);
 const scheduleEmailMock = vi.mocked(scheduleEmail);
 const recordFinanceEntryMock = vi.mocked(recordFinanceEntry);
 const moveMessagesMock = vi.mocked(moveMessages);
+const downloadAttachmentMock = vi.mocked(downloadAttachment);
 
 const PRINCIPAL = "Wency";
 
@@ -471,6 +475,120 @@ describe("executeConfirmedAction — batch_move_to_trash / batch_move_to_folder"
       executeConfirmedAction("batch_move_to_trash", baseArgs({ uids: [] }), PRINCIPAL),
     ).rejects.toThrow("no message UIDs staged to move");
     expect(moveMessagesMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeConfirmedAction — save_email_attachment", () => {
+  const attachmentResult = {
+    filename: "invoice.pdf",
+    contentType: "application/pdf",
+    bytes: new Uint8Array([1, 2, 3]),
+  };
+  const driveUploadResult = {
+    id: "drive-1",
+    name: "invoice.pdf",
+    isFolder: false,
+    isFile: true,
+    webUrl: "https://x",
+    path: "/Invoices/invoice.pdf",
+    size: 3,
+    lastModified: "",
+  } as Awaited<ReturnType<typeof uploadFile>>;
+
+  it("happy path (targetFolderId): downloads → uploads, returns result + undo_data", async () => {
+    downloadAttachmentMock.mockResolvedValue(attachmentResult);
+    uploadFileMock.mockResolvedValue(driveUploadResult);
+
+    const out = await executeConfirmedAction(
+      "save_email_attachment",
+      {
+        mailbox: "info@aquavoy.com",
+        uid: 11,
+        attachmentFilename: "invoice.pdf",
+        targetFolderId: "folder-x",
+      },
+      PRINCIPAL,
+    );
+
+    expect(downloadAttachmentMock).toHaveBeenCalledWith(
+      "info@aquavoy.com",
+      undefined,
+      11,
+      "invoice.pdf",
+    );
+    expect(uploadFileMock).toHaveBeenCalledWith(
+      "conn-1",
+      { itemId: "folder-x" },
+      "invoice.pdf",
+      attachmentResult.bytes,
+      "application/pdf",
+    );
+    expect(out.result).toEqual({
+      saved: true,
+      itemId: "drive-1",
+      name: "invoice.pdf",
+      webUrl: "https://x",
+    });
+    expect(out.undo_data).toEqual({ uploadedItemId: "drive-1" });
+  });
+
+  it("parent { path } when only targetFolderPath is set", async () => {
+    downloadAttachmentMock.mockResolvedValue(attachmentResult);
+    uploadFileMock.mockResolvedValue(driveUploadResult);
+
+    await executeConfirmedAction(
+      "save_email_attachment",
+      {
+        mailbox: "info@aquavoy.com",
+        uid: 11,
+        attachmentFilename: "invoice.pdf",
+        targetFolderPath: "/Invoices/2026",
+      },
+      PRINCIPAL,
+    );
+
+    expect(uploadFileMock).toHaveBeenCalledWith(
+      "conn-1",
+      { path: "/Invoices/2026" },
+      "invoice.pdf",
+      attachmentResult.bytes,
+      "application/pdf",
+    );
+  });
+
+  it("parent {} (root) when neither targetFolderId nor targetFolderPath is set", async () => {
+    downloadAttachmentMock.mockResolvedValue(attachmentResult);
+    uploadFileMock.mockResolvedValue(driveUploadResult);
+
+    await executeConfirmedAction(
+      "save_email_attachment",
+      {
+        mailbox: "info@aquavoy.com",
+        uid: 11,
+        attachmentFilename: "invoice.pdf",
+      },
+      PRINCIPAL,
+    );
+
+    expect(uploadFileMock).toHaveBeenCalledWith(
+      "conn-1",
+      {},
+      "invoice.pdf",
+      attachmentResult.bytes,
+      "application/pdf",
+    );
+  });
+
+  it("rejects missing attachmentFilename without calling downloadAttachment or uploadFile", async () => {
+    await expect(
+      executeConfirmedAction(
+        "save_email_attachment",
+        { mailbox: "info@aquavoy.com", uid: 11 },
+        PRINCIPAL,
+      ),
+    ).rejects.toThrow(/required/);
+    expect(downloadAttachmentMock).not.toHaveBeenCalled();
+    expect(uploadFileMock).not.toHaveBeenCalled();
   });
 });
 

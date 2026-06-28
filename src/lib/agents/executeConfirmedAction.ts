@@ -2,13 +2,14 @@ import {
   getItem,
   updateItem,
   deleteItem as deleteItemOnDrive,
+  uploadFile,
 } from "@/lib/microsoft/onedrive";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail } from "@/lib/mail/scheduled";
 import { recordFinanceEntry, type FinanceDirection } from "@/lib/finance/ledger";
-import { moveMessages } from "@/lib/mail/imap";
+import { moveMessages, downloadAttachment } from "@/lib/mail/imap";
 import type { Recurrence } from "@/lib/scheduleRecurrence";
 
 /**
@@ -265,6 +266,29 @@ export async function executeConfirmedAction(
           uidMap: res.uidMap,
           messageIds,
         },
+      };
+    }
+
+    case "save_email_attachment": {
+      const mailbox = str(args, "mailbox");
+      const uid = Number(args.uid);
+      const attachmentFilename = str(args, "attachmentFilename");
+      const folder = str(args, "folder") || undefined;
+      const targetFolderId = str(args, "targetFolderId") || undefined;
+      const targetFolderPath = str(args, "targetFolderPath") || undefined;
+      if (!mailbox || !uid || isNaN(uid) || !attachmentFilename)
+        throw new Error("mailbox, uid, and attachmentFilename are required");
+      const att = await downloadAttachment(mailbox, folder, uid, attachmentFilename);
+      const connId = await resolveConnectionId();
+      const parent = targetFolderId
+        ? { itemId: targetFolderId }
+        : targetFolderPath
+          ? { path: targetFolderPath }
+          : {};
+      const item = await uploadFile(connId, parent, att.filename, att.bytes, att.contentType);
+      return {
+        result: { saved: true, itemId: item.id, name: item.name, webUrl: item.webUrl ?? null },
+        undo_data: { uploadedItemId: item.id },
       };
     }
 

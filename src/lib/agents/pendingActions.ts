@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
-import { updateItem } from "@/lib/microsoft/onedrive";
+import { updateItem, deleteItem as deleteItemOnDrive } from "@/lib/microsoft/onedrive";
 import { cancelScheduled } from "@/lib/mail/scheduled";
 import { deleteFinanceEntry } from "@/lib/finance/ledger";
 import { moveMessages, moveMessagesByMessageId } from "@/lib/mail/imap";
@@ -351,6 +351,15 @@ export async function undoAction(
           sourceFolderPath,
         );
       }
+      break;
+    }
+
+    case "save_email_attachment": {
+      const uploadedItemId = typeof undo.uploadedItemId === "string" ? undo.uploadedItemId : "";
+      if (!uploadedItemId)
+        return { action, undone: false, reason: "uploaded item id unavailable" };
+      const connId = await resolveConnectionId();
+      await deleteItemOnDrive(connId, uploadedItemId);
       break;
     }
 

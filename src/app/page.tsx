@@ -66,6 +66,7 @@ const REVERSIBLE_TOOLS = new Set([
   "schedule_email",
   "batch_move_to_trash",
   "batch_move_to_folder",
+  "save_email_attachment",
 ]);
 
 interface Msg {

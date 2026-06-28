@@ -1,0 +1,81 @@
+{
+  "ok": true,
+  "verdict": "PASS",
+  "phase": 1,
+  "counts": {
+    "CRITICAL": 0,
+    "HIGH": 0,
+    "MEDIUM": 1,
+    "LOW": 3
+  },
+  "score": 5,
+  "per_lens_scores": {
+    "correctness": 5,
+    "design": 5,
+    "security": 5
+  },
+  "surviving": [
+    {
+      "file": "src/app/layout.tsx",
+      "line": 24,
+      "title": "Stale SEO description still mentions 'crew email prep' after prep page removal",
+      "severity": "LOW",
+      "lenses": [
+        "correctness"
+      ],
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      },
+      "verified": false
+    },
+    {
+      "file": "src/app/page.tsx",
+      "line": 35,
+      "title": "Stale comment and UI copy ('prep crew email') describe a removed capability; no broken link or import",
+      "severity": "LOW",
+      "lenses": [
+        "correctness"
+      ],
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      },
+      "verified": false
+    },
+    {
+      "file": "src/lib/mail/scheduled.ts",
+      "line": 141,
+      "title": "cancelScheduled accepts optional principal — ownership enforcement is conditionally skipped when caller omits the argument",
+      "severity": "MEDIUM",
+      "lenses": [
+        "security"
+      ],
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      },
+      "verified": false
+    },
+    {
+      "file": "src/lib/mail/scheduled.ts",
+      "line": 122,
+      "title": "listScheduled accepts optional principal — could return all rows if caller omits argument (no current caller does, but the signature permits it)",
+      "severity": "LOW",
+      "lenses": [
+        "security"
+      ],
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      },
+      "verified": false
+    }
+  ],
+  "killed": [],
+  "totals": {
+    "findings": 4,
+    "surviving": 4,
+    "killed": 0
+  }
+}

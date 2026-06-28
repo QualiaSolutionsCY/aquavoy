@@ -32,7 +32,7 @@ function trailingAddressToken(text: string): string | null {
 type Principal = "Wency" | "Jeanette";
 
 /* Empty-state example chips. Each fires a REAL Aquavoy capability —
-   web search, OneDrive file lookup, crew email prep — so nothing on the
+   web search, OneDrive file lookup, inbox triage — so nothing on the
    landing surface is decorative. */
 const SUGGESTIONS: { icon: typeof Globe; label: string; prompt: string }[] = [
   {
@@ -715,8 +715,8 @@ export default function Chat() {
           <div className="cx-col cx-empty">
             <h1 className="cx-greeting">How can I help, {identity}?</h1>
             <p className="cx-greeting-sub">
-              Ask anything — I can search the web, work with your OneDrive files, and
-              prep crew email.
+              Ask anything — I can search the web, work with your OneDrive files, read
+              your inbox, and track your finances.
             </p>
             <div className="cx-chips">
               {SUGGESTIONS.map((s) => {

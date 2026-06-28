@@ -1,0 +1,14 @@
+[
+  {
+    "file": "src/lib/mail/scheduled.ts",
+    "line": 141,
+    "severity": "MEDIUM",
+    "title": "cancelScheduled accepts optional principal — ownership enforcement is conditionally skipped when caller omits the argument"
+  },
+  {
+    "file": "src/lib/mail/scheduled.ts",
+    "line": 122,
+    "severity": "LOW",
+    "title": "listScheduled accepts optional principal — could return all rows if caller omits argument (no current caller does, but the signature permits it)"
+  }
+]

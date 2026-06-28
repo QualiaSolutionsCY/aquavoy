@@ -1,0 +1,14 @@
+[
+  {
+    "file": "src/app/layout.tsx",
+    "line": 24,
+    "severity": "LOW",
+    "title": "Stale SEO description still mentions 'crew email prep' after prep page removal"
+  },
+  {
+    "file": "src/app/page.tsx",
+    "line": 35,
+    "severity": "LOW",
+    "title": "Stale comment and UI copy ('prep crew email') describe a removed capability; no broken link or import"
+  }
+]

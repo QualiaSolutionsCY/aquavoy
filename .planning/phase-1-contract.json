@@ -1,0 +1,253 @@
+{
+  "version": 1,
+  "phase": 1,
+  "goal": "Land three agreed no-client-input wins before Wency's July office visit: remove the prep page, add a /tasks scheduled-tasks oversight page over the existing reminders + scheduled-email backend, and ship a real PWA manifest so the app installs standalone on iPhone.",
+  "why": "These are the three agreed, low-risk wins the client can see immediately at the July office visit; they need zero client input and de-risk the larger invoice-automation phases that follow.",
+  "generated_at": "2026-06-28T10:42:10Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:93c2431d5855fe430f52c7a351bce9003049a0a578546e91bae2ad36bc3e1b39",
+  "success_criteria": [
+    "/prep returns 404; no /prep link in Nav, mobile drawer, or Footer; .prep-grid styles, the draft API route, and the now-orphaned src/lib/agents/draftEmail.ts are deleted; tsc confirms no broken import and the agent tool registry is unchanged.",
+    "/tasks renders a merged reminders+scheduled-emails timeline (status, type, mailbox/owner, recurrence) with a working principal-scoped cancel hitting DELETE /api/tasks/cancel; both new routes are auth-gated and principal-scoped; the page has loading, error, and empty states.",
+    "public/manifest.json is served (name, start_url:/, display:standalone, 192/512 icons); layout.tsx emits the manifest link + apple-mobile-web-app meta; iOS add-to-home-screen launches standalone."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Remove the prep page (page, links, CSS, draft route, orphaned lib)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "none",
+      "files_modify": [
+        "src/components/Nav.tsx",
+        "src/components/Footer.tsx",
+        "src/app/globals.css"
+      ],
+      "files_create": [],
+      "files_delete": [
+        "src/app/prep/page.tsx",
+        "src/app/api/outlook/draft/route.ts",
+        "src/lib/agents/draftEmail.ts"
+      ],
+      "acceptance_criteria": [
+        "Visiting /prep returns 404 (route directory removed).",
+        "No 'Prep' link in the desktop nav rail, mobile drawer, or footer; all show a 'Tasks' link to /tasks.",
+        ".prep-grid and the EMAIL PREP comment block no longer exist in globals.css.",
+        "The draft API route and src/lib/agents/draftEmail.ts are deleted; tsc reports no broken import.",
+        "No agent tool definition references draftEmail (17-tool registry unchanged)."
+      ],
+      "action": "Delete src/app/prep/page.tsx, src/app/api/outlook/draft/route.ts, and src/lib/agents/draftEmail.ts (draftEmail is referenced only by the draft route and prep page, zero hits in the agent tool registry). Edit the LINKS array in Nav.tsx (remove the /prep entry, add a /tasks 'Tasks' entry after Finance) and in Footer.tsx (remove /prep, add /tasks). Remove the EMAIL PREP block in globals.css: the comment, the .prep-grid rule, and its 720px media query, leaving the Panels block intact.",
+      "context_files": [
+        "src/components/Nav.tsx",
+        "src/components/Footer.tsx",
+        ".planning/scope-m6.md"
+      ],
+      "verification": [
+        {
+          "type": "command-exit",
+          "command": "test",
+          "args": [
+            "!",
+            "-e",
+            "src/app/prep/page.tsx"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "command-exit",
+          "command": "test",
+          "args": [
+            "!",
+            "-e",
+            "src/lib/agents/draftEmail.ts"
+          ],
+          "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/globals.css",
+          "pattern": "prep-grid",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/components/Nav.tsx",
+          "pattern": "/tasks",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/components/Footer.tsx",
+          "pattern": "/tasks",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Add the two principal-scoped tasks API routes (list + cancel) over the existing backend",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "src/app/api/tasks/list/route.ts",
+        "src/app/api/tasks/cancel/route.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "GET /api/tasks/list with a valid session returns { ok:true, data:TaskItem[] } each carrying kind (reminder|email), id, status, scheduledAt, recurrence, and a who/what label, sorted by scheduledAt descending.",
+        "The merged list contains only the calling principal's own rows (reminders scoped by principal, emails by created_by).",
+        "GET /api/tasks/list with no/invalid session returns 401 { ok:false, error:'Unauthorized' }.",
+        "DELETE /api/tasks/cancel?id=&kind=reminder|email cancels only a pending row the principal owns and returns it; missing id or kind -> 400; no session -> 401."
+      ],
+      "action": "Create src/app/api/tasks/list/route.ts (GET) and src/app/api/tasks/cancel/route.ts (DELETE), reusing handle/ok/fail and the getPrincipal 401 pattern from api/mail/scheduled/route.ts. list: Promise.all listTasks+listScheduled(principal), map each to a kind-tagged TaskItem, concat, sort by scheduledAt desc, ok(merged). cancel: read ?id and ?kind; 400 on missing id or bad kind; route to cancelTask or cancelScheduled with principal. runtime nodejs, dynamic force-dynamic. Do not modify lib functions.",
+      "context_files": [
+        "src/app/api/mail/scheduled/route.ts",
+        "src/lib/agents/scheduledTasks.ts",
+        "src/lib/mail/scheduled.ts",
+        "src/lib/auth/session.ts",
+        "src/lib/http.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "src/app/api/tasks/list/route.ts"
+        },
+        {
+          "type": "file-exists",
+          "path": "src/app/api/tasks/cancel/route.ts"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/tasks/list/route.ts",
+          "pattern": "listTasks|listScheduled",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/tasks/cancel/route.ts",
+          "pattern": "cancelTask|cancelScheduled",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/tasks/list/route.ts",
+          "pattern": "getPrincipal",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/tasks/cancel/route.ts",
+          "pattern": "getPrincipal",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Build the /tasks oversight page (merged timeline, cancel, loading/error/empty states)",
+      "wave": 2,
+      "depends_on": [
+        "T2"
+      ],
+      "persona": "frontend",
+      "files_modify": [],
+      "files_create": [
+        "src/app/tasks/page.tsx"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "/tasks renders ONE merged list of reminders + scheduled emails sorted newest-first (not tabs), each row showing a type indicator, status badge, who/what, recurrence label, and Amsterdam-tz scheduled time.",
+        "Pending rows show a Cancel button hitting DELETE /api/tasks/cancel?id=&kind=, confirms first, re-fetches on success, surfaces inline error on failure.",
+        "Page shows a sonar-sweep skeleton while loading, a retryable error state on fetch failure, and a friendly empty state when the list is empty.",
+        "Works at 375px and 1440px using existing token-driven classes; no fixed-px layout introduced."
+      ],
+      "action": "Create src/app/tasks/page.tsx modeled on emails/page.tsx: use client; copy fmtAmsterdam, STATUS_BADGE, recurrenceLabel. TaskItem is a kind-discriminated union matching T2. fetchTasks GETs /api/tasks/list (404->empty) on mount. cancelItem confirms then DELETEs /api/tasks/cancel?id=&kind=, re-fetches. Render .wrap>.head and one .list of .item rows: .name/.meta per kind, recurrence+status badges, Cancel only when pending. Loading->skeleton; error->.empty retry; empty->.empty. Reuse existing CSS.",
+      "context_files": [
+        "src/app/emails/page.tsx",
+        ".planning/DESIGN.md",
+        "src/lib/agents/scheduledTasks.ts",
+        "src/lib/mail/scheduled.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "src/app/tasks/page.tsx"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/tasks/page.tsx",
+          "pattern": "/api/tasks/list",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/tasks/page.tsx",
+          "pattern": "/api/tasks/cancel",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/tasks/page.tsx",
+          "pattern": "skeleton|aria-busy",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/tasks/page.tsx",
+          "pattern": "empty",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Ship the PWA manifest + apple-mobile-web-app meta (installs standalone on iOS)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "frontend",
+      "files_modify": [
+        "src/app/layout.tsx"
+      ],
+      "files_create": [
+        "public/manifest.json",
+        "public/icon-192.png",
+        "public/icon-512.png"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "public/manifest.json exists with name 'Aquavoy', short_name 'Aquavoy', start_url '/', display 'standalone', dark-ocean background_color + theme_color, and an icons array referencing /icon-192.png and /icon-512.png (image/png, purpose 'any maskable').",
+        "public/icon-192.png (192x192) and public/icon-512.png (512x512) exist.",
+        "src/app/layout.tsx metadata export includes manifest:'/manifest.json' and an appleWebApp object so Next emits the manifest link + apple-mobile-web-app meta.",
+        "Adding the deployed site to an iOS home screen launches it standalone (full-screen, no Safari chrome)."
+      ],
+      "action": "Generate public/icon-192.png and public/icon-512.png from the 256x256 src/app/icon.png via sharp. Create public/manifest.json (name/short_name Aquavoy, start_url /, display standalone, background_color and theme_color #0c1116 = hex projection of --bg oklch(0.14 0.015 220); two icons, purpose any maskable). Extend the metadata export in layout.tsx (keep title+description) with manifest /manifest.json and appleWebApp {capable, statusBarStyle black-translucent, title Aquavoy}.",
+      "context_files": [
+        "src/app/layout.tsx",
+        ".planning/DESIGN.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "public/manifest.json",
+          "must_contain": "standalone"
+        },
+        {
+          "type": "file-exists",
+          "path": "public/icon-192.png"
+        },
+        {
+          "type": "file-exists",
+          "path": "public/icon-512.png"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/layout.tsx",
+          "pattern": "manifest|appleWebApp",
+          "expect": "present"
+        }
+      ]
+    }
+  ]
+}

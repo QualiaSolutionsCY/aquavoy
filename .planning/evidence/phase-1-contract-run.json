@@ -1,98 +1,15 @@
 {
   "ok": true,
   "phase": 1,
-  "goal": "A developer or operator arriving at the repo cold can understand the architecture, operate the agent, and run a local dev environment using only the README, operator runbook, env-var reference, and ADR index — all accurate to the real code.",
+  "goal": "Land three agreed no-client-input wins before Wency's July office visit: remove the prep page, add a /tasks scheduled-tasks oversight page over the existing reminders + scheduled-email backend, and ship a real PWA manifest so the app installs standalone on iPhone.",
   "checked": 20,
   "failed": 0,
-  "generated_at": "2026-06-17T12:50:05.420Z",
+  "generated_at": "2026-06-28T11:01:00.821Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "Rewrite README.md as accurate repo orientation",
+      "task_title": "Remove the prep page (page, links, CSS, draft route, orphaned lib)",
       "index": 0,
-      "type": "file-exists",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "Rewrite README.md as accurate repo orientation",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "Rewrite README.md as accurate repo orientation",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "Rewrite README.md as accurate repo orientation",
-      "index": 3,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "Rewrite README.md as accurate repo orientation",
-      "index": 4,
-      "type": "command-exit",
-      "ok": true,
-      "detail": "",
-      "duration_ms": 5,
-      "stdout": "",
-      "stderr": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Write the operator runbook",
-      "index": 0,
-      "type": "file-exists",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Write the operator runbook",
-      "index": 1,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Write the operator runbook",
-      "index": 2,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Write the operator runbook",
-      "index": 3,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Write the operator runbook",
-      "index": 4,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Write the operator runbook",
-      "index": 5,
       "type": "command-exit",
       "ok": true,
       "detail": "",
@@ -101,48 +18,83 @@
       "stderr": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
-      "index": 0,
-      "type": "file-exists",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "task_id": "T1",
+      "task_title": "Remove the prep page (page, links, CSS, draft route, orphaned lib)",
       "index": 1,
-      "type": "grep-match",
+      "type": "command-exit",
       "ok": true,
-      "detail": ""
+      "detail": "",
+      "duration_ms": 4,
+      "stdout": "",
+      "stderr": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "task_id": "T1",
+      "task_title": "Remove the prep page (page, links, CSS, draft route, orphaned lib)",
       "index": 2,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "task_id": "T1",
+      "task_title": "Remove the prep page (page, links, CSS, draft route, orphaned lib)",
       "index": 3,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "task_id": "T1",
+      "task_title": "Remove the prep page (page, links, CSS, draft route, orphaned lib)",
       "index": 4,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
-      "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
+      "task_id": "T2",
+      "task_title": "Add the two principal-scoped tasks API routes (list + cancel) over the existing backend",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the two principal-scoped tasks API routes (list + cancel) over the existing backend",
+      "index": 1,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the two principal-scoped tasks API routes (list + cancel) over the existing backend",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the two principal-scoped tasks API routes (list + cancel) over the existing backend",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the two principal-scoped tasks API routes (list + cancel) over the existing backend",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Add the two principal-scoped tasks API routes (list + cancel) over the existing backend",
       "index": 5,
       "type": "grep-match",
       "ok": true,
@@ -150,30 +102,75 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
-      "index": 6,
+      "task_title": "Build the /tasks oversight page (merged timeline, cancel, loading/error/empty states)",
+      "index": 0,
       "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
-      "index": 7,
+      "task_title": "Build the /tasks oversight page (merged timeline, cancel, loading/error/empty states)",
+      "index": 1,
       "type": "grep-match",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T3",
-      "task_title": "Write the env-var reference, sync .env.example, and the ADR index",
-      "index": 8,
-      "type": "command-exit",
+      "task_title": "Build the /tasks oversight page (merged timeline, cancel, loading/error/empty states)",
+      "index": 2,
+      "type": "grep-match",
       "ok": true,
-      "detail": "",
-      "duration_ms": 5,
-      "stdout": "",
-      "stderr": ""
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Build the /tasks oversight page (merged timeline, cancel, loading/error/empty states)",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Build the /tasks oversight page (merged timeline, cancel, loading/error/empty states)",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Ship the PWA manifest + apple-mobile-web-app meta (installs standalone on iOS)",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Ship the PWA manifest + apple-mobile-web-app meta (installs standalone on iOS)",
+      "index": 1,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Ship the PWA manifest + apple-mobile-web-app meta (installs standalone on iOS)",
+      "index": 2,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Ship the PWA manifest + apple-mobile-web-app meta (installs standalone on iOS)",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
     }
   ]
 }

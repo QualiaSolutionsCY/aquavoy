@@ -1,0 +1,54 @@
+{
+  "phase": 1,
+  "lenses": [
+    "correctness",
+    "design",
+    "security"
+  ],
+  "findings": [
+    {
+      "lens": "correctness",
+      "file": "src/app/layout.tsx",
+      "line": 24,
+      "severity": "LOW",
+      "title": "Stale SEO description still mentions 'crew email prep' after prep page removal",
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      }
+    },
+    {
+      "lens": "correctness",
+      "file": "src/app/page.tsx",
+      "line": 35,
+      "severity": "LOW",
+      "title": "Stale comment and UI copy ('prep crew email') describe a removed capability; no broken link or import",
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      }
+    },
+    {
+      "lens": "security",
+      "file": "src/lib/mail/scheduled.ts",
+      "line": 141,
+      "severity": "MEDIUM",
+      "title": "cancelScheduled accepts optional principal — ownership enforcement is conditionally skipped when caller omits the argument",
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      }
+    },
+    {
+      "lens": "security",
+      "file": "src/lib/mail/scheduled.ts",
+      "line": 122,
+      "severity": "LOW",
+      "title": "listScheduled accepts optional principal — could return all rows if caller omits argument (no current caller does, but the signature permits it)",
+      "votes": {
+        "real": 0,
+        "notReal": 0
+      }
+    }
+  ]
+}

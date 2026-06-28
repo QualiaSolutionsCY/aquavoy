@@ -80,6 +80,14 @@ vi.mock("mailparser", () => ({
     cc: undefined,
     date: new Date("2026-06-01T10:00:00Z"),
     subject: "First",
+    attachments: [
+      {
+        filename: "invoice.pdf",
+        contentType: "application/pdf",
+        content: Buffer.from("%PDF-fake"),
+        size: 9,
+      },
+    ],
   })),
 }));
 
@@ -107,6 +115,7 @@ import {
   moveMessages,
   moveMessagesByMessageId,
   resolveTrashFolder,
+  downloadAttachment,
 } from "./imap";
 import { loadAccountWithSecretByEmail } from "./accounts";
 
@@ -142,6 +151,34 @@ describe("mail/imap read adapter", () => {
     expect(detail.subject).toBe("First");
     expect(detail.body).toBe("Parsed plain-text body.");
     expect(h.ref.current.download).toHaveBeenCalled();
+  });
+
+  it("readEmail returns attachments metadata without content bytes", async () => {
+    const detail = await readEmail("info@aquavoy.com", "inbox", 11);
+    expect(detail.attachments).toHaveLength(1);
+    const att = detail.attachments[0];
+    expect(att.filename).toBe("invoice.pdf");
+    expect(att.contentType).toBe("application/pdf");
+    expect(att.size).toBe(9);
+    expect((att as unknown as Record<string, unknown>).content).toBeUndefined();
+  });
+
+  it("downloadAttachment returns Uint8Array bytes for a named attachment", async () => {
+    const result = await downloadAttachment(
+      "info@aquavoy.com",
+      "inbox",
+      11,
+      "invoice.pdf",
+    );
+    expect(result.contentType).toBe("application/pdf");
+    expect(result.bytes).toBeInstanceOf(Uint8Array);
+    expect(result.bytes.length).toBe(9);
+  });
+
+  it("downloadAttachment rejects when the attachment is not found", async () => {
+    await expect(
+      downloadAttachment("info@aquavoy.com", "inbox", 11, "missing.pdf"),
+    ).rejects.toThrow(/not found/);
   });
 
   it("searchEmails resolves the Sent folder via special-use flag", async () => {

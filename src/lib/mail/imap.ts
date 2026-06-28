@@ -215,6 +215,12 @@ export interface EmailSummary {
   seen: boolean | null;
 }
 
+export interface AttachmentInfo {
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
 export interface EmailDetail {
   uid: number;
   from: string;
@@ -223,6 +229,13 @@ export interface EmailDetail {
   date: string | null;
   subject: string;
   body: string;
+  attachments: AttachmentInfo[];
+}
+
+export interface DownloadedAttachment {
+  filename: string;
+  contentType: string;
+  bytes: Uint8Array;
 }
 
 export interface SenderMatchPreview {
@@ -321,6 +334,15 @@ export async function readEmail(
 
     const parsed = await simpleParser(source);
 
+    // Map attachment metadata — drop content bytes (bytes only at download time)
+    const attachments: AttachmentInfo[] = (parsed.attachments ?? []).map(
+      (att, i) => ({
+        filename: att.filename ?? `attachment-${i}`,
+        contentType: att.contentType ?? "application/octet-stream",
+        size: att.size ?? att.content?.length ?? 0,
+      }),
+    );
+
     // Prefer plain text; fall back to HTML with tags stripped
     let body = parsed.text ?? "";
     if (!body && parsed.html) {
@@ -358,6 +380,55 @@ export async function readEmail(
       date: parsed.date?.toISOString() ?? null,
       subject: parsed.subject ?? "(no subject)",
       body,
+      attachments,
+    };
+  });
+}
+
+/**
+ * Download the raw bytes of a named attachment from an email. Opens the
+ * mailbox read-only, re-parses the message via mailparser, and finds the
+ * attachment by filename (exact match; falls back to case-insensitive trim).
+ * Returns the attachment bytes as a Uint8Array — no content bytes are stored
+ * on the server; this function must be called explicitly at confirm time.
+ */
+export async function downloadAttachment(
+  email: string,
+  folderHint: string | undefined,
+  uid: number,
+  filename: string,
+): Promise<DownloadedAttachment> {
+  return withClient(email, async (client) => {
+    const folders = await fetchFolderList(client);
+    const path = resolveFolder(folders, folderHint);
+    await client.mailboxOpen(path, { readOnly: true });
+
+    const download = await client.download(String(uid), undefined, {
+      uid: true,
+    });
+    const chunks: Buffer[] = [];
+    for await (const chunk of download.content) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const source = Buffer.concat(chunks);
+
+    const parsed = await simpleParser(source);
+
+    // Exact match first, then case-insensitive trim fallback
+    const att =
+      (parsed.attachments ?? []).find((a) => a.filename === filename) ??
+      (parsed.attachments ?? []).find(
+        (a) => (a.filename ?? "").toLowerCase().trim() === filename.toLowerCase().trim(),
+      );
+
+    if (!att) {
+      throw new Error(`Attachment "${filename}" not found on message ${uid}`);
+    }
+
+    return {
+      filename: att.filename ?? filename,
+      contentType: att.contentType ?? "application/octet-stream",
+      bytes: new Uint8Array(att.content),
     };
   });
 }

@@ -7,8 +7,10 @@ Branch `m6-invoice-automation`. The code is built + verified; these are the **de
 The finance/invoice features read tables that don't exist in prod yet:
 - `supabase/migrations/0016_invoice_templates.sql` (Phase 3 — per-company invoice templates)
 - `supabase/migrations/0017_voyage_entries.sql` (Phase 4 — voyage economics)
-- `supabase/migrations/0018_processed_messages.sql` (Phase 5 — inbox-scan idempotency) *[exists once P5 ships]*
-- `supabase/migrations/0019_notifications.sql` (Phase 6 — notification prefs/log) *[exists once P6 ships]*
+- `supabase/migrations/0018_processed_messages.sql` (Phase 5 — inbox-scan idempotency) ✅ built
+- `supabase/migrations/0019_notifications.sql` (Phase 6 — notification prefs/log) ✅ built
+
+**All four (0016–0019) are committed and awaiting `supabase db push`.** Also set the new env vars before/at ship: `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` (generate with `npx web-push generate-vapid-keys`) and the public one again as `NEXT_PUBLIC_VAPID_PUBLIC_KEY` — web-push notifications are inert without them (the app still boots; sends just no-op).
 
 The project is **not linked locally** and the prod secrets are Vercel-"Sensitive" (not pullable), so this can't be done from the dev box — it's a CLI step the OWNER runs (per the constitution: migrations apply through the sanctioned flow, never hand-edited on the remote):
 

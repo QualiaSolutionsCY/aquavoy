@@ -373,7 +373,7 @@ interface ChatProvider {
  * by the embeddings layer (memory recall/sweep), so keying chat routing off its
  * mere presence would silently hijack the whole chat pipeline onto direct Gemini
  * the moment embeddings are enabled. Default chat stays on OpenRouter
- * (OPENROUTER_MODEL, e.g. "openai/gpt-oss-120b:free"); set GEMINI_MODEL to a valid
+ * (OPENROUTER_MODEL, e.g. "nvidia/nemotron-3-super-120b-a12b:free"); set GEMINI_MODEL to a valid
  * Google model id to opt into direct Gemini. The endpoint is OpenAI-wire-
  * compatible either way, so the tool loop works unchanged.
  */

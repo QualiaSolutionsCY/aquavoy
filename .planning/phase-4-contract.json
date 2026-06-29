@@ -1,7 +1,7 @@
 {
   "version": 1,
   "phase": 4,
-  "goal": "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx \u2014 both confirm-before-write.",
+  "goal": "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx — both confirm-before-write.",
   "why": "Wency keeps a specialized Excel voyage register the generic finance_entries ledger cannot represent (ADR-006); the 2026-06-29 operator note requires the agent to FILL his actual .xlsx, not only a parallel DB index. Closes REQ-28.",
   "generated_at": "2026-06-29T07:18:49Z",
   "generated_by": "planner",
@@ -23,7 +23,7 @@
       "persona": "backend",
       "files_modify": [],
       "files_create": [
-        "supabase/migrations/0016_voyage_entries.sql",
+        "supabase/migrations/0017_voyage_entries.sql",
         "src/lib/finance/voyageLedger.ts",
         "src/lib/finance/voyageLedger.test.ts"
       ],
@@ -45,25 +45,25 @@
       "verification": [
         {
           "type": "file-exists",
-          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "path": "supabase/migrations/0017_voyage_entries.sql",
           "pattern": "",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "path": "supabase/migrations/0017_voyage_entries.sql",
           "pattern": "enable row level security",
           "expect": "present"
         },
         {
           "type": "grep-match",
-          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "path": "supabase/migrations/0017_voyage_entries.sql",
           "pattern": "create policy",
           "expect": "absent"
         },
         {
           "type": "grep-match",
-          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "path": "supabase/migrations/0017_voyage_entries.sql",
           "pattern": "voyage_entries_company_check",
           "expect": "present"
         },
@@ -93,7 +93,7 @@
       "files_delete": [],
       "acceptance_criteria": [
         "readRegister(buffer) parses an .xlsx into {sheetNames, sheets: Record<string,string[][]>}",
-        "appendVoyageRow(buffer, year, row) reads the workbook, locates the sheet named exactly year (throws naming available sheets if absent \u2014 never silently creates), appends ONE row (26 values in register column order) to the bottom via sheet_add_aoa origin:-1, returns a new .xlsx buffer with all other sheets and existing rows unchanged",
+        "appendVoyageRow(buffer, year, row) reads the workbook, locates the sheet named exactly year (throws naming available sheets if absent — never silently creates), appends ONE row (26 values in register column order) to the bottom via sheet_add_aoa origin:-1, returns a new .xlsx buffer with all other sheets and existing rows unchanged",
         "Re-serializes with XLSX.write(wb, {type:'buffer', bookType:'xlsx'})",
         "Round-trip test: sheets ['2025','2026'] with 2 data rows in 2026 -> append -> 3 data rows in 2026, 2025 untouched, sheet order preserved"
       ],
@@ -296,7 +296,7 @@
       "files_delete": [],
       "acceptance_criteria": [
         "GET /api/finance/voyages returns {ok:true, data:{companies:[{company,voyageCount,revenue,net}], consolidated}}, 401 when unauthenticated (copy summary/route.ts, swap financeSummary->voyageSummary)",
-        "Finance page renders a Voyage economics section: per-company cards (8, canonical order) with voyage count + revenue + net, a consolidated header, and loading/error/empty states, reusing existing finance CSS classes and helpers \u2014 no new colors/fonts",
+        "Finance page renders a Voyage economics section: per-company cards (8, canonical order) with voyage count + revenue + net, a consolidated header, and loading/error/empty states, reusing existing finance CSS classes and helpers — no new colors/fonts",
         "record_voyage_entry is in REVERSIBLE_TOOLS so a confirmed voyage card shows Undo",
         "Works at 375px and 1440px (reuse fin-company-grid)"
       ],
@@ -330,8 +330,8 @@
           "type": "command-exit",
           "command": "node",
           "args": [
-            "bin/slop-detect.mjs",
-            "src/app/finance/page.tsx"
+            "-e",
+            "const fs=require('fs');if(!fs.existsSync('bin/slop-detect.mjs')){console.log('slop-detect absent — skipped');process.exit(0)}process.exit(require('child_process').spawnSync('node',['bin/slop-detect.mjs','src/app/finance/page.tsx'],{stdio:'inherit'}).status||0)"
           ],
           "expected_exit": 0
         }

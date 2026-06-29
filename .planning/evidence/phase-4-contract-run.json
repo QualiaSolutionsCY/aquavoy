@@ -1,22 +1,22 @@
 {
   "ok": true,
   "phase": 4,
-  "goal": "Make bulk mail cleanup fast — search by sender, then batch-move matching messages to trash or a named folder, behind the existing confirm/undo gate; plus polish recipient autocomplete.",
-  "checked": 14,
+  "goal": "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx — both confirm-before-write.",
+  "checked": 23,
   "failed": 0,
-  "generated_at": "2026-06-20T13:03:11.104Z",
+  "generated_at": "2026-06-29T08:15:43.620Z",
   "results": [
     {
       "task_id": "T1",
-      "task_title": "IMAP move adapter + sender-match preview",
+      "task_title": "voyage_entries migration + voyageLedger.ts read/aggregate library",
       "index": 0,
-      "type": "grep-match",
+      "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T1",
-      "task_title": "IMAP move adapter + sender-match preview",
+      "task_title": "voyage_entries migration + voyageLedger.ts read/aggregate library",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -24,50 +24,42 @@
     },
     {
       "task_id": "T1",
-      "task_title": "IMAP move adapter + sender-match preview",
+      "task_title": "voyage_entries migration + voyageLedger.ts read/aggregate library",
       "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "voyage_entries migration + voyageLedger.ts read/aggregate library",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "voyage_entries migration + voyageLedger.ts read/aggregate library",
+      "index": 4,
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 2144,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  12 passed (12)\n   Start at  16:03:10\n   Duration  665ms (transform 155ms, setup 49ms, import 182ms, tests 48ms, environment 0ms)\n\n",
+      "duration_ms": 2266,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  11:15:35\n   Duration  658ms (transform 150ms, setup 66ms, import 143ms, tests 17ms, environment 0ms)\n\n",
       "stderr": ""
     },
     {
-      "task_id": "T1",
-      "task_title": "IMAP move adapter + sender-match preview",
-      "index": 3,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "IMAP move adapter + sender-match preview",
-      "index": 4,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T1",
-      "task_title": "IMAP move adapter + sender-match preview",
-      "index": 5,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
       "task_id": "T2",
-      "task_title": "Batch move-to-trash / move-to-folder agent tools (confirm-gated, undoable)",
+      "task_title": "excelRegister.ts adapter: read + append-row + re-serialize the register",
       "index": 0,
-      "type": "grep-match",
+      "type": "file-exists",
       "ok": true,
       "detail": ""
     },
     {
       "task_id": "T2",
-      "task_title": "Batch move-to-trash / move-to-folder agent tools (confirm-gated, undoable)",
+      "task_title": "excelRegister.ts adapter: read + append-row + re-serialize the register",
       "index": 1,
       "type": "grep-match",
       "ok": true,
@@ -75,7 +67,7 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Batch move-to-trash / move-to-folder agent tools (confirm-gated, undoable)",
+      "task_title": "excelRegister.ts adapter: read + append-row + re-serialize the register",
       "index": 2,
       "type": "grep-match",
       "ok": true,
@@ -83,31 +75,18 @@
     },
     {
       "task_id": "T2",
-      "task_title": "Batch move-to-trash / move-to-folder agent tools (confirm-gated, undoable)",
+      "task_title": "excelRegister.ts adapter: read + append-row + re-serialize the register",
       "index": 3,
-      "type": "grep-match",
+      "type": "command-exit",
       "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Batch move-to-trash / move-to-folder agent tools (confirm-gated, undoable)",
-      "index": 4,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "task_id": "T2",
-      "task_title": "Batch move-to-trash / move-to-folder agent tools (confirm-gated, undoable)",
-      "index": 5,
-      "type": "grep-match",
-      "ok": true,
-      "detail": ""
+      "detail": "",
+      "duration_ms": 2344,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  4 passed (4)\n   Start at  11:15:37\n   Duration  796ms (transform 154ms, setup 89ms, import 110ms, tests 187ms, environment 0ms)\n\n",
+      "stderr": ""
     },
     {
       "task_id": "T3",
-      "task_title": "Recipient autocomplete polish",
+      "task_title": "record_voyage_entry tool: definition, stage, confirm (DB insert + xlsx append/re-upload), undo",
       "index": 0,
       "type": "grep-match",
       "ok": true,
@@ -115,11 +94,116 @@
     },
     {
       "task_id": "T3",
-      "task_title": "Recipient autocomplete polish",
+      "task_title": "record_voyage_entry tool: definition, stage, confirm (DB insert + xlsx append/re-upload), undo",
       "index": 1,
       "type": "grep-match",
       "ok": true,
       "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "record_voyage_entry tool: definition, stage, confirm (DB insert + xlsx append/re-upload), undo",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "record_voyage_entry tool: definition, stage, confirm (DB insert + xlsx append/re-upload), undo",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "record_voyage_entry tool: definition, stage, confirm (DB insert + xlsx append/re-upload), undo",
+      "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 2275,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  45 passed (45)\n   Start at  11:15:40\n   Duration  896ms (transform 329ms, setup 72ms, import 339ms, tests 78ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "import_voyage_register tool: parse the existing register + stage its rows for confirm-before-insert",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "import_voyage_register tool: parse the existing register + stage its rows for confirm-before-insert",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "import_voyage_register tool: parse the existing register + stage its rows for confirm-before-insert",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "import_voyage_register tool: parse the existing register + stage its rows for confirm-before-insert",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T5",
+      "task_title": "import_voyage_register tool: parse the existing register + stage its rows for confirm-before-insert",
+      "index": 4,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 2359,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  45 passed (45)\n   Start at  11:15:42\n   Duration  921ms (transform 301ms, setup 68ms, import 315ms, tests 80ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Finance page voyage drill-down section + voyages summary API route + REVERSIBLE_TOOLS",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Finance page voyage drill-down section + voyages summary API route + REVERSIBLE_TOOLS",
+      "index": 1,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Finance page voyage drill-down section + voyages summary API route + REVERSIBLE_TOOLS",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Finance page voyage drill-down section + voyages summary API route + REVERSIBLE_TOOLS",
+      "index": 3,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 240,
+      "stdout": "slop-detect absent — skipped\n",
+      "stderr": ""
     }
   ]
 }

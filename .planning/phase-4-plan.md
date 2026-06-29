@@ -22,7 +22,7 @@ waves: 3
 **Wave:** 1
 **Persona:** backend
 **Files:**
-- create `supabase/migrations/0016_voyage_entries.sql` — `public.voyage_entries` table with the 26 real columns, RLS on / no policies.
+- create `supabase/migrations/0017_voyage_entries.sql` — `public.voyage_entries` table with the 26 real columns, RLS on / no policies.
 - create `src/lib/finance/voyageLedger.ts` — exports `recordVoyageEntry(input)`, `deleteVoyageEntry(id)`, `voyageSummary()`, and the row/summary types + `VOYAGE_COMPANIES`.
 - create `src/lib/finance/voyageLedger.test.ts` — aggregation unit tests (no DB; test the pure roll-up via injected rows or a mocked `supabaseAdmin`).
 **Depends on:** none
@@ -42,9 +42,9 @@ waves: 3
 3. Tests: factor the per-company roll-up so a pure function (rows → summary) can be tested without a live DB (e.g. test `voyageSummary` against a stubbed `supabaseAdmin` returning a fixed `data` array — mirror `ledger.test.ts` setup).
 
 **Validation:** (builder self-check)
-- `grep -c "enable row level security" supabase/migrations/0016_voyage_entries.sql` → `1`
-- `grep -c "create policy\|for select\|for insert" supabase/migrations/0016_voyage_entries.sql` → `0` (service-role only, no policies)
-- `grep -c "voyage_entries_company_check" supabase/migrations/0016_voyage_entries.sql` → `1`
+- `grep -c "enable row level security" supabase/migrations/0017_voyage_entries.sql` → `1`
+- `grep -c "create policy\|for select\|for insert" supabase/migrations/0017_voyage_entries.sql` → `0` (service-role only, no policies)
+- `grep -c "voyage_entries_company_check" supabase/migrations/0017_voyage_entries.sql` → `1`
 - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → `0`
 - `npx vitest run src/lib/finance/voyageLedger.test.ts` → passes
 
@@ -219,19 +219,19 @@ waves: 3
 
 ### Contract for Task 1 — migration exists
 **Check type:** file-exists
-**Command:** `test -f supabase/migrations/0016_voyage_entries.sql && echo EXISTS`
+**Command:** `test -f supabase/migrations/0017_voyage_entries.sql && echo EXISTS`
 **Expected:** `EXISTS`
 **Fail if:** File does not exist
 
 ### Contract for Task 1 — RLS on, no policies (constitution + ADR-006)
 **Check type:** command-exit
-**Command:** `grep -c "enable row level security" supabase/migrations/0016_voyage_entries.sql; grep -c "create policy" supabase/migrations/0016_voyage_entries.sql`
+**Command:** `grep -c "enable row level security" supabase/migrations/0017_voyage_entries.sql; grep -c "create policy" supabase/migrations/0017_voyage_entries.sql`
 **Expected:** first line `1`, second line `0`
 **Fail if:** RLS not enabled, or any public policy exists (service-role-only is required)
 
 ### Contract for Task 1 — 8-company CHECK present
 **Check type:** grep-match
-**Command:** `grep -c "voyage_entries_company_check" supabase/migrations/0016_voyage_entries.sql`
+**Command:** `grep -c "voyage_entries_company_check" supabase/migrations/0017_voyage_entries.sql`
 **Expected:** `1`
 **Fail if:** Returns 0 — company is not constrained to the eight entities
 

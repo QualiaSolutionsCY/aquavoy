@@ -67,6 +67,7 @@ const REVERSIBLE_TOOLS = new Set([
   "batch_move_to_trash",
   "batch_move_to_folder",
   "save_email_attachment",
+  "generate_invoice_from_template",
 ]);
 
 /* ── Lightweight Markdown rendering for the agent's proposal ──

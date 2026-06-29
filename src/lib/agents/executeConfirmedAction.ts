@@ -11,6 +11,10 @@ import { scheduleEmail } from "@/lib/mail/scheduled";
 import { recordFinanceEntry, type FinanceDirection } from "@/lib/finance/ledger";
 import { moveMessages, downloadAttachment } from "@/lib/mail/imap";
 import type { Recurrence } from "@/lib/scheduleRecurrence";
+import { readFileSync } from "fs";
+import { join } from "path";
+import { getInvoiceTemplate } from "@/lib/agents/invoiceTemplates";
+import { fillInvoiceTemplate, type InvoiceFields } from "@/lib/agents/invoiceTemplate";
 
 /**
  * The real side-effects for destructive tools. This is the ONLY place the
@@ -288,6 +292,74 @@ export async function executeConfirmedAction(
       const item = await uploadFile(connId, parent, att.filename, att.bytes, att.contentType);
       return {
         result: { saved: true, itemId: item.id, name: item.name, webUrl: item.webUrl ?? null },
+        undo_data: { uploadedItemId: item.id },
+      };
+    }
+
+    case "generate_invoice_from_template": {
+      const company = str(args, "company") as "Gefo" | "Novo Porto";
+      if (company !== "Gefo" && company !== "Novo Porto")
+        throw new Error('company must be "Gefo" or "Novo Porto"');
+
+      const invoiceNumber = str(args, "invoice_number");
+      if (!invoiceNumber) throw new Error("invoice_number is required");
+
+      const year =
+        str(args, "targetYear") || String(new Date().getFullYear());
+
+      // Per-company template row from Supabase (ADR-007 §4).
+      const row = await getInvoiceTemplate(company);
+
+      // Load the committed .docx template. `template_ref` is a repo-relative
+      // path (e.g. "assets/invoice-templates/gefo.docx"); resolve from the
+      // project root (process.cwd() in Next.js / the Railway/Vercel build root).
+      const templatePath = join(process.cwd(), row.template_ref);
+      const templateBuffer = readFileSync(templatePath);
+
+      const fields: InvoiceFields = {
+        recipient_name: str(args, "recipient_name"),
+        recipient_address: str(args, "recipient_address"),
+        recipient_vat: str(args, "recipient_vat"),
+        vessel: str(args, "vessel"),
+        invoice_date: str(args, "invoice_date"),
+        invoice_number: invoiceNumber,
+        crewing: str(args, "crewing") || "0.00",
+        travel: str(args, "travel") || "0.00",
+        service_fee: str(args, "service_fee") || "0.00",
+        cash_advance: str(args, "cash_advance") || "0.00",
+        total: str(args, "total"),
+        currency: str(args, "currency") || "EUR",
+      };
+
+      const filledBuffer = fillInvoiceTemplate(templateBuffer, fields);
+
+      // Build the filename per company convention.
+      // Gefo:       "{number} Invoice Aquavoy - Gefo {date} voyage NN.docx"
+      // Novo Porto: "{number} Aquavoy Ltd - Novo Porto Scheepvaart BV {date}.docx"
+      const filename =
+        company === "Gefo"
+          ? `${invoiceNumber} Invoice Aquavoy - Gefo ${fields.invoice_date} voyage.docx`
+          : `${invoiceNumber} Aquavoy Ltd - Novo Porto Scheepvaart BV ${fields.invoice_date}.docx`;
+
+      const connId = await resolveConnectionId();
+      const destPath = `${row.output_folder_path}/${year}`;
+      const DOCX_MIME =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      const item = await uploadFile(
+        connId,
+        { path: destPath },
+        filename,
+        filledBuffer,
+        DOCX_MIME,
+      );
+
+      return {
+        result: {
+          generated: true,
+          itemId: item.id,
+          name: item.name,
+          webUrl: item.webUrl ?? null,
+        },
         undo_data: { uploadedItemId: item.id },
       };
     }

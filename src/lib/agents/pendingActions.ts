@@ -354,7 +354,10 @@ export async function undoAction(
       break;
     }
 
-    case "save_email_attachment": {
+    // Both save_email_attachment and generate_invoice_from_template reverse by
+    // deleting the uploaded item from OneDrive — they share the same undo path.
+    case "save_email_attachment":
+    case "generate_invoice_from_template": {
       const uploadedItemId = typeof undo.uploadedItemId === "string" ? undo.uploadedItemId : "";
       if (!uploadedItemId)
         return { action, undone: false, reason: "uploaded item id unavailable" };

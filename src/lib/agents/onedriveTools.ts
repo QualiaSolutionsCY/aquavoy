@@ -24,6 +24,7 @@ import {
   resolveTrashFolder,
 } from "@/lib/mail/imap";
 import { generateInboxBriefing } from "@/lib/mail/briefing";
+import { extractInvoiceFields } from "@/lib/agents/invoiceExtraction";
 
 /**
  * Tool definitions (OpenAI function-calling JSON schema) and executor for the
@@ -819,6 +820,82 @@ export const TOOL_DEFINITIONS = [
       },
     },
   },
+
+  // ── Invoice generation (ADR-007 confirm-before-write) ──
+  {
+    type: "function" as const,
+    function: {
+      name: "generate_invoice_from_template",
+      description:
+        "Generate a Aquavoy invoice .docx from the correct per-company template and save it to OneDrive (Verzonden Facturen/{year}). CONFIRMED BEFORE SAVING — this tool stages the action and returns a summary for the user to approve; the fill + upload happen only at confirm, never in the model loop. Call ONCE after extracting fields from the source PDF; relay the returned summary and do NOT re-call after the user says yes — confirming is the UI's job.",
+      parameters: {
+        type: "object",
+        properties: {
+          company: {
+            type: "string",
+            enum: ["Gefo", "Novo Porto"],
+            description:
+              "The company this invoice is for. If omitted the agent infers from the source document, but the user can correct it on the confirm card.",
+          },
+          recipient_name: {
+            type: "string",
+            description: "Recipient company name.",
+          },
+          recipient_address: {
+            type: "string",
+            description: "Full address of the recipient.",
+          },
+          recipient_vat: {
+            type: "string",
+            description: "Recipient VAT number.",
+          },
+          vessel: {
+            type: "string",
+            description: "Vessel name (e.g. 'Pride of Faial').",
+          },
+          invoice_date: {
+            type: "string",
+            description: "Invoice date in DD-MM-YYYY format.",
+          },
+          invoice_number: {
+            type: "string",
+            description: "Invoice number in YY-NNN format (e.g. '26-047').",
+          },
+          crewing: {
+            type: "string",
+            description: "Crewing services amount as a formatted string (e.g. '4500.00'). Defaults to '0.00' if absent.",
+          },
+          travel: {
+            type: "string",
+            description: "Travel cost amount. Defaults to '0.00' if absent.",
+          },
+          service_fee: {
+            type: "string",
+            description: "Service fee (food and drink) amount. Defaults to '0.00' if absent.",
+          },
+          cash_advance: {
+            type: "string",
+            description: "Cash advance amount. Defaults to '0.00' if absent.",
+          },
+          total: {
+            type: "string",
+            description: "Total invoice amount.",
+          },
+          currency: {
+            type: "string",
+            description: "Currency code (default 'EUR').",
+          },
+          targetYear: {
+            type: "string",
+            description:
+              "The year subfolder under Verzonden Facturen to upload to (e.g. '2026'). Defaults to the current year.",
+          },
+        },
+        required: ["invoice_number", "total"],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 // ── Slim DriveItem projection for tool results ───────────────
@@ -990,6 +1067,9 @@ const DESTRUCTIVE = new Set([
   // Email attachment → OneDrive upload (ADR-003 confirm-before-write): bytes are
   // fetched at confirm time, never in the model loop — only metadata is staged here.
   "save_email_attachment",
+  // Invoice generation (ADR-007 confirm-before-write): docx fill + OneDrive upload
+  // happen only at confirm; the model loop stages extracted fields only.
+  "generate_invoice_from_template",
 ]);
 
 /** Human-readable one-liner describing what a destructive action will do. */
@@ -1030,6 +1110,14 @@ function summarizeAction(name: string, args: Record<string, unknown>): string {
       const mailbox = s("mailbox");
       const dest = s("targetFolderPath") || s("targetFolderId") || "OneDrive root";
       return `Save attachment "${attachmentFilename}" from ${mailbox} → ${dest}`;
+    }
+    case "generate_invoice_from_template": {
+      const company = s("company") || "unknown company";
+      const invoiceNumber = s("invoice_number") || "?";
+      const recipientName = s("recipient_name") || company;
+      const year =
+        s("targetYear") || String(new Date().getFullYear());
+      return `Generate ${company} invoice ${invoiceNumber} for ${recipientName} → Verzonden Facturen/${year}`;
     }
     default:
       return `Run ${name}`;
@@ -1177,6 +1265,65 @@ export async function executeTool(
           principal: sessionPrincipal,
           tool: "save_email_attachment",
           args: { mailbox, uid, attachmentFilename, folder, targetFolderId, targetFolderPath },
+          summary,
+        });
+        return JSON.stringify({
+          status: "confirmation_required",
+          action_id: row.id,
+          summary,
+        });
+      }
+
+      // Generate invoice from template — stage extracted fields only; docx fill +
+      // upload happen at confirm in executeConfirmedAction (ADR-007 §5).
+      if (name === "generate_invoice_from_template") {
+        const invoiceNumber =
+          typeof args.invoice_number === "string" ? args.invoice_number.trim() : "";
+        const company =
+          typeof args.company === "string" ? args.company.trim() : "";
+
+        if (!invoiceNumber)
+          return JSON.stringify({ error: "invoice_number is required" });
+        if (company && company !== "Gefo" && company !== "Novo Porto")
+          return JSON.stringify({
+            error: 'company must be "Gefo" or "Novo Porto" if specified',
+          });
+
+        const year =
+          typeof args.targetYear === "string" && args.targetYear.trim()
+            ? args.targetYear.trim()
+            : String(new Date().getFullYear());
+
+        const recipientName =
+          typeof args.recipient_name === "string" ? args.recipient_name : "";
+        const companyLabel = company || "unknown company";
+
+        const summary =
+          `Generate ${companyLabel} invoice ${invoiceNumber} for ${recipientName || companyLabel} → Verzonden Facturen/${year}`;
+
+        // Stage all extracted fields so executeConfirmedAction can fill + upload.
+        const row = await stagePendingAction({
+          principal: sessionPrincipal,
+          tool: "generate_invoice_from_template",
+          args: {
+            company,
+            recipient_name: recipientName,
+            recipient_address:
+              typeof args.recipient_address === "string" ? args.recipient_address : "",
+            recipient_vat:
+              typeof args.recipient_vat === "string" ? args.recipient_vat : "",
+            vessel: typeof args.vessel === "string" ? args.vessel : "",
+            invoice_date: typeof args.invoice_date === "string" ? args.invoice_date : "",
+            invoice_number: invoiceNumber,
+            crewing: typeof args.crewing === "string" ? args.crewing : "0.00",
+            travel: typeof args.travel === "string" ? args.travel : "0.00",
+            service_fee: typeof args.service_fee === "string" ? args.service_fee : "0.00",
+            cash_advance:
+              typeof args.cash_advance === "string" ? args.cash_advance : "0.00",
+            total: typeof args.total === "string" ? args.total : "0.00",
+            currency: typeof args.currency === "string" ? args.currency : "EUR",
+            targetYear: year,
+          },
           summary,
         });
         return JSON.stringify({

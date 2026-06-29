@@ -400,6 +400,8 @@ function chatProvider(): ChatProvider {
 /**
  * OpenRouter auto-fallback: when OPENROUTER_FALLBACK_MODELS (comma-separated)
  * is set, send a `models` list — the first non-rate-limited model serves.
+ * OpenRouter rejects a `models` array longer than 3, so the list (primary +
+ * fallbacks) is capped at 3 total; extra fallbacks beyond that are dropped.
  */
 function withFallbacks(p: ChatProvider, payload: Record<string, unknown>): void {
   if (!p.openrouter) return;
@@ -407,7 +409,7 @@ function withFallbacks(p: ChatProvider, payload: Record<string, unknown>): void 
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  if (extra.length) payload.models = [p.model, ...extra];
+  if (extra.length) payload.models = [p.model, ...extra].slice(0, 3);
 }
 
 function buildSystemContent(opts: ChatOptions): string {

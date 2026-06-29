@@ -7,6 +7,7 @@ import {
   getDownloadUrl,
   getItem,
 } from "@/lib/microsoft/onedrive";
+import { readRegister, REGISTER_COLUMNS, type VoyageRegisterRow } from "@/lib/finance/excelRegister";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import type { DriveItem } from "@/lib/microsoft/types";
 import { buildSpreadsheet, type SheetSpec } from "@/lib/agents/spreadsheet";
@@ -394,6 +395,47 @@ export const TOOL_DEFINITIONS = [
           note: { type: "string", description: "OPMERKING REIS — voyage remark." },
         },
         required: ["company", "year", "registerItemId"],
+        additionalProperties: false,
+      },
+    },
+  },
+
+  // ── Import voyage register (ADR-006 / confirm-before-write) ──
+  {
+    type: "function" as const,
+    function: {
+      name: "import_voyage_register",
+      description:
+        "Import the historical voyages already recorded in the Reis registratie.xlsx register into the finance voyage index. CONFIRMED BEFORE WRITING — calling it reads the existing register (read-only, the Excel file is NOT modified) and stages the parsed rows for you to review; on approval it inserts the reviewed rows into the voyage index. Pass `registerItemId` (the OneDrive item id of Reis registratie.xlsx — find it with search_files), `company` (which group company the voyages belong to), and optionally `year` to import a single year-sheet (omit to import all year-sheets). This does NOT silently group or classify — you review the parsed rows before they are written.",
+      parameters: {
+        type: "object",
+        properties: {
+          company: {
+            type: "string",
+            enum: [
+              "Aquavoy Holding",
+              "Aquavoy Shipping",
+              "Aquavoy Crewing",
+              "W&D Holding",
+              "W&D Trading",
+              "Denver Services BV",
+              "Faial BV",
+              "Novo Porto Scheepvaart BV",
+            ],
+            description: "Which of the eight group companies these voyages belong to.",
+          },
+          registerItemId: {
+            type: "string",
+            description:
+              "The OneDrive item id of Reis registratie.xlsx. Find it first with search_files.",
+          },
+          year: {
+            type: "string",
+            description:
+              "Optional year-sheet to import (e.g. '2026'). Omit to import all year-sheets.",
+          },
+        },
+        required: ["company", "registerItemId"],
         additionalProperties: false,
       },
     },
@@ -1136,6 +1178,9 @@ const DESTRUCTIVE = new Set([
   // Voyage entry (ADR-003 / REQ-28 confirm-before-write): two writes happen only at
   // confirm — (1) voyage_entries index insert + (2) xlsx append + re-upload.
   "record_voyage_entry",
+  // Import voyage register (ADR-006 confirm-before-write): reads the register
+  // read-only at stage time; inserts parsed rows into voyage_entries on confirm.
+  "import_voyage_register",
   // Invoice generation (ADR-007 confirm-before-write): docx fill + OneDrive upload
   // happen only at confirm; the model loop stages extracted fields only.
   "generate_invoice_from_template",
@@ -1187,6 +1232,13 @@ function summarizeAction(name: string, args: Record<string, unknown>): string {
       const portTo = s("port_to") || "?";
       const year = s("year") || "?";
       return `Record voyage ${voyageNo} for ${company} (${portFrom}→${portTo}) — index + append to ${year} register; undo removes the DB row only, the Excel row stays`;
+    }
+    case "import_voyage_register": {
+      const company = s("company") || "unknown company";
+      const year = s("year") || "all year";
+      const rawRowCount = args.rows;
+      const rowCount = Array.isArray(rawRowCount) ? rawRowCount.length : "?";
+      return `Import ${rowCount} voyage(s) from the ${year} sheet(s) of Reis registratie.xlsx into ${company}'s voyage index (review before confirm; the Excel file is not changed)`;
     }
     case "generate_invoice_from_template": {
       const company = s("company") || "unknown company";
@@ -1408,6 +1460,58 @@ export async function executeTool(
         return JSON.stringify({
           status: "confirmation_required",
           action_id: row.id,
+          summary,
+        });
+      }
+
+      // Import voyage register — stage-time read: download + parse the register,
+      // store the parsed rows so the user can review before confirming (ADR-006).
+      if (name === "import_voyage_register") {
+        const company = typeof args.company === "string" ? args.company.trim() : "";
+        const registerItemId =
+          typeof args.registerItemId === "string" ? args.registerItemId.trim() : "";
+        if (!company)
+          return JSON.stringify({ error: "company is required" });
+        if (!registerItemId)
+          return JSON.stringify({ error: "registerItemId is required" });
+
+        const year = typeof args.year === "string" && args.year ? args.year : undefined;
+
+        const connId = await resolveConnectionId();
+        const res = await downloadContent(connId, registerItemId);
+        const buf = new Uint8Array(await res.arrayBuffer());
+        const parsed = await readRegister(buf);
+
+        const sheetNames = year ? [year] : parsed.sheetNames;
+        const parsedRows: VoyageRegisterRow[] = [];
+
+        for (const sheet of sheetNames) {
+          const rows = parsed.sheets[sheet];
+          if (!rows) continue;
+          // Skip header row (index 0); process data rows only.
+          for (const cells of rows.slice(1)) {
+            // Skip fully-empty rows.
+            if (!cells || cells.every((c) => c == null || c === "")) continue;
+            const row: VoyageRegisterRow = {};
+            REGISTER_COLUMNS.forEach((key, i) => {
+              row[key] = (cells[i] ?? null) as string | null;
+            });
+            parsedRows.push(row);
+          }
+        }
+
+        const yearLabel = year || "all year";
+        const summary = `Import ${parsedRows.length} voyage(s) from the ${yearLabel} sheet(s) of Reis registratie.xlsx into ${company}'s voyage index (review before confirm; the Excel file is not changed)`;
+
+        const pendingRow = await stagePendingAction({
+          principal: sessionPrincipal,
+          tool: "import_voyage_register",
+          args: { company, registerItemId, year, rows: parsedRows },
+          summary,
+        });
+        return JSON.stringify({
+          status: "confirmation_required",
+          action_id: pendingRow.id,
           summary,
         });
       }

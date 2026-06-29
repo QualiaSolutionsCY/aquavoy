@@ -14,6 +14,7 @@ import {
 
 import type { PendingAction } from "@/lib/agents/pendingActions";
 import type { FinanceSummary, FinanceCompanyTotals } from "@/lib/finance/ledger";
+import type { VoyageSummary } from "@/lib/finance/voyageLedger";
 
 type Principal = "Wency" | "Jeanette";
 
@@ -64,6 +65,7 @@ const REVERSIBLE_TOOLS = new Set([
   "delete_item",
   "schedule_email",
   "record_finance_entry",
+  "record_voyage_entry",
   "batch_move_to_trash",
   "batch_move_to_folder",
   "save_email_attachment",
@@ -186,6 +188,13 @@ export default function Finance() {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
+  // ── Voyage economics (ADR-006 read side) ──
+  // Per-company voyage drill-down: count, revenue, net. Loaded from the
+  // Supabase voyage_entries index on mount, independent of the finance ledger.
+  const [voyages, setVoyages] = useState<VoyageSummary | null>(null);
+  const [voyagesLoading, setVoyagesLoading] = useState(true);
+  const [voyagesError, setVoyagesError] = useState<string | null>(null);
+
   // ── Staged destructive actions (ADR-003) ──
   // The agent's proposed moves/renames/folder-creations arrive auto-staged and
   // are rendered as confirm/cancel/undo cards. Approving a move performs it.
@@ -237,6 +246,32 @@ export default function Finance() {
       setSummaryError((e as Error).message);
     } finally {
       setSummaryLoading(false);
+    }
+  }
+
+  /**
+   * Load the per-company voyage economics summary (ADR-006). Read on mount and
+   * re-runnable from the error-state retry. The principal gate lives on the
+   * route; a 401 here means the session lapsed — bounce to /login.
+   */
+  async function loadVoyages() {
+    setVoyagesLoading(true);
+    setVoyagesError(null);
+    try {
+      const res = await fetch("/api/finance/voyages");
+      if (res.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      const json = await res.json();
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error ?? `Failed to load voyage overview (${res.status})`);
+      }
+      setVoyages((json.data ?? null) as VoyageSummary | null);
+    } catch (e) {
+      setVoyagesError((e as Error).message);
+    } finally {
+      setVoyagesLoading(false);
     }
   }
 
@@ -386,6 +421,7 @@ export default function Finance() {
           setIdentity(principal);
           loadPending();
           loadSummary();
+          loadVoyages();
         } else {
           window.location.href = "/login";
         }
@@ -442,6 +478,13 @@ export default function Finance() {
         loading={summaryLoading}
         error={summaryError}
         onRetry={loadSummary}
+      />
+
+      <VoyageOverview
+        voyages={voyages}
+        loading={voyagesLoading}
+        error={voyagesError}
+        onRetry={loadVoyages}
       />
 
       <p className="fin-intro">
@@ -792,6 +835,169 @@ function FinanceOverview({
                     <div className="fin-company-row">
                       <dt>Expense</dt>
                       <dd className="fin-net-neg">{formatMoney(expense, currency)}</dd>
+                    </div>
+                    <div className="fin-company-row fin-company-row-net">
+                      <dt>Net</dt>
+                      <dd className={netClass(net)}>{formatMoney(net, currency)}</dd>
+                    </div>
+                  </dl>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+/* ── Voyage economics section (ADR-006 read side) ──
+   Per-company voyage drill-down: count, revenue, net — fed by the Supabase
+   voyage_entries index. The eight group companies always render (the API seeds
+   zeroed entities), so the grid is the full group even before any voyage is
+   recorded — but when EVERYTHING is zero we show a friendly empty state instead
+   of a wall of zeros. Reuses all existing .fin-* classes; no new tokens/colors. */
+function VoyageOverview({
+  voyages,
+  loading,
+  error,
+  onRetry,
+}: {
+  voyages: VoyageSummary | null;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+}) {
+  const companies = Array.isArray(voyages?.companies) ? voyages!.companies : [];
+  const consolidated = {
+    voyageCount: num(voyages?.consolidated?.voyageCount),
+    revenue: num(voyages?.consolidated?.revenue),
+    net: num(voyages?.consolidated?.net),
+  };
+
+  // Empty when nothing has been recorded across the whole group.
+  const isEmpty =
+    !loading &&
+    !error &&
+    voyages !== null &&
+    consolidated.voyageCount === 0 &&
+    consolidated.revenue === 0 &&
+    consolidated.net === 0;
+
+  // Default currency for voyage economics (register amounts are in EUR).
+  const currency = "EUR";
+
+  return (
+    <section className="fin-overview" aria-label="Voyage economics">
+      <div className="fin-overview-head">
+        <span className="panel-h">Voyage economics</span>
+        {!loading && !error && voyages && (
+          <button
+            type="button"
+            className="btn ghost sm"
+            onClick={onRetry}
+            aria-label="Refresh voyage economics"
+          >
+            <RefreshCw size={14} aria-hidden="true" />
+            Refresh
+          </button>
+        )}
+      </div>
+
+      {loading && (
+        <div className="fin-overview-loading" role="status" aria-label="Loading voyage economics">
+          <div className="fin-consolidated">
+            {[0, 1].map((i) => (
+              <div key={i} className="fin-stat">
+                <span className="skeleton" style={{ width: "4.5rem", height: "0.75rem" }} />
+                <span className="skeleton" style={{ width: "7rem", height: "1.5rem" }} />
+              </div>
+            ))}
+          </div>
+          <div className="fin-company-grid">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="fin-company-card">
+                <span className="skeleton" style={{ width: "60%", height: "0.875rem" }} />
+                <span className="skeleton" style={{ width: "100%", height: "2.5rem" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!loading && error && (
+        <div className="fin-overview-error">
+          <div className="notice err" role="alert">
+            {error}
+          </div>
+          <button type="button" className="btn" onClick={onRetry} aria-label="Retry loading voyage economics">
+            <RefreshCw size={16} aria-hidden="true" />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {isEmpty && (
+        <div className="fin-overview-empty empty">
+          <Wallet className="empty-icon" size={30} strokeWidth={1.5} aria-hidden="true" />
+          No voyages recorded yet — ask the agent to record a voyage, e.g.
+          &ldquo;record voyage 42 for Aquavoy Shipping&rdquo;.
+          <span className="empty-hint">
+            Recorded voyages appear here as consolidated and per-company totals.
+          </span>
+        </div>
+      )}
+
+      {!loading && !error && voyages && !isEmpty && (
+        <>
+          <div className="fin-consolidated" role="group" aria-label="Consolidated voyage totals">
+            <div className="fin-stat">
+              <span className="fin-stat-label">
+                <TrendingUp size={14} aria-hidden="true" />
+                Total revenue
+              </span>
+              <span className="fin-stat-value fin-net-pos">
+                {formatMoney(consolidated.revenue, currency)}
+              </span>
+            </div>
+            <div className="fin-stat">
+              <span className="fin-stat-label">
+                <Wallet size={14} aria-hidden="true" />
+                Net
+              </span>
+              <span className={`fin-stat-value ${netClass(consolidated.net)}`}>
+                {formatMoney(consolidated.net, currency)}
+              </span>
+            </div>
+          </div>
+
+          <p className="fin-overview-meta">
+            Across {companies.length} {companies.length === 1 ? "company" : "companies"} ·{" "}
+            {consolidated.voyageCount} {consolidated.voyageCount === 1 ? "voyage" : "voyages"} ·{" "}
+            {currency}
+          </p>
+
+          <div className="fin-company-grid" role="list" aria-label="Per-company voyage breakdown">
+            {companies.map((c, i) => {
+              const voyageCount = num(c?.voyageCount);
+              const revenue = num(c?.revenue);
+              const net = num(c?.net);
+              return (
+                <div
+                  className="fin-company-card"
+                  role="listitem"
+                  key={c?.company ?? i}
+                >
+                  <div className="fin-company-card-head">
+                    <span className="fin-company-name">{c?.company ?? "—"}</span>
+                    <span className="fin-company-count">
+                      {voyageCount} {voyageCount === 1 ? "voyage" : "voyages"}
+                    </span>
+                  </div>
+                  <dl className="fin-company-rows">
+                    <div className="fin-company-row">
+                      <dt>Revenue</dt>
+                      <dd className="fin-net-pos">{formatMoney(revenue, currency)}</dd>
                     </div>
                     <div className="fin-company-row fin-company-row-net">
                       <dt>Net</dt>

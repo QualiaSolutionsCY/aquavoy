@@ -404,6 +404,61 @@ export async function executeConfirmedAction(
       };
     }
 
+    case "import_voyage_register": {
+      // Insert every staged parsed row into voyage_entries (ADR-006 confirm-before-write).
+      // The parsed rows were captured at stage time (readRegister); the Excel file
+      // is never modified here — this is a read-only import into the DB index.
+      const company = str(args, "company").trim();
+      if (!company) throw new Error("company is required");
+
+      const registerItemId = str(args, "registerItemId").trim();
+      if (!registerItemId) throw new Error("registerItemId is required");
+
+      const rows = Array.isArray(args.rows) ? args.rows : [];
+      const ids: string[] = [];
+
+      for (const r of rows) {
+        const rowArgs = (r ?? {}) as Record<string, unknown>;
+        const { id } = await recordVoyageEntry({
+          company,
+          voyage_no: typeof rowArgs.voyage_no === "string" ? rowArgs.voyage_no || null : null,
+          charterer: typeof rowArgs.charterer === "string" ? rowArgs.charterer || null : null,
+          port_from: typeof rowArgs.port_from === "string" ? rowArgs.port_from || null : null,
+          port_to: typeof rowArgs.port_to === "string" ? rowArgs.port_to || null : null,
+          load_date: typeof rowArgs.load_date === "string" ? rowArgs.load_date || null : null,
+          discharge_date: typeof rowArgs.discharge_date === "string" ? rowArgs.discharge_date || null : null,
+          cargo_type: typeof rowArgs.cargo_type === "string" ? rowArgs.cargo_type || null : null,
+          tonnage: rowArgs.tonnage != null ? (Number.isFinite(Number(rowArgs.tonnage)) ? Number(rowArgs.tonnage) : null) : null,
+          price_per_ton: rowArgs.price_per_ton != null ? (Number.isFinite(Number(rowArgs.price_per_ton)) ? Number(rowArgs.price_per_ton) : null) : null,
+          kwz: typeof rowArgs.kwz === "string" ? rowArgs.kwz || null : null,
+          total: rowArgs.total != null ? (Number.isFinite(Number(rowArgs.total)) ? Number(rowArgs.total) : null) : null,
+          revenue: rowArgs.revenue != null ? (Number.isFinite(Number(rowArgs.revenue)) ? Number(rowArgs.revenue) : null) : null,
+          handler_provision: rowArgs.handler_provision != null ? (Number.isFinite(Number(rowArgs.handler_provision)) ? Number(rowArgs.handler_provision) : null) : null,
+          demurrage: rowArgs.demurrage != null ? (Number.isFinite(Number(rowArgs.demurrage)) ? Number(rowArgs.demurrage) : null) : null,
+          fuel: rowArgs.fuel != null ? (Number.isFinite(Number(rowArgs.fuel)) ? Number(rowArgs.fuel) : null) : null,
+          fuel_price: rowArgs.fuel_price != null ? (Number.isFinite(Number(rowArgs.fuel_price)) ? Number(rowArgs.fuel_price) : null) : null,
+          oil_cost: rowArgs.oil_cost != null ? (Number.isFinite(Number(rowArgs.oil_cost)) ? Number(rowArgs.oil_cost) : null) : null,
+          port_dues_load: rowArgs.port_dues_load != null ? (Number.isFinite(Number(rowArgs.port_dues_load)) ? Number(rowArgs.port_dues_load) : null) : null,
+          port_dues_discharge: rowArgs.port_dues_discharge != null ? (Number.isFinite(Number(rowArgs.port_dues_discharge)) ? Number(rowArgs.port_dues_discharge) : null) : null,
+          net: rowArgs.net != null ? (Number.isFinite(Number(rowArgs.net)) ? Number(rowArgs.net) : null) : null,
+          waiting_days: rowArgs.waiting_days != null ? (Number.isFinite(Number(rowArgs.waiting_days)) ? Number(rowArgs.waiting_days) : null) : null,
+          net_per_day: rowArgs.net_per_day != null ? (Number.isFinite(Number(rowArgs.net_per_day)) ? Number(rowArgs.net_per_day) : null) : null,
+          gmp: typeof rowArgs.gmp === "string" ? rowArgs.gmp || null : null,
+          material_cleaned: typeof rowArgs.material_cleaned === "string" ? rowArgs.material_cleaned || null : null,
+          zhc: typeof rowArgs.zhc === "string" ? rowArgs.zhc || null : null,
+          note: typeof rowArgs.note === "string" ? rowArgs.note || null : null,
+          createdBy: principal,
+          sourceRef: registerItemId,
+        });
+        ids.push(id);
+      }
+
+      return {
+        result: { imported: ids.length, voyageEntryIds: ids },
+        undo_data: { voyageEntryIds: ids },
+      };
+    }
+
     case "generate_invoice_from_template": {
       const company = str(args, "company") as "Gefo" | "Novo Porto";
       if (company !== "Gefo" && company !== "Novo Porto")

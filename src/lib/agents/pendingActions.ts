@@ -380,6 +380,20 @@ export async function undoAction(
       break;
     }
 
+    case "import_voyage_register": {
+      // Reverse by hard-deleting every voyage_entries row that was inserted on
+      // confirm. The undo_data carries the array of inserted ids captured at
+      // confirm time. Fully idempotent — deleting a non-existent id is a no-op
+      // in deleteVoyageEntry (Supabase delete on missing row returns no error).
+      const ids = Array.isArray(undo.voyageEntryIds)
+        ? undo.voyageEntryIds.filter((x): x is string => typeof x === "string")
+        : [];
+      for (const id of ids) {
+        await deleteVoyageEntry(id);
+      }
+      break;
+    }
+
     default:
       return { action, undone: false, reason: `no undo path for ${action.tool}` };
   }

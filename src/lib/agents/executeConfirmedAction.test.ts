@@ -60,6 +60,14 @@ vi.mock("@/lib/finance/voyageLedger", () => ({
 
 vi.mock("@/lib/finance/excelRegister", () => ({
   appendVoyageRow: vi.fn(),
+  readRegister: vi.fn(),
+  REGISTER_COLUMNS: [
+    "voyage_no", "charterer", "port_from", "port_to", "load_date", "discharge_date",
+    "cargo_type", "tonnage", "price_per_ton", "kwz", "total", "revenue",
+    "handler_provision", "demurrage", "fuel", "fuel_price", "oil_cost",
+    "port_dues_load", "port_dues_discharge", "net", "waiting_days", "net_per_day",
+    "gmp", "material_cleaned", "zhc", "note",
+  ],
 }));
 
 vi.mock("fs", () => ({
@@ -905,6 +913,101 @@ describe("executeConfirmedAction — record_voyage_entry", () => {
         PRINCIPAL,
       ),
     ).rejects.toThrow("year is required");
+    expect(recordVoyageEntryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeConfirmedAction — import_voyage_register", () => {
+  const twoRows = [
+    { voyage_no: "V-001", port_from: "Rotterdam", port_to: "Antwerp", revenue: "50000", net: "10000" },
+    { voyage_no: "V-002", port_from: "Hamburg", port_to: "Amsterdam", revenue: "30000", net: "8000" },
+  ];
+
+  const baseArgs = (overrides: Record<string, unknown> = {}) => ({
+    company: "Aquavoy Shipping",
+    registerItemId: "reg-item-1",
+    rows: twoRows,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    recordVoyageEntryMock
+      .mockResolvedValueOnce({ id: "voyage-import-1" })
+      .mockResolvedValueOnce({ id: "voyage-import-2" });
+  });
+
+  it("happy path: calls recordVoyageEntry once per staged row and returns imported count + ids", async () => {
+    const out = await executeConfirmedAction("import_voyage_register", baseArgs(), PRINCIPAL);
+
+    expect(recordVoyageEntryMock).toHaveBeenCalledTimes(2);
+    // First row: attributes to the session principal, links to the register item.
+    expect(recordVoyageEntryMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        company: "Aquavoy Shipping",
+        createdBy: PRINCIPAL,
+        sourceRef: "reg-item-1",
+        voyage_no: "V-001",
+        port_from: "Rotterdam",
+      }),
+    );
+    // Second row.
+    expect(recordVoyageEntryMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        company: "Aquavoy Shipping",
+        createdBy: PRINCIPAL,
+        voyage_no: "V-002",
+        port_from: "Hamburg",
+      }),
+    );
+
+    expect(out.result).toEqual({
+      imported: 2,
+      voyageEntryIds: ["voyage-import-1", "voyage-import-2"],
+    });
+    expect(out.undo_data).toEqual({
+      voyageEntryIds: ["voyage-import-1", "voyage-import-2"],
+    });
+  });
+
+  it("handles an empty rows array, returning imported:0 and empty ids", async () => {
+    recordVoyageEntryMock.mockReset();
+
+    const out = await executeConfirmedAction(
+      "import_voyage_register",
+      baseArgs({ rows: [] }),
+      PRINCIPAL,
+    );
+
+    expect(recordVoyageEntryMock).not.toHaveBeenCalled();
+    expect(out.result).toEqual({ imported: 0, voyageEntryIds: [] });
+    expect(out.undo_data).toEqual({ voyageEntryIds: [] });
+  });
+
+  it("rejects when registerItemId is missing, without calling recordVoyageEntry", async () => {
+    recordVoyageEntryMock.mockReset();
+
+    await expect(
+      executeConfirmedAction(
+        "import_voyage_register",
+        { company: "Aquavoy Shipping", rows: twoRows },
+        PRINCIPAL,
+      ),
+    ).rejects.toThrow("registerItemId is required");
+    expect(recordVoyageEntryMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects when company is missing, without calling recordVoyageEntry", async () => {
+    recordVoyageEntryMock.mockReset();
+
+    await expect(
+      executeConfirmedAction(
+        "import_voyage_register",
+        { company: "", registerItemId: "reg-item-1", rows: twoRows },
+        PRINCIPAL,
+      ),
+    ).rejects.toThrow("company is required");
     expect(recordVoyageEntryMock).not.toHaveBeenCalled();
   });
 });

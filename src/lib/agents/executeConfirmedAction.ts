@@ -389,10 +389,15 @@ export async function executeConfirmedAction(
       // overwriting the original in place. Using itemId for the parent avoids
       // path-traversal concerns and correctly targets the containing folder.
       const item = await getItem(connId, { itemId: registerItemId });
-      const parentRef = item.parentId ? { itemId: item.parentId } : {};
+      // Never silently fall back to the drive root: if the register's parent is
+      // unknown we must NOT re-upload it to a different location (correctness LOW).
+      if (!item.parentId)
+        throw new Error(
+          "Could not resolve the register's OneDrive folder; aborting re-upload to avoid writing it to the wrong location.",
+        );
       await uploadFile(
         connId,
-        parentRef,
+        { itemId: item.parentId },
         item.name,
         newBuf,
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

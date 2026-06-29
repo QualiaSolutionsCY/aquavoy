@@ -1,0 +1,267 @@
+{
+  "version": 1,
+  "phase": 4,
+  "goal": "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx — both confirm-before-write.",
+  "why": "Wency keeps a specialized Excel voyage register the generic finance_entries ledger cannot represent (ADR-006); the 2026-06-29 operator note requires the agent to FILL his actual .xlsx, not only a parallel DB index. Closes REQ-28.",
+  "generated_at": "2026-06-29T07:18:49Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:9f768c5770b0222fc5f5a34dd1087f29871d833ad4d852e2672c558286bf397b",
+  "success_criteria": [
+    "voyage_entries table exists with the 26 real register columns + the 8-company CHECK, RLS on / no policies",
+    "A voyage recorded via the agent is confirm-before-write: staging writes nothing; on confirm it inserts a voyage_entries row AND appends a row to the matching year-sheet of Reis registratie.xlsx, re-uploaded in place with all existing sheets/rows preserved",
+    "Undo of a confirmed voyage deletes the DB row and surfaces that the Excel append is not auto-reverted",
+    "The finance page shows a per-company voyage economics drill-down (count + revenue + net) with loading/error/empty states, reusing existing finance design tokens",
+    "npx tsc --noEmit passes; all new tests pass"
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "voyage_entries migration + voyageLedger.ts read/aggregate library",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0016_voyage_entries.sql",
+        "src/lib/finance/voyageLedger.ts",
+        "src/lib/finance/voyageLedger.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Migration creates voyage_entries with id uuid pk, company text not null (CHECK against the 8 entities), the 26 register columns (numeric where numeric, text for codes/notes/dates), source_ref, created_by, status default 'confirmed', created_at; RLS enabled, NO policies; index on (company)",
+        "voyageSummary() returns per-company {company, voyageCount, revenue, net} for all 8 seeded at zero plus a consolidated roll-up, only status='confirmed' rows",
+        "recordVoyageEntry(input) inserts one row returning {id}; deleteVoyageEntry(id) hard-deletes by id",
+        "npx tsc --noEmit passes; voyageLedger.test.ts passes"
+      ],
+      "action": "Write the migration mirroring 0015_finance_entries.sql for RLS/comment/index shape, with the 26 columns in register order (voyage_no..note) per m6-onedrive-discovery.md:49-76 and a voyage_entries_company_check. Build voyageLedger.ts mirroring ledger.ts: VOYAGE_COMPANIES, round2, voyageSummary() seeding all 8 at zero summing revenue/net, recordVoyageEntry, deleteVoyageEntry, types. Test the roll-up against a stubbed supabaseAdmin like ledger.test.ts.",
+      "context_files": [
+        ".planning/m6-onedrive-discovery.md",
+        ".planning/decisions/ADR-006-voyage-economics-storage.md",
+        "src/lib/finance/ledger.ts",
+        "supabase/migrations/0015_finance_entries.sql",
+        "src/lib/finance/ledger.test.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "pattern": "",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "pattern": "enable row level security",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "pattern": "create policy",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0016_voyage_entries.sql",
+          "pattern": "voyage_entries_company_check",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/finance/voyageLedger.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "excelRegister.ts adapter: read + append-row + re-serialize the register",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "src/lib/finance/excelRegister.ts",
+        "src/lib/finance/excelRegister.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "readRegister(buffer) parses an .xlsx into {sheetNames, sheets: Record<string,string[][]>}",
+        "appendVoyageRow(buffer, year, row) reads the workbook, locates the sheet named exactly year (throws naming available sheets if absent — never silently creates), appends ONE row (26 values in register column order) to the bottom via sheet_add_aoa origin:-1, returns a new .xlsx buffer with all other sheets and existing rows unchanged",
+        "Re-serializes with XLSX.write(wb, {type:'buffer', bookType:'xlsx'})",
+        "Round-trip test: sheets ['2025','2026'] with 2 data rows in 2026 -> append -> 3 data rows in 2026, 2025 untouched, sheet order preserved"
+      ],
+      "action": "Use the proven read call XLSX.read(buf,{type:\"array\"}) (onedriveTools.ts:921-923). Define REGISTER_COLUMNS as the 26 ordered field keys (same order as migration + discovery doc). appendVoyageRow maps VoyageRegisterRow to a values array, guards a missing sheet, calls sheet_add_aoa(ws,[values],{origin:-1}), returns the XLSX.write buffer. readRegister returns per-sheet AOA via sheet_to_json header:1. Test builds the workbook with book_new/aoa_to_sheet then exercises appendVoyageRow.",
+      "context_files": [
+        ".planning/m6-onedrive-discovery.md",
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/microsoft/onedrive.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "src/lib/finance/excelRegister.ts",
+          "pattern": "",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/finance/excelRegister.ts",
+          "pattern": "sheet_add_aoa",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/finance/excelRegister.ts",
+          "pattern": "origin: -1",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/finance/excelRegister.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "record_voyage_entry tool: definition, stage, confirm (DB insert + xlsx append/re-upload), undo",
+      "wave": 2,
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/agents/executeConfirmedAction.test.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "record_voyage_entry in TOOL_DEFINITIONS with company enum (8 entities), required year (string) and registerItemId (string), the optional voyage fields, additionalProperties false; description states CONFIRMED-BEFORE-WRITE and that it writes to BOTH the finance index AND the Excel register",
+        "Calling the tool STAGES a pending_actions row (no write) and returns confirmation_required; summary warns the Excel append is not auto-reverted on undo",
+        "On confirm: insert via recordVoyageEntry, download the register by registerItemId, appendVoyageRow, re-upload to the same path/name (overwrite), return undo_data {voyageEntryId, registerItemId, year, appendedRow:true}",
+        "Undo deletes the voyage_entries row via deleteVoyageEntry; does NOT auto-revert the xlsx append (mirrors delete_item best-effort)",
+        "executeConfirmedAction.test.ts covers routing + a missing registerItemId throwing"
+      ],
+      "action": "Add record_voyage_entry to TOOL_DEFINITIONS (copy record_finance_entry shape) with required company/year/registerItemId + optional VoyageRegisterRow fields. Add it to DESTRUCTIVE and a summarizeAction case (generic stage fall-through). executeConfirmedAction case: recordVoyageEntry then downloadContent(registerItemId) -> appendVoyageRow(buf,year,fields) -> getItem -> uploadFile overwrite; return undo_data. undoAction case calls deleteVoyageEntry, noting the Excel row stays. Add test coverage.",
+      "context_files": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/finance/voyageLedger.ts",
+        "src/lib/finance/excelRegister.ts",
+        "src/lib/microsoft/onedrive.ts",
+        "src/lib/agents/executeConfirmedAction.test.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "record_voyage_entry",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "recordVoyageEntry",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "appendVoyageRow",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "deleteVoyageEntry",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/agents/executeConfirmedAction.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Finance page voyage drill-down section + voyages summary API route + REVERSIBLE_TOOLS",
+      "wave": 3,
+      "depends_on": [
+        "T1",
+        "T3"
+      ],
+      "persona": "frontend",
+      "files_modify": [
+        "src/app/finance/page.tsx"
+      ],
+      "files_create": [
+        "src/app/api/finance/voyages/route.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "GET /api/finance/voyages returns {ok:true, data:{companies:[{company,voyageCount,revenue,net}], consolidated}}, 401 when unauthenticated (copy summary/route.ts, swap financeSummary->voyageSummary)",
+        "Finance page renders a Voyage economics section: per-company cards (8, canonical order) with voyage count + revenue + net, a consolidated header, and loading/error/empty states, reusing existing finance CSS classes and helpers — no new colors/fonts",
+        "record_voyage_entry is in REVERSIBLE_TOOLS so a confirmed voyage card shows Undo",
+        "Works at 375px and 1440px (reuse fin-company-grid)"
+      ],
+      "action": "Add record_voyage_entry to REVERSIBLE_TOOLS. Create the voyages route by copying summary/route.ts, swapping to voyageSummary. Add a VoyageOverview section mirroring FinanceOverview: load /api/finance/voyages on mount (same fetch/401 pattern), render consolidated fin-stats + a fin-company-grid of fin-company-cards (count + formatMoney revenue + formatMoney net with netClass), with skeleton/error/empty states. Append after the existing financial-overview. Use only existing classes + helpers.",
+      "context_files": [
+        "src/app/finance/page.tsx",
+        "src/app/api/finance/summary/route.ts",
+        "src/lib/finance/voyageLedger.ts",
+        ".planning/DESIGN.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/app/finance/page.tsx",
+          "pattern": "record_voyage_entry",
+          "expect": "present"
+        },
+        {
+          "type": "file-exists",
+          "path": "src/app/api/finance/voyages/route.ts",
+          "pattern": "",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/finance/voyages/route.ts",
+          "pattern": "voyageSummary",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "node",
+          "args": [
+            "bin/slop-detect.mjs",
+            "src/app/finance/page.tsx"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    }
+  ]
+}

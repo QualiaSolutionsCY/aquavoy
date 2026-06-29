@@ -79,6 +79,14 @@ This is the authoritative schema for the `voyage_entries` migration (ADR-006) �
 schema in ADR-006 is now superseded by these real columns. Three codes (KWZ, GMP, ZHC) are
 shipping-jargon abbreviations to confirm with Wency, but they don't block the table (store as-is).
 
+## Source mailboxes (for Phase 5 inbox-scan + the extraction/bundling flow)
+
+From the meeting (transcript L371, summary L48) — the data arrives by email, fixed addresses:
+- **Credit notes (Gefo *Gutschrift*) → `admin@aquavoy.com`** (also the invoice footer contact `Admin@aquavoy.com`).
+- **Voyage details / measurements → `rice@aquavoy.com`** ("Rice at AquaVoy" — auto-transcribed; confirm exact spelling with Wency).
+
+The agent must **bundle** a credit note (admin@) + its matching voyage-details email (rice@) into ONE voyage row + invoice. This is the Phase-5 inbox-scan's target mailbox set, and the bundling key (voyage number, e.g. the Gefo reference) is what links the two messages.
+
 ## What this changes
 - **P3 + P4 client-input gates → RESOLVED.** Buildable now; the July meeting becomes a *review/UAT*
   session, not a requirements-gathering blocker.

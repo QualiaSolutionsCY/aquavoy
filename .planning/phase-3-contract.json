@@ -1,0 +1,292 @@
+{
+  "version": 1,
+  "phase": 3,
+  "goal": "The agent generates an invoice from Wency's real per-company template and saves it to OneDrive, confirm-before-finalize, with undo.",
+  "why": "REQ-27, the #1 headline ask from the 2026-06-25 meeting: turn a saved credit-note/voyage PDF into a sent per-company invoice, staged for confirmation (ADR-003) and reversible.",
+  "generated_at": "2026-06-29T07:18:40Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:d5d4001538e20546916cb510bd7bb3570bb0d8eeee17ae30053d7d77e01b143c",
+  "success_criteria": [
+    "Given a credit-note/voyage PDF's text, extractInvoiceFields returns the Zod-validated invoice fields (company, recipient_*, vessel, invoice_date, invoice_number, line-item amounts, currency).",
+    "generate_invoice_from_template stages a pending action showing extracted fields + matched company template and does NOT execute until confirmed (ADR-003).",
+    "On confirm, the correct per-company .docx template (Gefo vs Novo Porto, selected from invoice_templates) is filled via docxtemplater and uploaded to Verzonden Facturen/{year}; undo deletes the generated file.",
+    "E2E path holds: read PDF -> extract -> stage -> confirm -> fill -> upload, proven by seam tests.",
+    "No regression in the existing tool/confirm surface (vitest green; tsc clean)."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Author the tagged per-company .docx templates + build script",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "package.json"
+      ],
+      "files_create": [
+        "scripts/build-invoice-templates.ts",
+        "assets/invoice-templates/gefo.docx",
+        "assets/invoice-templates/novo-porto.docx",
+        "assets/invoice-templates/README.md"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Both gefo.docx and novo-porto.docx exist and are valid Word documents.",
+        "Each contains the 26-047 issuer/recipient/line-item/footer structure with single-brace {tag} placeholders (recipient_name, recipient_address, recipient_vat, invoice_date, invoice_number, vessel, crewing, travel, service_fee, cash_advance, total).",
+        "A test render of each via docxtemplater 3.69.0 succeeds with no unopened/unclosed tag error."
+      ],
+      "action": "npm i docxtemplater@^3.69.0 pizzip@^3.2.0. Write scripts/build-invoice-templates.ts that builds a minimal valid .docx (zip: [Content_Types].xml, _rels/.rels, word/document.xml + rels) via pizzip, embedding the 26-047 text + single-brace tags inline; produce Gefo (voyage/layover wording) and Novo Porto (plain sales) variants; run once, commit both .docx + README. After writing each, load it back with PizZip+Docxtemplater render+toBuffer to assert tags are well-formed before commit.",
+      "context_files": [
+        ".planning/m6-onedrive-discovery.md",
+        ".planning/decisions/ADR-007-invoice-templating.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "assets/invoice-templates/gefo.docx"
+        },
+        {
+          "type": "file-exists",
+          "path": "assets/invoice-templates/novo-porto.docx"
+        },
+        {
+          "type": "grep-match",
+          "path": "package.json",
+          "pattern": "docxtemplater",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "invoiceTemplate.ts (docxtemplater fill) + invoiceExtraction.ts (LLM extraction, Zod)",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "src/lib/agents/invoiceTemplate.ts",
+        "src/lib/agents/invoiceExtraction.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "fillInvoiceTemplate(buf, fields) returns a non-empty Buffer and throws a readable (joined) error on a malformed-tag template.",
+        "extractInvoiceFields(text) returns the Zod-validated ExtractedInvoice (company enum Gefo|Novo Porto, recipient/vessel/date strings, five amount fields, currency default EUR); throws naming invalid fields on schema failure.",
+        "Missing optional line-item amounts default to 0.00, never undefined."
+      ],
+      "action": "invoiceTemplate.ts: PizZip(buffer)->Docxtemplater(zip,{paragraphLoop,linebreaks,nullGetter})->render->toBuffer; catch docxtemplater multi-error, rethrow joined; export fillInvoiceTemplate + InvoiceFields. invoiceExtraction.ts: ExtractedInvoiceSchema (z.enum companies, string + amount-string fields, currency default); extractInvoiceFields calls complete() from @/lib/openrouter/client, strips fences, JSON.parse, schema.parse, throws readable on ZodError. No OneDrive/DB IO.",
+      "context_files": [
+        ".planning/m6-onedrive-discovery.md",
+        ".planning/decisions/ADR-007-invoice-templating.md",
+        "src/lib/openrouter/client.ts",
+        "assets/invoice-templates/README.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/invoiceTemplate.ts",
+          "pattern": "toBuffer",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/invoiceExtraction.ts",
+          "pattern": "\\.parse\\(",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0,
+          "timeout_ms": 180000
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "invoice_templates migration (RLS, seeded) + getInvoiceTemplate accessor",
+      "wave": 2,
+      "depends_on": [
+        "T1"
+      ],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0016_invoice_templates.sql",
+        "src/lib/agents/invoiceTemplates.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "0016 creates invoice_templates with RLS enabled and NO policies, a company check (Gefo|Novo Porto), UNIQUE company, and seeds one row per company (template_ref = committed asset path, output_folder_path = alle firma's/Aquavoy Ltd/Verzonden Facturen).",
+        "getInvoiceTemplate('Gefo') and getInvoiceTemplate('Novo Porto') return the seeded rows; unknown company throws.",
+        "Migration applies cleanly via the Supabase CLI flow (no hand-edit to prod)."
+      ],
+      "action": "0016_invoice_templates.sql modeled on 0015_finance_entries.sql: id uuid pk, company text check+unique (Gefo|Novo Porto), template_ref, output_folder_path, field_mapping_json jsonb, created_at; comment on table (ADR-007, service-role only); enable RLS with NO policies; seed both rows on conflict do nothing (field_mapping_json = identity token map). invoiceTemplates.ts: reuse supabaseAdmin() from pendingActions.ts; getInvoiceTemplate(company) selects one row, throws if missing.",
+      "context_files": [
+        "supabase/migrations/0015_finance_entries.sql",
+        "supabase/migrations/0010_pending_actions.sql",
+        "src/lib/agents/pendingActions.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0016_invoice_templates.sql",
+          "must_contain": "enable row level security"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0016_invoice_templates.sql",
+          "pattern": "create policy",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/invoiceTemplates.ts",
+          "pattern": "getInvoiceTemplate",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "generate_invoice_from_template: stage + execute + undo + REVERSIBLE_TOOLS + system prompt",
+      "wave": 3,
+      "depends_on": [
+        "T2",
+        "T3"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/app/page.tsx",
+        "src/app/finance/page.tsx",
+        "src/lib/openrouter/client.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Calling generate_invoice_from_template in the loop returns confirmation_required + action_id + summary and uploads nothing; fails closed without a verified principal.",
+        "On confirm: getInvoiceTemplate(company) -> read committed .docx buffer -> fillInvoiceTemplate -> uploadFile to Verzonden Facturen/{year} -> returns {itemId,name,webUrl} + undo_data{uploadedItemId}.",
+        "Undo deletes the uploaded invoice via deleteItemOnDrive; the tool is reversible in both chat and finance pending-action cards.",
+        "System prompt 5f paragraph instructs call ONCE / relay summary / do not re-call, mirroring 5e."
+      ],
+      "action": "onedriveTools.ts: add generate_invoice_from_template to TOOL_DEFINITIONS + DESTRUCTIVE set + summarizeAction + a stage branch mirroring save_email_attachment (validate, summary, stagePendingAction). executeConfirmedAction.ts case: getInvoiceTemplate->read buffer->fillInvoiceTemplate->uploadFile({path:output_folder/{year}}, per-company filename)->undo_data{uploadedItemId}. pendingActions.ts undo: deleteItemOnDrive. Add to both REVERSIBLE_TOOLS sets + SYSTEM_PROMPT 5f. Scope to THIS tool only.",
+      "context_files": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/openrouter/client.ts",
+        "src/lib/agents/invoiceTemplate.ts",
+        "src/lib/agents/invoiceExtraction.ts",
+        "src/lib/agents/invoiceTemplates.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "generate_invoice_from_template",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "generate_invoice_from_template",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "generate_invoice_from_template",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/page.tsx",
+          "pattern": "generate_invoice_from_template",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/finance/page.tsx",
+          "pattern": "generate_invoice_from_template",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "tsc",
+            "--noEmit"
+          ],
+          "expected_exit": 0,
+          "timeout_ms": 180000
+        }
+      ]
+    },
+    {
+      "id": "T5",
+      "title": "Seam tests: invoiceTemplate, invoiceExtraction, executeConfirmedAction generate case",
+      "wave": 4,
+      "depends_on": [
+        "T2",
+        "T3",
+        "T4"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/executeConfirmedAction.test.ts"
+      ],
+      "files_create": [
+        "src/lib/agents/invoiceTemplate.test.ts",
+        "src/lib/agents/invoiceExtraction.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "invoiceTemplate.test.ts: rendering committed gefo.docx with valid fields returns Buffer byteLength>0; a bad-tag template throws a message naming the bad tag.",
+        "invoiceExtraction.test.ts: mocked complete() valid JSON -> parsed ExtractedInvoice; missing total or invalid company -> validation throw.",
+        "executeConfirmedAction.test.ts: new block mocks getInvoiceTemplate/fillInvoiceTemplate/uploadFile/readFileSync, asserts uploadFile got the year-suffixed Verzonden Facturen/{year} path and undo_data.uploadedItemId matches the uploaded id.",
+        "All new tests pass; existing suite still green."
+      ],
+      "action": "invoiceTemplate.test.ts: readFileSync gefo.docx, fill, assert byteLength>0; build an in-memory unclosed-{tag .docx, assert the thrown message names it. invoiceExtraction.test.ts: vi.mock complete(), set per-case returns, assert pass + ZodError throw. Extend executeConfirmedAction.test.ts mirroring the save_email_attachment test: vi.mock invoiceTemplates + invoiceTemplate + fs readFileSync; assert uploadFile year-suffixed path args + undo_data.uploadedItemId.",
+      "context_files": [
+        "src/lib/agents/executeConfirmedAction.test.ts",
+        "src/lib/agents/invoiceTemplate.ts",
+        "src/lib/agents/invoiceExtraction.ts",
+        "src/lib/agents/executeConfirmedAction.ts"
+      ],
+      "verification": [
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/agents/invoiceTemplate.test.ts",
+            "src/lib/agents/invoiceExtraction.test.ts",
+            "src/lib/agents/executeConfirmedAction.test.ts"
+          ],
+          "expected_exit": 0,
+          "timeout_ms": 180000
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run"
+          ],
+          "expected_exit": 0,
+          "timeout_ms": 300000
+        }
+      ]
+    }
+  ]
+}

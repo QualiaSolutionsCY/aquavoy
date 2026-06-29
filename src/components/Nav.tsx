@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/files", label: "Files" },
   { href: "/finance", label: "Finance" },
   { href: "/tasks", label: "Tasks" },
+  { href: "/settings", label: "Settings" },
 ] as const;
 
 export default function Nav() {

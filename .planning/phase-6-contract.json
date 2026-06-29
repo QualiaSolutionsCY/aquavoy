@@ -136,10 +136,14 @@
           "expected_exit": 0
         },
         {
-          "type": "grep-match",
-          "path": "src/lib/notify/whatsapp.ts",
-          "pattern": "TELNYX|whatsapp",
-          "expect": "absent"
+          "type": "command-exit",
+          "command": "test",
+          "args": [
+            "!",
+            "-f",
+            "src/lib/notify/whatsapp.ts"
+          ],
+          "expected_exit": 0
         }
       ]
     },

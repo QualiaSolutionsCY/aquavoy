@@ -16,8 +16,8 @@ import {
  * silently swallowed. A delivery failure must NEVER fail the staging insert
  * (ADR-003 invariant: the insert is the confirm-gate).
  *
- * No dependency on pendingActions.ts — that would create a cycle. This module
- * receives only the minimal { summary } shape it needs from the caller.
+ * No dependency on the staging module — that would create an import cycle. This
+ * module receives only the minimal { summary } shape it needs from the caller.
  */
 export async function notifyOnStage(
   principal: Principal,

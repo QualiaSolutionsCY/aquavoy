@@ -1,0 +1,203 @@
+{
+  "ok": true,
+  "phase": 6,
+  "goal": "Tell Wency when a proposal/action stages for confirmation, via web-push (PWA Service Worker) as the MVP channel behind a vendor-agnostic adapter seam, with preferences + quiet hours; triggers are fire-and-forget (never break stagePendingAction); WhatsApp deferred (ADR-008).",
+  "checked": 23,
+  "failed": 0,
+  "generated_at": "2026-06-29T09:16:19.888Z",
+  "results": [
+    {
+      "task_id": "T1",
+      "task_title": "Migration: notification_preferences + notification_log (0019)",
+      "index": 0,
+      "type": "file-exists",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Migration: notification_preferences + notification_log (0019)",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Migration: notification_preferences + notification_log (0019)",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T1",
+      "task_title": "Migration: notification_preferences + notification_log (0019)",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Adapter seam + web-push channel + Service Worker",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Adapter seam + web-push channel + Service Worker",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Adapter seam + web-push channel + Service Worker",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Adapter seam + web-push channel + Service Worker",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Adapter seam + web-push channel + Service Worker",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Adapter seam + web-push channel + Service Worker",
+      "index": 5,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 1896,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  12:16:16\n   Duration  585ms (transform 129ms, setup 74ms, import 106ms, tests 16ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "task_id": "T2",
+      "task_title": "Adapter seam + web-push channel + Service Worker",
+      "index": 6,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 48,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 4,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 5,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 6,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T3",
+      "task_title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "index": 7,
+      "type": "command-exit",
+      "ok": true,
+      "detail": "",
+      "duration_ms": 2800,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  3 passed (3)\n      Tests  37 passed (37)\n   Start at  12:16:18\n   Duration  1.40s (transform 744ms, setup 163ms, import 1.34s, tests 163ms, environment 1ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Settings UI: enable push + preferences + quiet hours",
+      "index": 0,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Settings UI: enable push + preferences + quiet hours",
+      "index": 1,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Settings UI: enable push + preferences + quiet hours",
+      "index": 2,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "task_id": "T4",
+      "task_title": "Settings UI: enable push + preferences + quiet hours",
+      "index": 3,
+      "type": "grep-match",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

@@ -7,6 +7,8 @@ import { getPrincipal } from "@/lib/auth/session";
  *  - `/api/login`                 — the credential-verifying endpoint
  *  - `/api/mail/scheduled/run`    — Vercel cron runner, guarded by its own
  *                                   CRON_SECRET bearer check (run/route.ts:18)
+ *  - `/api/mail/scan/run`         — Vercel cron runner (inbox scan, every 6 h),
+ *                                   guarded by its own CRON_SECRET bearer check
  *  - `/api/tasks/scheduled/run`   — Vercel cron runner, guarded by its own
  *                                   CRON_SECRET bearer check (run/route.ts:18)
  *  - `/api/memory/sweep`          — Vercel cron runner, guarded by its own
@@ -14,7 +16,7 @@ import { getPrincipal } from "@/lib/auth/session";
  *  - `/api/health`                — pure liveness probe for uptime monitors;
  *                                   no secrets, no DB, no auth (M4 Handoff)
  *
- * The three cron paths above MUST stay in lock-step with `vercel.json` crons —
+ * The four cron paths above MUST stay in lock-step with `vercel.json` crons —
  * Vercel sends `Authorization: Bearer CRON_SECRET`, not a session cookie, so an
  * un-allowlisted cron path is 401'd here before its handler runs. proxy.test.ts
  * asserts every `vercel.json` cron path is a member of this allowlist.
@@ -31,6 +33,7 @@ export const ALLOWLIST = new Set<string>([
   "/login",
   "/api/login",
   "/api/mail/scheduled/run",
+  "/api/mail/scan/run",
   "/api/tasks/scheduled/run",
   "/api/memory/sweep",
   "/api/health",

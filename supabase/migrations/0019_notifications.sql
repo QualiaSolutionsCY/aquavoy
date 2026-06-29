@@ -50,7 +50,7 @@ comment on table public.notification_log is
   '90-day audit log of every notification send attempt (M6, ADR-008). Queried with sent_at >= now() - interval ''90 days'' at read time — no DB cron. Service-role only (RLS on, no policies); principal CHECK enforces REQ-3 at schema level. Applied via CI, never hand-applied (constitution).';
 
 -- Principal-scoped recency-ordered audit reads.
-create index idx_notification_log_principal_sent_at
+create index if not exists idx_notification_log_principal_sent_at
   on public.notification_log (principal, sent_at);
 
 -- RLS on, no policies → inaccessible to anon/authenticated roles.

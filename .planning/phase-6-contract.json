@@ -5,15 +5,15 @@
   "why": "Wency's meeting ask was 'tell me like a WhatsApp when an invoice is ready'. Web-push delivers that immediately with zero vendor onboarding, riding the Phase-1 PWA manifest; the adapter seam means the WhatsApp follow-on is one file, not a refactor.",
   "generated_at": "2026-06-29T09:15:00Z",
   "generated_by": "planner",
-  "source_plan_hash": "sha256:08076f19db74cab81bb9844b3c2deed69ab0829225865684092c60c0afffbbe7",
+  "source_plan_hash": "sha256:0b0bb32346f19d4606c8d0c7338b1d487f582a34216d9156d514ff73f92eb5b9",
   "success_criteria": [
     "When a destructive action stages (stagePendingAction), the signed-in operator with a registered subscription and a 'stage' opt-in gets an OS web-push notification on their installed PWA, outside quiet hours.",
     "A notification delivery failure NEVER throws or fails the stagePendingAction insert; it is logged to notification_log and swallowed (fire-and-forget, test-proven).",
     "The notify layer is a vendor-agnostic NotificationChannel adapter; web-push is one implementation; adding WhatsApp later is one new file with no change to triggers/routes.",
     "notification_preferences + notification_log exist (migration 0019), RLS-on / service-role-only, principal-CHECK-constrained, every query scoped to the session principal.",
     "The operator can enable push, toggle the stage event, and set wrap-midnight quiet hours from /settings; the iOS 'install first' caveat is shown.",
-    "WhatsApp/Telnyx is NOT built (deferred per ADR-008); only the adapter seam is left ready.",
-    "npx tsc --noEmit exits 0; all new tests pass."
+    "WhatsApp/Telnyx is NOT built (deferred per ADR-008); only the adapter seam is left ready. Owned by Task 2 (test ! -f whatsapp.ts + grep telnyx/whatsapp under src/lib/notify = 0) and the whole-phase deferral contract.",
+    "npx tsc --noEmit exits 0 and all new tests pass — cross-cutting, enforced by every task Validation block plus the whole-phase compiles+builds Verification Contract."
   ],
   "tasks": [
     {
@@ -85,7 +85,8 @@
         "adapter.ts exports a NotificationChannel interface (name + send(principal, message, subscription)) and a NotifyMessage type; it contains NO web-push specifics (the seam).",
         "webpush.ts imports and implements the NotificationChannel seam; webPushChannel.send() never throws: WebPushError 410/404 -> { ok:false, expired:true }, other error -> { ok:false, error }, missing VAPID keys -> { ok:false } without calling sendNotification.",
         "public/sw.js has push (showNotification) + notificationclick handlers.",
-        "web-push is in package.json dependencies; getVapidEnv() added to env.ts with all fields optional (app boots without keys)."
+        "web-push is in package.json dependencies; getVapidEnv() added to env.ts with all fields optional (app boots without keys).",
+        "WhatsApp/Telnyx is NOT built: no src/lib/notify/whatsapp.ts and no telnyx/whatsapp reference under src/lib/notify (ADR-008 defers it; only the adapter seam is ready)."
       ],
       "action": "npm install web-push + -D @types/web-push. adapter.ts is vendor-agnostic, imports Principal from @/lib/openrouter/client. webpush.ts imports NotificationChannel from the adapter and implements it; uses setVapidDetails + sendNotification, wrapped in try/catch. env getVapidEnv reads VAPID keys optionally (try/catch returning null). webpush.test.ts mocks web-push: 410 maps to expired, generic error does not throw, missing keys skips send.",
       "context_files": [
@@ -133,6 +134,12 @@
             "src/lib/notify/webpush.test.ts"
           ],
           "expected_exit": 0
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/notify/whatsapp.ts",
+          "pattern": "TELNYX|whatsapp",
+          "expect": "absent"
         }
       ]
     },

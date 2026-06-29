@@ -65,7 +65,7 @@ waves: 3
 - `package.json` (modify) — add `web-push` dependency
 **Depends on:** none
 
-**Why:** The adapter is the seam ADR-008 §2 mandates — WhatsApp/Telnyx and an email-digest fallback implement the same `NotificationChannel` interface later, so adding them is one file, not a refactor. The web-push impl is the MVP channel; the Service Worker is what actually surfaces the OS notification on the installed PWA.
+**Why:** The adapter is the seam ADR-008 §2 mandates — WhatsApp/Telnyx and an email-digest fallback implement the same `NotificationChannel` interface later, so adding them is one file, not a refactor. The web-push impl is the MVP channel; the Service Worker is what actually surfaces the OS notification on the installed PWA. ADR-008 also defers WhatsApp/Telnyx to a later phase — this task lays ONLY the seam, never a WhatsApp impl or Telnyx wiring.
 
 **Acceptance Criteria:**
 - `src/lib/notify/adapter.ts` exports a `NotificationChannel` interface with `name: string` and `send(principal: Principal, message: NotifyMessage, subscription: PushSubscriptionJSON): Promise<{ ok: boolean; expired?: boolean; error?: string }>`, plus a `NotifyMessage` type (`{ title: string; body: string; url?: string }`).
@@ -73,12 +73,14 @@ waves: 3
 - If VAPID keys are absent from env, `webPushChannel.send()` returns `{ ok: false, error: "web-push not configured" }` without throwing (app boots without keys).
 - `public/sw.js` has a `push` event listener that calls `self.registration.showNotification(title, { body, data: { url } })` and a `notificationclick` listener that focuses/opens the `url`.
 - `web-push` appears in `package.json` dependencies.
+- WhatsApp/Telnyx is NOT built: no `src/lib/notify/whatsapp.ts` file is created and no `TELNYX`/`whatsapp` reference appears anywhere under `src/lib/notify/` (ADR-008 defers it; only the adapter seam is ready).
 
 **Action:**
 - Install: `npm install web-push` and `npm install -D @types/web-push`.
 - `adapter.ts`: import `Principal` from `@/lib/openrouter/client`. Define `NotifyMessage`, `NotificationChannel`. Do NOT put any web-push specifics here — this file is vendor-agnostic (that is the seam). It may export a `dispatch(channel, principal, message, subscription)` helper that just calls `channel.send(...)` and returns the result (keeps the trigger thin).
 - `webpush.ts`: `import webpush from "web-push"`. Add `getVapidEnv()` to `src/lib/env.ts` following the existing `getTavilyEnv()` pattern (a cached Zod schema), but make all three fields **optional** (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` defaulting to `mailto:dev@aquavoy.com`) so a missing key does not crash the schema — read them with a try/catch returning `null` when unset. `send()` guards on keys present, calls `setVapidDetails` + `sendNotification(subscription, JSON.stringify(message))`, wraps everything in try/catch. **The web-push impl must import the `NotificationChannel` type from the adapter seam and implement it (`webPushChannel: NotificationChannel`) — the seam is the contract, not a parallel shape.**
 - `sw.js`: plain JS (not bundled). `self.addEventListener('push', (e) => { const d = e.data?.json() ?? {}; e.waitUntil(self.registration.showNotification(d.title ?? 'Aquavoy', { body: d.body ?? '', data: { url: d.url ?? '/' }, icon: '/icon-192.png' })); })`. `notificationclick`: `e.notification.close(); e.waitUntil(clients.openWindow(e.notification.data?.url ?? '/'));`.
+- **Do NOT create `whatsapp.ts` or add any Telnyx/WhatsApp code** — ADR-008 defers that channel to a later phase. The seam is the only deliverable for the second channel.
 - `webpush.test.ts`: mock the `web-push` module; assert (a) a 410 rejection maps to `{ ok: false, expired: true }`, (b) a generic rejection maps to `{ ok: false, error }` and does NOT throw, (c) missing VAPID keys → `{ ok: false }` without calling `sendNotification`.
 
 **Validation:** (builder self-check)
@@ -87,6 +89,8 @@ waves: 3
 - `grep -c "adapter" src/lib/notify/webpush.ts` → `≥ 1` (imports the `NotificationChannel` seam)
 - `grep "showNotification" public/sw.js` → present
 - `grep "notificationclick" public/sw.js` → present
+- `test ! -f src/lib/notify/whatsapp.ts && echo NO_WHATSAPP` → `NO_WHATSAPP` (deferred)
+- `grep -rci "telnyx\|whatsapp" src/lib/notify` → `0` (no deferred-channel wiring)
 - `npx vitest run src/lib/notify/webpush.test.ts` → all pass
 - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → `0`
 
@@ -109,20 +113,13 @@ waves: 3
 
 **Why:** This is the behavioral core — the moment an action stages, the operator learns about it. ADR-008 §2 and the learned-pattern are explicit: a delivery failure must NEVER fail the `stagePendingAction` insert (that insert is the ADR-003 confirm-gate; breaking it would silently drop destructive-action staging). So the hook is wrapped in fire-and-forget and the trigger swallows every error into `notification_log`. The trigger, the preferences helper, and the two `/api/notify/*` routes are one subsystem (`src/lib/notify/` + `src/app/api/notify/`): the routes go through the same `preferences.ts` helper the trigger uses, so principal-scoping lives in exactly one place — they belong in one task.
 
-**Acceptance Criteria — trigger + preferences lib:**
+**Acceptance Criteria:**
 - `notifyOnStage(principal, action)` loads the principal's preferences; if no `push_subscription`, or `"stage"` not in `enabled_events`, or the current time is within quiet hours, it logs a skipped/suppressed row (or simply returns) and sends nothing.
-- When it does send, it builds a `NotifyMessage` from `action.summary` (title `"Action ready to confirm"`, body = `action.summary`, url `"/"`), calls `webPushChannel.send(...)`, and writes a `notification_log` row with the outcome (error column populated on failure).
-- On a `410`/`404` (expired) result, it clears `push_subscription` for that principal so the dead subscription is not retried.
-- `stagePendingAction` calls `notifyOnStage(...)` AFTER the row inserts successfully, in a way that CANNOT throw into the insert path — `void notifyOnStage(...).catch(() => {})` (fire-and-forget), and the function still returns the staged `PendingAction` exactly as before.
-- `isWithinQuietHours(now, start, end)` correctly handles the wrap-midnight case (e.g. start `22:00`, end `07:00` → `23:30` and `06:00` are both quiet; `12:00` is not).
-
-**Acceptance Criteria — API routes:**
-- `POST /api/notify/subscribe` reads the principal via `getPrincipal(req)`; 401 if absent. Validates the body as a `PushSubscriptionJSON` with Zod (`endpoint` url, `keys.p256dh` string, `keys.auth` string). Saves it to `notification_preferences.push_subscription` for that principal (upsert) **via the `savePreferences` helper**. Returns `{ ok: true }`.
-- `GET /api/notify/preferences` returns the principal's prefs **via `loadPreferences`** (creating a default row if none exists: `enabled_events: ["stage"]`, no quiet hours, channel `webpush`).
-- `POST /api/notify/preferences` validates a body of `{ enabled_events?: string[]; quiet_hours_start?: string|null; quiet_hours_end?: string|null }` with Zod (times as `HH:MM` or null), updates only the provided fields **via `savePreferences`**, returns the updated prefs. The push subscription is NOT settable here (that is the subscribe route).
-- All three handlers 401 without a verified session principal.
-- `runtime = "nodejs"` and `dynamic = "force-dynamic"` on both route files (matches `/api/actions/route.ts:5-6`).
-- Neither route is added to the `src/proxy.ts` cron allowlist (auth-gated by default).
+- When it does send, it builds a `NotifyMessage` from `action.summary` (title `"Action ready to confirm"`, body = `action.summary`, url `"/"`), calls `webPushChannel.send(...)`, and writes a `notification_log` row with the outcome (error column populated on failure). On a `410`/`404` (expired) result, it clears `push_subscription` for that principal so the dead subscription is not retried.
+- `stagePendingAction` calls `notifyOnStage(...)` AFTER the row inserts successfully, in a way that CANNOT throw into the insert path — `void notifyOnStage(...).catch(() => {})` (fire-and-forget), and the function still returns the staged `PendingAction` exactly as before. `isWithinQuietHours(now, start, end)` correctly handles the wrap-midnight case (e.g. start `22:00`, end `07:00` → `23:30` and `06:00` are both quiet; `12:00` is not). `triggers.ts` does NOT import from `pendingActions.ts` (no cycle).
+- `POST /api/notify/subscribe` reads the principal via `getPrincipal(req)` (401 if absent), validates the body as a `PushSubscriptionJSON` with Zod (`endpoint` url, `keys.p256dh` string, `keys.auth` string), and saves it to `notification_preferences.push_subscription` for that principal (upsert) **via the `savePreferences` helper**, returning `{ ok: true }`.
+- `GET /api/notify/preferences` returns the principal's prefs **via `loadPreferences`** (creating a default row if none exists: `enabled_events: ["stage"]`, no quiet hours, channel `webpush`). `POST /api/notify/preferences` validates a body of `{ enabled_events?: string[]; quiet_hours_start?: string|null; quiet_hours_end?: string|null }` with Zod (times as `HH:MM` or null), updates only the provided fields **via `savePreferences`**, and returns the updated prefs — the push subscription is NOT settable here (that is the subscribe route).
+- All three handlers 401 without a verified session principal; both route files set `runtime = "nodejs"` and `dynamic = "force-dynamic"` (matches `/api/actions/route.ts:5-6`); neither route is added to the `src/proxy.ts` cron allowlist (auth-gated by default).
 
 **Action:**
 - `preferences.ts`: `loadPreferences(principal)` → `supabaseAdmin().from("notification_preferences").select(...).eq("principal", principal).maybeSingle()`. `savePreferences(principal, patch)` → upsert on `principal`. `clearExpiredSubscription(principal)` → update `push_subscription = null`. `isWithinQuietHours(now: Date, start: string|null, end: string|null): boolean` — null start/end → `false`; compute minutes-of-day; if `start <= end` it's the simple range, else (wrap) it's `mins >= start || mins < end`.
@@ -196,8 +193,8 @@ waves: 3
 - [ ] The notify layer is a vendor-agnostic `NotificationChannel` adapter (`src/lib/notify/adapter.ts`); web-push is one implementation; adding WhatsApp later is one new file implementing the same interface (no change to triggers/routes).
 - [ ] `notification_preferences` + `notification_log` exist (migration `0019`), RLS-on / service-role-only, principal-CHECK-constrained, every query scoped to the session principal.
 - [ ] The operator can enable push (user gesture → SW registration → permission → subscribe), toggle the stage event, and set wrap-midnight quiet hours from `/settings`; the iOS "install first" caveat is shown.
-- [ ] WhatsApp/Telnyx is NOT built (deferred per ADR-008); only the adapter seam is left ready. No Telnyx env, no `whatsapp.ts`.
-- [ ] `npx tsc --noEmit` exits 0; all new tests pass.
+- [ ] WhatsApp/Telnyx is NOT built (deferred per ADR-008); only the adapter seam is left ready. No Telnyx env, no `whatsapp.ts`. **Owned by Task 2** — asserted by its `test ! -f src/lib/notify/whatsapp.ts` + `grep -rci "telnyx|whatsapp" src/lib/notify → 0` validations and the whole-phase "WhatsApp NOT built" contract below.
+- [ ] `npx tsc --noEmit` exits 0; all new tests pass. **Cross-cutting** — enforced by every task's Validation block (each runs `npx tsc --noEmit … grep -c "error TS" → 0` and its own `npx vitest run …`) and by the whole-phase "compiles + builds" Verification Contract below.
 
 ## Verification Contract
 
@@ -242,6 +239,12 @@ waves: 3
 **Command:** `grep -c "showNotification\|notificationclick" public/sw.js`
 **Expected:** Non-zero (≥ 2)
 **Fail if:** SW lacks push (showNotification) or notificationclick handlers
+
+### Contract for Task 2 — WhatsApp/Telnyx NOT built (deferral owned here)
+**Check type:** command-exit
+**Command:** `bash -c 'test ! -f src/lib/notify/whatsapp.ts && [ "$(grep -rci "telnyx\|whatsapp" src/lib/notify 2>/dev/null | paste -sd+ - | bc 2>/dev/null || echo 0)" = "0" ] && echo DEFERRED_OK'`
+**Expected:** `DEFERRED_OK`
+**Fail if:** A `whatsapp.ts` impl or any Telnyx/WhatsApp reference exists under `src/lib/notify/` — ADR-008 defers that channel; Task 2 lays only the adapter seam
 
 ### Contract for Task 2 — webpush channel tests pass
 **Check type:** command-exit

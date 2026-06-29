@@ -125,6 +125,31 @@ export function getCryptoEnv() {
   return (cryptoCache ??= validate(cryptoSchema, "crypto"));
 }
 
+// ── VAPID (web-push) ─────────────────────────────────────
+// All three fields are optional — the app boots and runs without them;
+// the web-push channel gracefully returns { ok: false, error: "web-push not
+// configured" } when they are absent. Set them to enable push notifications.
+const vapidSchema = z.object({
+  VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+  VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+  VAPID_SUBJECT: z.string().min(1).default("mailto:dev@aquavoy.com"),
+});
+type VapidEnv = z.infer<typeof vapidSchema>;
+let vapidCache: VapidEnv | null = null;
+/**
+ * Returns VAPID config, or null when the required keys are absent.
+ * Never throws — missing VAPID keys are a valid/expected state in development.
+ */
+export function getVapidEnv(): VapidEnv | null {
+  try {
+    vapidCache ??= validate(vapidSchema, "VAPID");
+    if (!vapidCache.VAPID_PUBLIC_KEY || !vapidCache.VAPID_PRIVATE_KEY) return null;
+    return vapidCache;
+  } catch {
+    return null;
+  }
+}
+
 // ── Embeddings (durable-memory semantic recall) ──────────
 // The embedding provider is a config detail behind src/lib/embeddings (ADR-002
 // §3 adapters-at-seams; "never hardcode a provider"). Defaults to Gemini via the

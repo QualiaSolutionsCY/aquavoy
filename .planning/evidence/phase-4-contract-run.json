@@ -4,7 +4,7 @@
   "goal": "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx — both confirm-before-write.",
   "checked": 23,
   "failed": 0,
-  "generated_at": "2026-06-29T08:15:43.620Z",
+  "generated_at": "2026-06-29T08:22:02.404Z",
   "results": [
     {
       "task_id": "T1",
@@ -45,8 +45,8 @@
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 2266,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  11:15:35\n   Duration  658ms (transform 150ms, setup 66ms, import 143ms, tests 17ms, environment 0ms)\n\n",
+      "duration_ms": 2607,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  11:21:52\n   Duration  707ms (transform 135ms, setup 57ms, import 122ms, tests 18ms, environment 0ms)\n\n",
       "stderr": ""
     },
     {
@@ -80,8 +80,8 @@
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 2344,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  4 passed (4)\n   Start at  11:15:37\n   Duration  796ms (transform 154ms, setup 89ms, import 110ms, tests 187ms, environment 0ms)\n\n",
+      "duration_ms": 2679,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  4 passed (4)\n   Start at  11:21:55\n   Duration  1.09s (transform 203ms, setup 107ms, import 158ms, tests 228ms, environment 0ms)\n\n",
       "stderr": ""
     },
     {
@@ -123,8 +123,8 @@
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 2275,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  45 passed (45)\n   Start at  11:15:40\n   Duration  896ms (transform 329ms, setup 72ms, import 339ms, tests 78ms, environment 0ms)\n\n",
+      "duration_ms": 3053,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  45 passed (45)\n   Start at  11:21:58\n   Duration  1.13s (transform 341ms, setup 96ms, import 340ms, tests 75ms, environment 1ms)\n\n",
       "stderr": ""
     },
     {
@@ -166,8 +166,8 @@
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 2359,
-      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  45 passed (45)\n   Start at  11:15:42\n   Duration  921ms (transform 301ms, setup 68ms, import 315ms, tests 80ms, environment 0ms)\n\n",
+      "duration_ms": 2770,
+      "stdout": "\n RUN  v4.1.9 /home/moayad-qualia/projects/aquavoy\n\n\n Test Files  1 passed (1)\n      Tests  45 passed (45)\n   Start at  11:22:01\n   Duration  1.06s (transform 364ms, setup 77ms, import 411ms, tests 116ms, environment 0ms)\n\n",
       "stderr": ""
     },
     {
@@ -201,7 +201,7 @@
       "type": "command-exit",
       "ok": true,
       "detail": "",
-      "duration_ms": 240,
+      "duration_ms": 228,
       "stdout": "slop-detect absent — skipped\n",
       "stderr": ""
     }

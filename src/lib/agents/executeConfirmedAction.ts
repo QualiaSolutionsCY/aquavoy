@@ -304,8 +304,10 @@ export async function executeConfirmedAction(
       const invoiceNumber = str(args, "invoice_number");
       if (!invoiceNumber) throw new Error("invoice_number is required");
 
-      const year =
-        str(args, "targetYear") || String(new Date().getFullYear());
+      // targetYear is LLM-supplied; only accept a 4-digit year, else fall back to
+      // the current year — it is spliced into the OneDrive upload path (SEC-01).
+      const rawYear = str(args, "targetYear");
+      const year = /^\d{4}$/.test(rawYear) ? rawYear : String(new Date().getFullYear());
 
       // Per-company template row from Supabase (ADR-007 §4).
       const row = await getInvoiceTemplate(company);

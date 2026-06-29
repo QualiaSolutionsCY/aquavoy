@@ -24,7 +24,6 @@ import {
   resolveTrashFolder,
 } from "@/lib/mail/imap";
 import { generateInboxBriefing } from "@/lib/mail/briefing";
-import { extractInvoiceFields } from "@/lib/agents/invoiceExtraction";
 
 /**
  * Tool definitions (OpenAI function-calling JSON schema) and executor for the
@@ -1289,8 +1288,10 @@ export async function executeTool(
             error: 'company must be "Gefo" or "Novo Porto" if specified',
           });
 
+        // Only accept a 4-digit year (it is spliced into the OneDrive upload
+        // path at confirm time); otherwise fall back to the current year (SEC-01).
         const year =
-          typeof args.targetYear === "string" && args.targetYear.trim()
+          typeof args.targetYear === "string" && /^\d{4}$/.test(args.targetYear.trim())
             ? args.targetYear.trim()
             : String(new Date().getFullYear());
 

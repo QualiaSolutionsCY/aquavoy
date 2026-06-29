@@ -58,7 +58,7 @@ The **#1 headline ask**. See **ADR-007**.
 
 **Decisions:** docxtemplater on `.docx` (xlsx fallback; no PDF generation in MVP) · LLM extraction (not regex/OCR) with human correction at confirm · templates in OneDrive + metadata in Supabase (ADR-005 hybrid) · dynamic per-company template table (not a hardcoded map).
 
-**`[NEEDS CLIENT INPUT — blocking]`** Collect at the July office meeting: (1) actual template file(s), ≥1 per company format (GEFO, W&D, others); (2) field→placeholder mapping; (3) company→template assignment + default; (4) output format (docx/xlsx; PDF only if essential); (5) output folder structure. Scaffold engine + tool now; wire to real templates after.
+**`[CLIENT INPUT — RESOLVED 2026-06-29 via live OneDrive discovery]`** See `.planning/m6-onedrive-discovery.md`. Templates are already in the connected drive as fillable **`.docx`** at `…/alle firma's/Aquavoy Ltd/Verzonden Facturen/{year}`; two formats (Gefo self-billing `2640xxxx`, and Aquavoy Ltd → Novo Porto sales invoice `YY-NNN`); company is encoded in the filename; full template structure captured from `26-047`. → docxtemplater (ADR-007) confirmed. Remaining (a build step, not a gate): read one real `.docx` to capture Wency's exact placeholder tokens.
 
 ---
 
@@ -75,7 +75,7 @@ Extend finance for shipping economics the generic ledger can't hold. See **ADR-0
 
 **Decisions:** parallel `voyage_entries` table (not nullable columns / not JSONB) · single-file on-demand import (no continuous sync) · multi-email bundling is a **user-driven merge in the UI** (not silent LLM grouping).
 
-**`[NEEDS CLIENT INPUT — blocking]`** Collect at the meeting: (1) exact register column schema + a realistic sample row; (2) which of the 8 companies can have voyages; (3) a de-identified sample register file (schema source of truth); (4) 2–3 real multi-email bundling examples; (5) validation rules (mandatory fields, ranges, currency); (6) any reporting/export needs.
+**`[CLIENT INPUT — RESOLVED 2026-06-29 via live OneDrive discovery]`** See `.planning/m6-onedrive-discovery.md`. The register is `Reis registratie.xlsx` at `/Documenten/ttt/Bureaublad/`, one sheet per year, with 26 real columns (REIS, VAN/NAAR, LADING, TONNAGE, P/TON, OPBRENGST, PROVISIE -5%, LIGGELD, GASOLIE/OLIE KOSTEN, DAGEN, NETTO P/D, …) — the authoritative `voyage_entries` schema (supersedes the ADR-006 placeholder). Three jargon codes (KWZ, GMP, ZHC) to confirm with Wency but they don't block the table. **Refinement (per 2026-06-29 operator note):** Wency wants the agent to FILL the actual `Reis registratie.xlsx` (append the voyage row) AND prepare the invoice from the default `.docx` template — so P4 writes back to his Excel file (append-row → re-upload), not only a Supabase index.
 
 ---
 

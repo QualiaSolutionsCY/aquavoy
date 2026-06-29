@@ -27,9 +27,9 @@ npx supabase db push                                   # applies pending migrati
 All four tables are **additive** (new tables, RLS-on/service-role-only) — they don't alter or drop anything existing, so applying them is low-risk and won't affect the M1–M5 surface.
 </details>
 
-## 2. Ship the branch  🔑 OWNER-gated
+## 2. Ship the branch  ✅ DONE (2026-06-29)
 
-`/qualia-ship` is OWNER-only (disable-model-invocation). Fawzi runs it to fast-forward `m6-invoice-automation` → `main` and deploy. ~30 commits waiting. (Per the local-only workflow, "shipped" = on `main` on GitHub; Vercel deploy is the owner's call.)
+`m6-invoice-automation` (48 commits) fast-forward-integrated → `main` and pushed to origin (QualiaSolutionsCY/aquavoy) at commit `2105b76`; feature branch closed (local + remote). State = shipped. All ship gates green (tsc 0 · 248 tests · build ok · slop ✓ · dep-verify clean). **Remaining owner action: `vercel --prod`** to make it live — the pre-deploy hook re-runs slop+dep (both pass).
 
 ## 3. Validate the invoice templates with Wency  👤 July 3 office meeting
 

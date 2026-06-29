@@ -340,7 +340,7 @@ export const TOOL_DEFINITIONS = [
     function: {
       name: "record_voyage_entry",
       description:
-        "Record ONE voyage for one of the eight group companies. CONFIRMED BEFORE WRITING — calling it stages a confirmation card; on approval it (1) writes the voyage to the finance index AND (2) appends the row to the current-year sheet of the Reis registratie.xlsx register on OneDrive and re-uploads it. You MUST pass `registerItemId` (the OneDrive item id of Reis registratie.xlsx — find it with search_files first) and `year` (the sheet, e.g. '2026'). Note: undo removes the database row but does NOT auto-remove the appended Excel row.",
+        "Record ONE voyage for one of the eight group companies. CONFIRMED BEFORE WRITING — calling it stages a confirmation card; on approval it (1) writes the voyage to the finance index AND (2) appends the row to the current-year sheet of the Reis registratie.xlsx register on OneDrive and re-uploads it. You MUST pass `registerItemId` (the OneDrive item id of Reis registratie.xlsx — find it with search_files first), `registerName` (that file's name, from the same search_files result, so the confirmation card shows the operator which file will be changed) and `year` (the sheet, e.g. '2026'). Note: undo removes the database row but does NOT auto-remove the appended Excel row.",
       parameters: {
         type: "object",
         properties: {
@@ -366,6 +366,11 @@ export const TOOL_DEFINITIONS = [
             type: "string",
             description:
               "The OneDrive item id of Reis registratie.xlsx. Find it first with search_files.",
+          },
+          registerName: {
+            type: "string",
+            description:
+              "The register file's name (from the search_files result, e.g. 'Reis registratie.xlsx') — shown on the confirm card so the operator can verify the correct file.",
           },
           voyage_no: { type: "string", description: "REIS — voyage number or identifier." },
           charterer: { type: "string", description: "BEVRACHTER — charterer name." },
@@ -1231,7 +1236,11 @@ function summarizeAction(name: string, args: Record<string, unknown>): string {
       const portFrom = s("port_from") || "?";
       const portTo = s("port_to") || "?";
       const year = s("year") || "?";
-      return `Record voyage ${voyageNo} for ${company} (${portFrom}→${portTo}) — index + append to ${year} register; undo removes the DB row only, the Excel row stays`;
+      // Show the target register's file name (when the agent passed it) so the
+      // operator can verify the correct .xlsx before confirming the append (SEC-LOW-01).
+      const registerName = s("registerName");
+      const target = registerName ? `${registerName} (${year} sheet)` : `${year} register`;
+      return `Record voyage ${voyageNo} for ${company} (${portFrom}→${portTo}) — index + append to ${target}; undo removes the DB row only, the Excel row stays`;
     }
     case "import_voyage_register": {
       const company = s("company") || "unknown company";

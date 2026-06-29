@@ -35,7 +35,7 @@ export function redirectUri(): string {
 // ── OpenRouter (conversational AI) ────────────────────────
 const openRouterSchema = z.object({
   OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
-  OPENROUTER_MODEL: z.string().min(1).default("google/gemini-3.5-flash"),
+  OPENROUTER_MODEL: z.string().min(1).default("openai/gpt-oss-120b:free"),
 });
 let orCache: z.infer<typeof openRouterSchema> | null = null;
 export function getOpenRouterEnv() {

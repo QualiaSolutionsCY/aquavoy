@@ -1,0 +1,130 @@
+{
+  "ok": true,
+  "status": "PASS",
+  "score": 90,
+  "phase": 3,
+  "generated_at": "2026-06-29T07:59:02.304Z",
+  "checks": [
+    {
+      "name": "planning_state",
+      "weight": 15,
+      "status": "pass",
+      "score": 15,
+      "evidence": "state.js check returned ok",
+      "state": {
+        "ok": true,
+        "phase": 3,
+        "phase_name": "Invoice from template",
+        "total_phases": 6,
+        "status": "built",
+        "assigned_to": "Profile: standard",
+        "profile": "standard",
+        "milestone": 6,
+        "milestone_name": "Invoice Automation",
+        "milestones": [
+          {
+            "num": 2,
+            "name": "Agent Depth",
+            "total_phases": 3,
+            "phases_completed": 3,
+            "tasks_completed": 5,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-17T10:42:43.999Z"
+          },
+          {
+            "num": 3,
+            "name": "Operations Polish",
+            "total_phases": 3,
+            "phases_completed": 3,
+            "tasks_completed": 7,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-17T12:35:03.110Z"
+          },
+          {
+            "num": 4,
+            "name": "Handoff",
+            "total_phases": 4,
+            "phases_completed": 4,
+            "tasks_completed": 9,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-17T13:20:17.304Z"
+          },
+          {
+            "num": 5,
+            "name": "Client Meeting Build",
+            "total_phases": 4,
+            "phases_completed": 4,
+            "tasks_completed": 18,
+            "shipped_url": "https://aquavoy.vercel.app",
+            "closed_at": "2026-06-20T13:26:18.493Z"
+          }
+        ],
+        "lifetime": {
+          "tasks_completed": 47,
+          "phases_completed": 16,
+          "milestones_completed": 4,
+          "total_phases": 14,
+          "last_closed_milestone": 5,
+          "updates_completed": 0
+        },
+        "verification": "pending",
+        "gap_cycles": 0,
+        "gap_cycle_limit": 2,
+        "tasks_done": 4,
+        "tasks_total": 4,
+        "deployed_url": "https://aquavoy.vercel.app",
+        "lifecycle": "build",
+        "launched_at": "",
+        "next_command": "/qualia-verify 3"
+      }
+    },
+    {
+      "name": "state_ledger",
+      "weight": 10,
+      "status": "pass",
+      "score": 10,
+      "evidence": "113 hash-chained event(s)"
+    },
+    {
+      "name": "plan_contract",
+      "weight": 20,
+      "status": "pass",
+      "score": 20,
+      "evidence": ".planning/phase-3-contract.json valid and in sync",
+      "contract": ".planning/phase-3-contract.json"
+    },
+    {
+      "name": "machine_evidence",
+      "weight": 20,
+      "status": "pass",
+      "score": 20,
+      "evidence": ".planning/evidence/phase-3-contract-run.json passed 19 check(s)"
+    },
+    {
+      "name": "verification_report",
+      "weight": 15,
+      "status": "pass",
+      "score": 15,
+      "evidence": ".planning/phase-3-verification.md verdict=pass"
+    },
+    {
+      "name": "framework_trust_score",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "trust-score=95/100 status=DEGRADED",
+      "trust_score": 95
+    },
+    {
+      "name": "erp_linkage",
+      "weight": 10,
+      "status": "warn",
+      "score": 5,
+      "evidence": "project key exists, ERP UUID missing"
+    }
+  ],
+  "artifacts": {
+    "json": ".planning/evals/harness-eval-2026-06-29T07-59-02-304Z.json",
+    "markdown": ".planning/evals/harness-eval-2026-06-29T07-59-02-304Z.md"
+  }
+}

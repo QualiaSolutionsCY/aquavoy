@@ -2,7 +2,11 @@
 
 Branch `m6-invoice-automation`. The code is built + verified; these are the **deploy/operational gates** that must happen before the new features work for Wency. Most are OWNER / ship-time actions, not code.
 
-## 1. Apply the two new migrations to Supabase prod  ⛔ REQUIRED
+## 1. Apply migrations to Supabase prod  ✅ DONE (2026-06-29)
+
+All five tables (`invoice_templates`, `voyage_entries`, `processed_messages`, `notification_preferences`, `notification_log`) were created on the prod project `kdwkcivdiachxrkjctie` (aquavoy/main) via the dashboard SQL Editor — verified present in `public`. **Migration-history note:** they were applied via SQL, not `supabase db push`, so Supabase's `schema_migrations` history doesn't list 0016–0019. They're all `IF NOT EXISTS`, so at ship-time `supabase db push` will run clean (no-op + record history) — OR run `supabase migration repair --status applied 0016 0017 0018 0019` to mark them without re-running. No conflict either way.
+
+<details><summary>(original instructions — kept for reference)</summary>
 
 The finance/invoice features read tables that don't exist in prod yet:
 - `supabase/migrations/0016_invoice_templates.sql` (Phase 3 — per-company invoice templates)
@@ -20,7 +24,8 @@ npx supabase migration list                            # confirm 0016–0019 are
 npx supabase db push                                   # applies pending migrations to prod
 ```
 
-All four tables are **additive** (new tables, RLS-on/service-role-only) — they don't alter or drop anything existing, so applying them is low-risk and won't affect the M1–M5 surface. **Apply them at/just before ship.**
+All four tables are **additive** (new tables, RLS-on/service-role-only) — they don't alter or drop anything existing, so applying them is low-risk and won't affect the M1–M5 surface.
+</details>
 
 ## 2. Ship the branch  🔑 OWNER-gated
 

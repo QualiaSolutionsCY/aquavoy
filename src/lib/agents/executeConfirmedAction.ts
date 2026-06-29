@@ -3,12 +3,15 @@ import {
   updateItem,
   deleteItem as deleteItemOnDrive,
   uploadFile,
+  downloadContent,
 } from "@/lib/microsoft/onedrive";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail } from "@/lib/mail/scheduled";
 import { recordFinanceEntry, type FinanceDirection } from "@/lib/finance/ledger";
+import { recordVoyageEntry } from "@/lib/finance/voyageLedger";
+import { appendVoyageRow } from "@/lib/finance/excelRegister";
 import { moveMessages, downloadAttachment } from "@/lib/mail/imap";
 import type { Recurrence } from "@/lib/scheduleRecurrence";
 import { readFileSync } from "fs";
@@ -293,6 +296,111 @@ export async function executeConfirmedAction(
       return {
         result: { saved: true, itemId: item.id, name: item.name, webUrl: item.webUrl ?? null },
         undo_data: { uploadedItemId: item.id },
+      };
+    }
+
+    case "record_voyage_entry": {
+      // Two writes happen here, both are side-effects of the same confirmed action
+      // (ADR-003 / REQ-28): (1) insert into voyage_entries, (2) append the row to
+      // the current-year sheet of Reis registratie.xlsx and re-upload in place.
+      const company = str(args, "company").trim();
+      if (!company) throw new Error("company is required");
+
+      const year = str(args, "year").trim();
+      if (!year) throw new Error("year is required");
+
+      const registerItemId = str(args, "registerItemId").trim();
+      if (!registerItemId) throw new Error("registerItemId is required");
+
+      // Helper: coerce a possibly-absent numeric arg to number | null.
+      const num = (k: string): number | null => {
+        const v = args[k];
+        if (v == null) return null;
+        const n = typeof v === "number" ? v : Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+
+      // (1) Insert the voyage index row.
+      const { id } = await recordVoyageEntry({
+        company,
+        voyage_no: str(args, "voyage_no") || null,
+        charterer: str(args, "charterer") || null,
+        port_from: str(args, "port_from") || null,
+        port_to: str(args, "port_to") || null,
+        load_date: str(args, "load_date") || null,
+        discharge_date: str(args, "discharge_date") || null,
+        cargo_type: str(args, "cargo_type") || null,
+        tonnage: num("tonnage"),
+        price_per_ton: num("price_per_ton"),
+        kwz: str(args, "kwz") || null,
+        total: num("total"),
+        revenue: num("revenue"),
+        handler_provision: num("handler_provision"),
+        demurrage: num("demurrage"),
+        fuel: num("fuel"),
+        fuel_price: num("fuel_price"),
+        oil_cost: num("oil_cost"),
+        port_dues_load: num("port_dues_load"),
+        port_dues_discharge: num("port_dues_discharge"),
+        net: num("net"),
+        waiting_days: num("waiting_days"),
+        net_per_day: num("net_per_day"),
+        gmp: str(args, "gmp") || null,
+        material_cleaned: str(args, "material_cleaned") || null,
+        zhc: str(args, "zhc") || null,
+        note: str(args, "note") || null,
+        createdBy: principal,
+        sourceRef: registerItemId,
+      });
+
+      // (2) Download the register, append the row, re-upload in place.
+      const connId = await resolveConnectionId();
+      const res = await downloadContent(connId, registerItemId);
+      const buf = new Uint8Array(await res.arrayBuffer());
+      const newBuf = await appendVoyageRow(buf, year, {
+        voyage_no: str(args, "voyage_no") || null,
+        charterer: str(args, "charterer") || null,
+        port_from: str(args, "port_from") || null,
+        port_to: str(args, "port_to") || null,
+        load_date: str(args, "load_date") || null,
+        discharge_date: str(args, "discharge_date") || null,
+        cargo_type: str(args, "cargo_type") || null,
+        tonnage: num("tonnage"),
+        price_per_ton: num("price_per_ton"),
+        kwz: str(args, "kwz") || null,
+        total: num("total"),
+        revenue: num("revenue"),
+        handler_provision: num("handler_provision"),
+        demurrage: num("demurrage"),
+        fuel: num("fuel"),
+        fuel_price: num("fuel_price"),
+        oil_cost: num("oil_cost"),
+        port_dues_load: num("port_dues_load"),
+        port_dues_discharge: num("port_dues_discharge"),
+        net: num("net"),
+        waiting_days: num("waiting_days"),
+        net_per_day: num("net_per_day"),
+        gmp: str(args, "gmp") || null,
+        material_cleaned: str(args, "material_cleaned") || null,
+        zhc: str(args, "zhc") || null,
+        note: str(args, "note") || null,
+      });
+      // Re-upload to the same folder (by parentId) with the same filename,
+      // overwriting the original in place. Using itemId for the parent avoids
+      // path-traversal concerns and correctly targets the containing folder.
+      const item = await getItem(connId, { itemId: registerItemId });
+      const parentRef = item.parentId ? { itemId: item.parentId } : {};
+      await uploadFile(
+        connId,
+        parentRef,
+        item.name,
+        newBuf,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+
+      return {
+        result: { recorded: true, voyageEntryId: id, registerItemId, year },
+        undo_data: { voyageEntryId: id, registerItemId, year, appendedRow: true },
       };
     }
 

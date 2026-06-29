@@ -3,6 +3,7 @@ import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { updateItem, deleteItem as deleteItemOnDrive } from "@/lib/microsoft/onedrive";
 import { cancelScheduled } from "@/lib/mail/scheduled";
 import { deleteFinanceEntry } from "@/lib/finance/ledger";
+import { deleteVoyageEntry } from "@/lib/finance/voyageLedger";
 import { moveMessages, moveMessagesByMessageId } from "@/lib/mail/imap";
 import { executeConfirmedAction } from "@/lib/agents/executeConfirmedAction";
 
@@ -363,6 +364,19 @@ export async function undoAction(
         return { action, undone: false, reason: "uploaded item id unavailable" };
       const connId = await resolveConnectionId();
       await deleteItemOnDrive(connId, uploadedItemId);
+      break;
+    }
+
+    case "record_voyage_entry": {
+      // Reverse by deleting the voyage_entries index row. The appended Excel row
+      // is NOT auto-reverted — the confirm-card summary warned of this; manual
+      // Excel cleanup is required. The DB-only undo mirrors the delete_item pattern.
+      const entryId =
+        typeof undo.voyageEntryId === "string" ? undo.voyageEntryId : "";
+      if (!entryId) {
+        return { action, undone: false, reason: "voyage entry id unavailable" };
+      }
+      await deleteVoyageEntry(entryId);
       break;
     }
 

@@ -5,6 +5,7 @@ import {
   createFolder as createFolderOnDrive,
   uploadFile,
   getDownloadUrl,
+  getItem,
 } from "@/lib/microsoft/onedrive";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import type { DriveItem } from "@/lib/microsoft/types";
@@ -327,6 +328,72 @@ export const TOOL_DEFINITIONS = [
           },
         },
         required: ["company", "direction", "amount"],
+        additionalProperties: false,
+      },
+    },
+  },
+
+  // ── Voyage entry (ADR-003 / REQ-28 — confirm-before-write, two writes) ──
+  {
+    type: "function" as const,
+    function: {
+      name: "record_voyage_entry",
+      description:
+        "Record ONE voyage for one of the eight group companies. CONFIRMED BEFORE WRITING — calling it stages a confirmation card; on approval it (1) writes the voyage to the finance index AND (2) appends the row to the current-year sheet of the Reis registratie.xlsx register on OneDrive and re-uploads it. You MUST pass `registerItemId` (the OneDrive item id of Reis registratie.xlsx — find it with search_files first) and `year` (the sheet, e.g. '2026'). Note: undo removes the database row but does NOT auto-remove the appended Excel row.",
+      parameters: {
+        type: "object",
+        properties: {
+          company: {
+            type: "string",
+            enum: [
+              "Aquavoy Holding",
+              "Aquavoy Shipping",
+              "Aquavoy Crewing",
+              "W&D Holding",
+              "W&D Trading",
+              "Denver Services BV",
+              "Faial BV",
+              "Novo Porto Scheepvaart BV",
+            ],
+            description: "Which of the eight group companies this voyage belongs to.",
+          },
+          year: {
+            type: "string",
+            description: "The year sheet to append the row to, e.g. '2026'.",
+          },
+          registerItemId: {
+            type: "string",
+            description:
+              "The OneDrive item id of Reis registratie.xlsx. Find it first with search_files.",
+          },
+          voyage_no: { type: "string", description: "REIS — voyage number or identifier." },
+          charterer: { type: "string", description: "BEVRACHTER — charterer name." },
+          port_from: { type: "string", description: "VAN — load port." },
+          port_to: { type: "string", description: "NAAR — discharge port." },
+          load_date: { type: "string", description: "BEGIN/LAAD — loading date (free-form)." },
+          discharge_date: { type: "string", description: "EIND/LOS — discharge date (free-form)." },
+          cargo_type: { type: "string", description: "LADING — cargo type." },
+          tonnage: { type: "number", description: "TONNAGE — cargo tonnage." },
+          price_per_ton: { type: "number", description: "P/TON — price per ton." },
+          kwz: { type: "string", description: "KWZ — jargon code." },
+          total: { type: "number", description: "TOTAAL — total amount." },
+          revenue: { type: "number", description: "OPBRENGST — revenue." },
+          handler_provision: { type: "number", description: "PROVISIE -5% — handler provision." },
+          demurrage: { type: "number", description: "LIGGELD — demurrage." },
+          fuel: { type: "number", description: "GASOLIE — fuel quantity." },
+          fuel_price: { type: "number", description: "PRIJS — fuel price." },
+          oil_cost: { type: "number", description: "OLIE KOSTEN — oil cost." },
+          port_dues_load: { type: "number", description: "HAVENGELD LAAD — port dues at load." },
+          port_dues_discharge: { type: "number", description: "HAVENGELD LOS — port dues at discharge." },
+          net: { type: "number", description: "NETTO — net result." },
+          waiting_days: { type: "number", description: "DAGEN — waiting days." },
+          net_per_day: { type: "number", description: "NETTO P/D — net per day." },
+          gmp: { type: "string", description: "GMP — jargon code." },
+          material_cleaned: { type: "string", description: "MATERIAAL GEREINIGD — material cleaned." },
+          zhc: { type: "string", description: "ZHC — jargon code." },
+          note: { type: "string", description: "OPMERKING REIS — voyage remark." },
+        },
+        required: ["company", "year", "registerItemId"],
         additionalProperties: false,
       },
     },
@@ -1066,6 +1133,9 @@ const DESTRUCTIVE = new Set([
   // Email attachment → OneDrive upload (ADR-003 confirm-before-write): bytes are
   // fetched at confirm time, never in the model loop — only metadata is staged here.
   "save_email_attachment",
+  // Voyage entry (ADR-003 / REQ-28 confirm-before-write): two writes happen only at
+  // confirm — (1) voyage_entries index insert + (2) xlsx append + re-upload.
+  "record_voyage_entry",
   // Invoice generation (ADR-007 confirm-before-write): docx fill + OneDrive upload
   // happen only at confirm; the model loop stages extracted fields only.
   "generate_invoice_from_template",
@@ -1109,6 +1179,14 @@ function summarizeAction(name: string, args: Record<string, unknown>): string {
       const mailbox = s("mailbox");
       const dest = s("targetFolderPath") || s("targetFolderId") || "OneDrive root";
       return `Save attachment "${attachmentFilename}" from ${mailbox} → ${dest}`;
+    }
+    case "record_voyage_entry": {
+      const company = s("company") || "unknown company";
+      const voyageNo = s("voyage_no") || "(no #)";
+      const portFrom = s("port_from") || "?";
+      const portTo = s("port_to") || "?";
+      const year = s("year") || "?";
+      return `Record voyage ${voyageNo} for ${company} (${portFrom}→${portTo}) — index + append to ${year} register; undo removes the DB row only, the Excel row stays`;
     }
     case "generate_invoice_from_template": {
       const company = s("company") || "unknown company";

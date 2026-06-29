@@ -22,6 +22,7 @@ vi.mock("@/lib/microsoft/onedrive", () => ({
   updateItem: vi.fn(),
   deleteItem: vi.fn(),
   uploadFile: vi.fn(),
+  downloadContent: vi.fn(),
 }));
 
 vi.mock("@/lib/mail/accounts", () => ({
@@ -53,6 +54,14 @@ vi.mock("@/lib/agents/invoiceTemplate", () => ({
   fillInvoiceTemplate: vi.fn(),
 }));
 
+vi.mock("@/lib/finance/voyageLedger", () => ({
+  recordVoyageEntry: vi.fn(),
+}));
+
+vi.mock("@/lib/finance/excelRegister", () => ({
+  appendVoyageRow: vi.fn(),
+}));
+
 vi.mock("fs", () => ({
   readFileSync: vi.fn(() => Buffer.from("fake-docx-bytes")),
 }));
@@ -62,7 +71,7 @@ vi.mock("path", () => ({
 }));
 
 import { executeConfirmedAction } from "./executeConfirmedAction";
-import { getItem, updateItem, deleteItem, uploadFile } from "@/lib/microsoft/onedrive";
+import { getItem, updateItem, deleteItem, uploadFile, downloadContent } from "@/lib/microsoft/onedrive";
 import { loadAccountWithSecretByEmail } from "@/lib/mail/accounts";
 import { sendMail } from "@/lib/mail/smtp";
 import { scheduleEmail } from "@/lib/mail/scheduled";
@@ -70,11 +79,14 @@ import { recordFinanceEntry } from "@/lib/finance/ledger";
 import { moveMessages, downloadAttachment } from "@/lib/mail/imap";
 import { getInvoiceTemplate } from "@/lib/agents/invoiceTemplates";
 import { fillInvoiceTemplate } from "@/lib/agents/invoiceTemplate";
+import { recordVoyageEntry } from "@/lib/finance/voyageLedger";
+import { appendVoyageRow } from "@/lib/finance/excelRegister";
 
 const getItemMock = vi.mocked(getItem);
 const updateItemMock = vi.mocked(updateItem);
 const deleteItemMock = vi.mocked(deleteItem);
 const uploadFileMock = vi.mocked(uploadFile);
+const downloadContentMock = vi.mocked(downloadContent);
 const loadAccountMock = vi.mocked(loadAccountWithSecretByEmail);
 const sendMailMock = vi.mocked(sendMail);
 const scheduleEmailMock = vi.mocked(scheduleEmail);
@@ -84,6 +96,8 @@ const downloadAttachmentMock = vi.mocked(downloadAttachment);
 const getInvoiceTemplateMock = vi.mocked(getInvoiceTemplate);
 const fillInvoiceTemplateMock = vi.mocked(fillInvoiceTemplate);
 const readFileSyncMock = vi.mocked(readFileSync);
+const recordVoyageEntryMock = vi.mocked(recordVoyageEntry);
+const appendVoyageRowMock = vi.mocked(appendVoyageRow);
 
 const PRINCIPAL = "Wency";
 
@@ -765,6 +779,133 @@ describe("executeConfirmedAction — generate_invoice_from_template", () => {
     ).rejects.toThrow("invoice_number is required");
     expect(getInvoiceTemplateMock).not.toHaveBeenCalled();
     expect(uploadFileMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeConfirmedAction — record_voyage_entry", () => {
+  const fakeXlsxBytes = new Uint8Array([1, 2, 3, 4]);
+  const fakeResponse = {
+    arrayBuffer: () => Promise.resolve(fakeXlsxBytes.buffer),
+  } as Response;
+
+  const registerDriveItem = {
+    id: "reg-item-1",
+    name: "Reis registratie.xlsx",
+    isFolder: false,
+    isFile: true,
+    webUrl: "https://drive/register.xlsx",
+    path: "/Documenten/ttt/Bureaublad/Reis registratie.xlsx",
+    size: 4,
+    lastModified: "",
+    parentId: "folder-reg-parent",
+  } as Awaited<ReturnType<typeof getItem>>;
+
+  const baseArgs = (overrides: Record<string, unknown> = {}) => ({
+    company: "Aquavoy Shipping",
+    year: "2026",
+    registerItemId: "reg-item-1",
+    voyage_no: "V-001",
+    port_from: "Rotterdam",
+    port_to: "Antwerp",
+    revenue: 50000,
+    net: 10000,
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    recordVoyageEntryMock.mockResolvedValue({ id: "voyage-1" });
+    downloadContentMock.mockResolvedValue(fakeResponse);
+    appendVoyageRowMock.mockResolvedValue(Buffer.from("updated-xlsx"));
+    getItemMock.mockResolvedValue(registerDriveItem);
+    uploadFileMock.mockResolvedValue(registerDriveItem);
+  });
+
+  it("happy path: calls recordVoyageEntry then appendVoyageRow then uploadFile, returns undo_data with voyageEntryId", async () => {
+    const out = await executeConfirmedAction("record_voyage_entry", baseArgs(), PRINCIPAL);
+
+    // (1) DB insert: voyage attributed to the session principal.
+    expect(recordVoyageEntryMock).toHaveBeenCalledTimes(1);
+    expect(recordVoyageEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        company: "Aquavoy Shipping",
+        createdBy: PRINCIPAL,
+        sourceRef: "reg-item-1",
+        voyage_no: "V-001",
+        port_from: "Rotterdam",
+        port_to: "Antwerp",
+        revenue: 50000,
+        net: 10000,
+      }),
+    );
+
+    // (2) Download the register.
+    expect(downloadContentMock).toHaveBeenCalledWith("conn-1", "reg-item-1");
+
+    // (3) Append the row to the year sheet.
+    expect(appendVoyageRowMock).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      "2026",
+      expect.objectContaining({ voyage_no: "V-001", port_from: "Rotterdam" }),
+    );
+
+    // (4) Re-upload to the parent folder.
+    expect(getItemMock).toHaveBeenCalledWith("conn-1", { itemId: "reg-item-1" });
+    expect(uploadFileMock).toHaveBeenCalledWith(
+      "conn-1",
+      { itemId: "folder-reg-parent" },
+      "Reis registratie.xlsx",
+      expect.any(Buffer),
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+
+    // Result + undo_data.
+    expect(out.result).toEqual({
+      recorded: true,
+      voyageEntryId: "voyage-1",
+      registerItemId: "reg-item-1",
+      year: "2026",
+    });
+    expect(out.undo_data).toEqual({
+      voyageEntryId: "voyage-1",
+      registerItemId: "reg-item-1",
+      year: "2026",
+      appendedRow: true,
+    });
+  });
+
+  it("rejects when registerItemId is missing, without calling recordVoyageEntry or uploadFile", async () => {
+    await expect(
+      executeConfirmedAction(
+        "record_voyage_entry",
+        { company: "Aquavoy Shipping", year: "2026" },
+        PRINCIPAL,
+      ),
+    ).rejects.toThrow("registerItemId is required");
+    expect(recordVoyageEntryMock).not.toHaveBeenCalled();
+    expect(uploadFileMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects when company is missing, without touching any adapter", async () => {
+    await expect(
+      executeConfirmedAction(
+        "record_voyage_entry",
+        { company: "", year: "2026", registerItemId: "reg-item-1" },
+        PRINCIPAL,
+      ),
+    ).rejects.toThrow("company is required");
+    expect(recordVoyageEntryMock).not.toHaveBeenCalled();
+    expect(downloadContentMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects when year is missing, without touching any adapter", async () => {
+    await expect(
+      executeConfirmedAction(
+        "record_voyage_entry",
+        { company: "Aquavoy Shipping", year: "", registerItemId: "reg-item-1" },
+        PRINCIPAL,
+      ),
+    ).rejects.toThrow("year is required");
+    expect(recordVoyageEntryMock).not.toHaveBeenCalled();
   });
 });
 

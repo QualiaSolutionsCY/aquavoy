@@ -1,14 +1,15 @@
 {
   "version": 1,
   "phase": 4,
-  "goal": "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx — both confirm-before-write.",
+  "goal": "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx \u2014 both confirm-before-write.",
   "why": "Wency keeps a specialized Excel voyage register the generic finance_entries ledger cannot represent (ADR-006); the 2026-06-29 operator note requires the agent to FILL his actual .xlsx, not only a parallel DB index. Closes REQ-28.",
   "generated_at": "2026-06-29T07:18:49Z",
   "generated_by": "planner",
-  "source_plan_hash": "sha256:9f768c5770b0222fc5f5a34dd1087f29871d833ad4d852e2672c558286bf397b",
+  "source_plan_hash": "sha256:f8f1d352535dab9c609d92c8f822682397dae31977eef55e52b586bee1f545c9",
   "success_criteria": [
     "voyage_entries table exists with the 26 real register columns + the 8-company CHECK, RLS on / no policies",
     "A voyage recorded via the agent is confirm-before-write: staging writes nothing; on confirm it inserts a voyage_entries row AND appends a row to the matching year-sheet of Reis registratie.xlsx, re-uploaded in place with all existing sheets/rows preserved",
+    "import_voyage_register reads the existing register and stages its historical rows for confirm-before-insert (user-reviewed per ADR-006, the Excel file unmodified); on confirm the reviewed rows land in voyage_entries and undo removes them",
     "Undo of a confirmed voyage deletes the DB row and surfaces that the Excel append is not auto-reverted",
     "The finance page shows a per-company voyage economics drill-down (count + revenue + net) with loading/error/empty states, reusing existing finance design tokens",
     "npx tsc --noEmit passes; all new tests pass"
@@ -92,7 +93,7 @@
       "files_delete": [],
       "acceptance_criteria": [
         "readRegister(buffer) parses an .xlsx into {sheetNames, sheets: Record<string,string[][]>}",
-        "appendVoyageRow(buffer, year, row) reads the workbook, locates the sheet named exactly year (throws naming available sheets if absent — never silently creates), appends ONE row (26 values in register column order) to the bottom via sheet_add_aoa origin:-1, returns a new .xlsx buffer with all other sheets and existing rows unchanged",
+        "appendVoyageRow(buffer, year, row) reads the workbook, locates the sheet named exactly year (throws naming available sheets if absent \u2014 never silently creates), appends ONE row (26 values in register column order) to the bottom via sheet_add_aoa origin:-1, returns a new .xlsx buffer with all other sheets and existing rows unchanged",
         "Re-serializes with XLSX.write(wb, {type:'buffer', bookType:'xlsx'})",
         "Round-trip test: sheets ['2025','2026'] with 2 data rows in 2026 -> append -> 3 data rows in 2026, 2025 untouched, sheet order preserved"
       ],
@@ -205,6 +206,79 @@
       ]
     },
     {
+      "id": "T5",
+      "title": "import_voyage_register tool: parse the existing register + stage its rows for confirm-before-insert",
+      "wave": 3,
+      "depends_on": [
+        "T1",
+        "T2",
+        "T3"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/agents/executeConfirmedAction.test.ts"
+      ],
+      "files_create": [],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "import_voyage_register in TOOL_DEFINITIONS with required company enum (8 entities) + registerItemId (string), optional year (string), additionalProperties false; description states CONFIRMED-BEFORE-WRITE, that it reads (read-only, Excel unmodified) and stages parsed rows for user review per ADR-006",
+        "import_voyage_register is in the DESTRUCTIVE set",
+        "Calling the tool STAGES a pending_actions row (no voyage write): the stage branch downloads the register by registerItemId, calls readRegister, maps each data row (skipping the header) of the selected year-sheet(s) to a VoyageRegisterRow via REGISTER_COLUMNS order, stores rows + company in args, and the summary states the row count and source sheet(s); returns confirmation_required",
+        "On confirm: executeConfirmedAction inserts each staged row via recordVoyageEntry with company/createdBy/sourceRef, collects ids, returns undo_data {voyageEntryIds}",
+        "Undo deletes every imported row by id via deleteVoyageEntry; returns undone:true",
+        "executeConfirmedAction.test.ts covers: confirming inserts one recordVoyageEntry call per parsed row; a missing registerItemId throws"
+      ],
+      "action": "After Task 3's symbols: add import_voyage_register to TOOL_DEFINITIONS (required company/registerItemId, optional year), to DESTRUCTIVE, and a summarizeAction case. Add an explicit stage branch: downloadContent -> readRegister -> map data rows via REGISTER_COLUMNS to staged args + count summary -> stagePendingAction. Confirm case loops staged rows calling recordVoyageEntry, returns undo_data{voyageEntryIds}. Undo loops voyageEntryIds calling deleteVoyageEntry. Add tests.",
+      "context_files": [
+        "src/lib/agents/onedriveTools.ts",
+        "src/lib/agents/executeConfirmedAction.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/finance/voyageLedger.ts",
+        "src/lib/finance/excelRegister.ts",
+        "src/lib/microsoft/onedrive.ts",
+        "src/lib/agents/executeConfirmedAction.test.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "import_voyage_register",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/onedriveTools.ts",
+          "pattern": "readRegister",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/executeConfirmedAction.ts",
+          "pattern": "import_voyage_register",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "import_voyage_register",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/agents/executeConfirmedAction.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
       "id": "T4",
       "title": "Finance page voyage drill-down section + voyages summary API route + REVERSIBLE_TOOLS",
       "wave": 3,
@@ -222,7 +296,7 @@
       "files_delete": [],
       "acceptance_criteria": [
         "GET /api/finance/voyages returns {ok:true, data:{companies:[{company,voyageCount,revenue,net}], consolidated}}, 401 when unauthenticated (copy summary/route.ts, swap financeSummary->voyageSummary)",
-        "Finance page renders a Voyage economics section: per-company cards (8, canonical order) with voyage count + revenue + net, a consolidated header, and loading/error/empty states, reusing existing finance CSS classes and helpers — no new colors/fonts",
+        "Finance page renders a Voyage economics section: per-company cards (8, canonical order) with voyage count + revenue + net, a consolidated header, and loading/error/empty states, reusing existing finance CSS classes and helpers \u2014 no new colors/fonts",
         "record_voyage_entry is in REVERSIBLE_TOOLS so a confirmed voyage card shows Undo",
         "Works at 375px and 1440px (reuse fin-company-grid)"
       ],

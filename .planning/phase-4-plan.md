@@ -1,18 +1,20 @@
 ---
 phase: 4
 goal: "Capture voyage economics the generic finance ledger can't, AND write the voyage row back into Wency's real Reis registratie.xlsx — both confirm-before-write."
-tasks: 4
+tasks: 5
 waves: 3
 ---
 
 # Phase 4: Voyage finance schema + Excel register
 
-**Goal:** A voyage can be recorded once and land in TWO places, both behind a confirm card: (1) a Supabase `voyage_entries` index row that powers a per-company voyage drill-down on the finance page, and (2) an appended row in the current-year sheet of the real `Reis registratie.xlsx` on OneDrive (existing sheets/columns preserved, file re-uploaded in place).
+**Goal:** A voyage can be recorded once and land in TWO places, both behind a confirm card: (1) a Supabase `voyage_entries` index row that powers a per-company voyage drill-down on the finance page, and (2) an appended row in the current-year sheet of the real `Reis registratie.xlsx` on OneDrive (existing sheets/columns preserved, file re-uploaded in place). Plus: the agent can import the existing register's historical rows into `voyage_entries` (confirm-before-write, user-reviewed).
 **Why this phase:** Wency keeps a specialized Excel voyage register (route, tonnage, handler provision, waiting-time, fuel, net/day) the generic `finance_entries` ledger cannot represent (ADR-006); the 2026-06-29 operator note requires the agent to FILL his actual `.xlsx`, not only a parallel DB index. This unlocks the voyage economics views and closes REQ-28.
 
 > **GROUND TRUTH:** the register and its 26 real Dutch columns are documented live at `@.planning/m6-onedrive-discovery.md` (lines 42–80) — this SUPERSEDES the placeholder schema in ADR-006. File: `Reis registratie.xlsx` at OneDrive path `/Documenten/ttt/Bureaublad/Reis registratie.xlsx`, ONE SHEET PER YEAR (sheet names `"2024"`,`"2025"`,`"2026"`).
 
-> **SHARED-FILE WARNING (serialize against Phase 3):** this phase edits four files Phase 3 also edits — `src/lib/agents/onedriveTools.ts` (TOOL_DEFINITIONS + `DESTRUCTIVE` set + a stage branch), `src/lib/agents/executeConfirmedAction.ts` (a new `case`), `src/lib/agents/pendingActions.ts` (a new undo `case`), and `src/app/finance/page.tsx` (`REVERSIBLE_TOOLS`). Phase 4 touches ONLY its own `record_voyage_entry` tool / case / undo branch and adds `record_voyage_entry` to the two sets. Do NOT touch Phase 3's `generate_invoice_from_template` symbol. Mirror the existing `save_email_attachment` pattern exactly (onedriveTools.ts:1131–1187 stage branch; executeConfirmedAction.ts:272–293 case; pendingActions.ts:357–364 undo).
+> **SHARED-FILE WARNING (serialize against Phase 3):** this phase edits four files Phase 3 also edits — `src/lib/agents/onedriveTools.ts` (TOOL_DEFINITIONS + `DESTRUCTIVE` set + a stage branch), `src/lib/agents/executeConfirmedAction.ts` (a new `case`), `src/lib/agents/pendingActions.ts` (a new undo `case`), and `src/app/finance/page.tsx` (`REVERSIBLE_TOOLS`). Phase 4 touches ONLY its own `record_voyage_entry` / `import_voyage_register` tools / cases / undo branches and adds them to the two sets. Do NOT touch Phase 3's `generate_invoice_from_template` symbol. Mirror the existing `save_email_attachment` pattern exactly (onedriveTools.ts:1131–1187 stage branch; executeConfirmedAction.ts:272–293 case; pendingActions.ts:357–364 undo).
+
+> **INTRA-PHASE SHARED-FILE NOTE:** Task 3 and Task 5 BOTH modify `onedriveTools.ts` and `executeConfirmedAction.ts` (and Task 5 also `pendingActions.ts`). Because they share writes they CANNOT run in the same wave — Task 3 is Wave 2, Task 5 is **Wave 3** and depends on Task 3 (declared via `Depends on: Task 1, Task 2, Task 3`) so the edits to the shared files do not collide. Task 5 sits in Wave 3 alongside Task 4, which writes disjoint files (`page.tsx` + the voyages route) — parallel-safe. Task 5 appends its own tool block / case / undo branch AFTER Task 3's, never editing Task 3's lines.
 
 ---
 
@@ -58,7 +60,7 @@ waves: 3
 - create `src/lib/finance/excelRegister.test.ts` — append round-trip test (build a workbook in memory → append → re-read → assert the row is present and existing sheets/rows are intact).
 **Depends on:** none
 
-**Why:** The 2026-06-29 operator note requires writing the voyage row back into Wency's actual `.xlsx` — append to the current-year sheet and re-upload, NEVER regenerate the file from scratch (preserve every existing sheet, column, and row). This adapter owns the `xlsx`-lib specifics (the architecture seam) so the confirm path and tests stay vendor-agnostic.
+**Why:** The 2026-06-29 operator note requires writing the voyage row back into Wency's actual `.xlsx` — append to the current-year sheet and re-upload, NEVER regenerate the file from scratch (preserve every existing sheet, column, and row). This adapter owns the `xlsx`-lib specifics (the architecture seam) so the confirm path and tests stay vendor-agnostic. `readRegister` ALSO powers Task 5's import — it parses the existing historical rows out of the register for review-before-insert.
 
 **Acceptance Criteria:**
 - `readRegister(buffer)` parses an `.xlsx` Uint8Array/Buffer into `{ sheetNames: string[]; sheets: Record<string, string[][]> }` (per-sheet AOA), so a caller can inspect the per-year sheets.
@@ -125,6 +127,47 @@ waves: 3
 
 ---
 
+## Task 5 — `import_voyage_register` tool: parse the existing register + stage its rows for confirm-before-insert
+**Wave:** 3
+**Persona:** backend
+**Files:**
+- modify `src/lib/agents/onedriveTools.ts` — add `import_voyage_register` to `TOOL_DEFINITIONS` (after the Task 3 `record_voyage_entry` block), add `"import_voyage_register"` to the `DESTRUCTIVE` set (after the Task 3 `record_voyage_entry` entry), add a `summarizeAction` case, and a stage branch in `executeTool` that reads + parses the register at stage time so the staged rows are reviewable.
+- modify `src/lib/agents/executeConfirmedAction.ts` — add a `case "import_voyage_register"` (after the Task 3 `record_voyage_entry` case) that inserts the confirmed parsed rows into `voyage_entries`.
+- modify `src/lib/agents/pendingActions.ts` — add a `case "import_voyage_register"` in `undoAction` (after the Task 3 `record_voyage_entry` case) that deletes the imported `voyage_entries` rows by their ids.
+- modify `src/lib/agents/executeConfirmedAction.test.ts` — add stage→confirm→execute coverage for `import_voyage_register`.
+**Depends on:** Task 1, Task 2, Task 3
+
+**Why:** ROADMAP Phase 4 success criterion 3 / ADR-006 — Wency's register already holds historical voyages; the agent must be able to backfill them into the `voyage_entries` index. Per ADR-006 this is USER-DRIVEN review/merge (stage the parsed rows for confirmation, NOT silent grouping/auto-classification) so a bad parse never books phantom voyages. It reuses `readRegister` (Task 2) and the `voyage_entries` insert path (Task 1) — small, additive. (Serialized after Task 3 because both edit `onedriveTools.ts` + `executeConfirmedAction.ts`; Task 5 appends its block/case AFTER Task 3's.)
+
+**Acceptance Criteria:**
+- `import_voyage_register` appears in `TOOL_DEFINITIONS` with required `company` (enum, the 8 entities — the company to attribute the imported rows to), required `registerItemId` (OneDrive item id of `Reis registratie.xlsx`), and optional `year` (string — if given, import only that sheet's rows; if omitted, import all year-sheets). `additionalProperties: false`. Description states it is CONFIRMED-BEFORE-WRITE, reads the existing register and stages the parsed rows for the user to review before any row is inserted, and does NOT modify the Excel file (read-only on OneDrive).
+- The tool is in the `DESTRUCTIVE` set (it writes to `voyage_entries` on confirm).
+- Calling the tool STAGES a `pending_actions` row (never writes voyage rows): the stage branch downloads the register by `registerItemId`, calls `readRegister`, maps each data row (skipping the header row of each sheet) of the selected year-sheet(s) to a `VoyageRegisterRow` using `REGISTER_COLUMNS` order, and stores the parsed rows + `company` in the staged `args`; the returned summary states the count of rows that WILL be inserted and which year-sheet(s) they came from, so the user reviews before confirming. Returns `{ status: "confirmation_required", action_id, summary }`.
+- On confirm: `executeConfirmedAction` inserts each staged parsed row via `recordVoyageEntry` (Task 1) with `company`, `createdBy: principal`, `sourceRef: registerItemId`, collects the inserted ids, and returns `undo_data: { voyageEntryIds: string[] }`.
+- Undo deletes every imported row by id via `deleteVoyageEntry` (loop over `voyageEntryIds`); returns `undone: true`.
+- `executeConfirmedAction.test.ts` covers: confirming `import_voyage_register` inserts one `recordVoyageEntry` call per parsed row; a missing `registerItemId` throws.
+
+**Action:**
+1. **TOOL_DEFINITIONS** (onedriveTools.ts, after Task 3's block): required `company` (enum, the 8), `registerItemId` (string); optional `year` (string). `additionalProperties: false`. Description: "Import the historical voyages already recorded in the Reis registratie.xlsx register into the finance voyage index. CONFIRMED BEFORE WRITING — calling it reads the existing register (read-only, the Excel file is NOT modified) and stages the parsed rows for you to review; on approval it inserts the reviewed rows into the voyage index. Pass `registerItemId` (the OneDrive item id of Reis registratie.xlsx — find it with search_files), `company` (which group company the voyages belong to), and optionally `year` to import a single year-sheet (omit to import all year-sheets). This does NOT silently group or classify — you review the parsed rows before they are written."
+2. **DESTRUCTIVE set:** add `"import_voyage_register",` after the Task 3 `"record_voyage_entry",` entry.
+3. **summarizeAction:** add a case returning e.g. `Import ${rowCount} voyage(s) from the ${year||"all year"} sheet(s) of Reis registratie.xlsx into ${company}'s voyage index (review before confirm; the Excel file is not changed)`.
+4. **Stage branch** in `executeTool` (this tool NEEDS an explicit stage branch because it has a stage-time read side-effect — mirror the batch-preview pattern, not the generic fall-through): validate `company`, `registerItemId` non-empty (else `{ error }`); `const connId = await resolveConnectionId(); const res = await downloadContent(connId, registerItemId); const buf = new Uint8Array(await res.arrayBuffer()); const parsed = readRegister(buf);` then for the selected sheet(s) (`year ? [year] : parsed.sheetNames`), for each data row after the header (`rows.slice(1)`), map cell values to a `VoyageRegisterRow` via `REGISTER_COLUMNS` (`REGISTER_COLUMNS.forEach((key,i)=>{ row[key] = cells[i] ?? null })`), skipping fully-empty rows. Build the summary with the total row count. `stagePendingAction({ principal: sessionPrincipal, tool: "import_voyage_register", args: { company, registerItemId, year, rows: parsedRows }, summary })`; return `{ status: "confirmation_required", action_id: row.id, summary }`. Import `readRegister` + `REGISTER_COLUMNS` from `@/lib/finance/excelRegister`, and `downloadContent` from `@/lib/microsoft/onedrive` (already added in Task 3).
+5. **executeConfirmedAction case** (after Task 3's case): `const rows = Array.isArray(args.rows) ? args.rows : []; const ids: string[] = []; for (const r of rows) { const { id } = await recordVoyageEntry({ company, ...r, createdBy: principal, sourceRef: registerItemId }); ids.push(id); } return { result: { imported: ids.length, voyageEntryIds: ids }, undo_data: { voyageEntryIds: ids } };` — reuses the `recordVoyageEntry` import added in Task 3.
+6. **pendingActions undo case** (after Task 3's case): `const ids = Array.isArray(undo.voyageEntryIds) ? undo.voyageEntryIds.filter((x): x is string => typeof x === "string") : []; for (const id of ids) { await deleteVoyageEntry(id); }` then fall through to the `status: "undone"` update. Reuses the `deleteVoyageEntry` import added in Task 3.
+7. Tests in `executeConfirmedAction.test.ts`: mock voyageLedger; build staged `args.rows` with 2 rows; assert `executeConfirmedAction("import_voyage_register", args, principal)` calls `recordVoyageEntry` twice and returns `imported: 2`; assert a missing `registerItemId` throws at stage time (test the stage branch via the tool executor, mirroring the Task 3 missing-id test).
+
+**Validation:** (builder self-check)
+- `grep -c "import_voyage_register" src/lib/agents/onedriveTools.ts` → `≥ 4` (TOOL_DEFINITIONS name + DESTRUCTIVE entry + summarizeAction case + stage branch)
+- `grep -c "import_voyage_register" src/lib/agents/executeConfirmedAction.ts` → `≥ 1`
+- `grep -c "readRegister" src/lib/agents/onedriveTools.ts` → `≥ 1` (stage-time parse)
+- `grep -c "import_voyage_register" src/lib/agents/pendingActions.ts` → `1`
+- `npx vitest run src/lib/agents/executeConfirmedAction.test.ts` → passes
+- `npx tsc --noEmit 2>&1 | grep -c "error TS"` → `0`
+
+**Context:** Read @src/lib/agents/onedriveTools.ts (the Task 3 `record_voyage_entry` block + DESTRUCTIVE + summarizeAction + the batch-move stage branch with a stage-time preview ~1131–1201) @src/lib/agents/executeConfirmedAction.ts (the Task 3 `record_voyage_entry` case) @src/lib/agents/pendingActions.ts (the Task 3 `record_voyage_entry` undo case) @src/lib/finance/voyageLedger.ts @src/lib/finance/excelRegister.ts @src/lib/microsoft/onedrive.ts @src/lib/agents/executeConfirmedAction.test.ts
+
+---
+
 ## Task 4 — Finance page voyage drill-down section + summary API route + REVERSIBLE_TOOLS
 **Wave:** 3
 **Persona:** frontend
@@ -158,7 +201,7 @@ waves: 3
 
 **Design:** (frontend task)
 - Register: product (maritime operations console — existing shipped system)
-- Tokens used: existing finance CSS classes only — `fin-overview`, `fin-overview-head`, `fin-consolidated`, `fin-company-grid`, `fin-company-card`, `fin-stat`, `fin-stat-label`, `fin-stat-value`, `fin-net-pos`, `fin-net-neg`, `fin-net-zero`, `panel-h`, `skeleton`, `empty`, `btn ghost sm`. No new CSS variables, no new hex colors, no new fonts.
+- Tokens used: `var(--bg)`, `var(--surface)`, `var(--surface-2)`, `var(--border)`, `var(--text)`, `var(--text-dim)`, `var(--accent)`, `var(--success)`, `var(--danger)`, `--sp-2`, `--sp-3`, `--sp-4`, `--radius`, `--font-sans`, `--font-mono` — these are the custom properties the existing `.fin-overview` / `.fin-company-card` / `.fin-stat` / `.fin-net-*` / `.panel-h` / `.skeleton` / `.empty` classes resolve to. The new section adds NO new CSS variables, NO new hex colors, NO new fonts — it reuses those classes verbatim.
 - Scope: section (one new section appended to the finance page)
 - Anti-pattern guard: builder runs `node bin/slop-detect.mjs src/app/finance/page.tsx` pre-commit; commit blocked on critical findings.
 
@@ -167,9 +210,10 @@ waves: 3
 ## Success Criteria
 - [ ] `voyage_entries` table exists with the 26 real register columns + the 8-company CHECK, RLS on / no policies (verified: `enable row level security` present, `create policy` count = 0).
 - [ ] A voyage recorded via the agent is CONFIRMED-BEFORE-WRITE: staging it writes nothing; on confirm it inserts a `voyage_entries` row AND appends a row to the matching year-sheet of `Reis registratie.xlsx`, re-uploaded in place with all existing sheets/rows preserved.
+- [ ] `import_voyage_register` reads Wency's existing register and stages its historical rows for confirm-before-insert (user-reviewed per ADR-006, the Excel file unmodified); on confirm the reviewed rows land in `voyage_entries`, and undo removes them.
 - [ ] Undo of a confirmed voyage deletes the DB row and surfaces that the Excel append is not auto-reverted.
 - [ ] The finance page shows a per-company voyage economics drill-down (count + revenue + net) with loading/error/empty states, reusing the existing finance design tokens.
-- [ ] `npx tsc --noEmit` passes; all new tests (`voyageLedger.test.ts`, `excelRegister.test.ts` round-trip, `executeConfirmedAction.test.ts` additions) pass.
+- [ ] `npx tsc --noEmit` passes; all new tests (`voyageLedger.test.ts`, `excelRegister.test.ts` round-trip, `executeConfirmedAction.test.ts` additions for both tools) pass.
 
 ## Verification Contract
 
@@ -224,7 +268,7 @@ waves: 3
 ### Contract for Task 3 — undo deletes the DB row
 **Check type:** grep-match
 **Command:** `grep -c "deleteVoyageEntry" src/lib/agents/pendingActions.ts`
-**Expected:** `1`
+**Expected:** ≥ 1
 **Fail if:** Returns 0 — the voyage undo does not reverse the index insert
 
 ### Contract for Task 3 — confirm/execute test
@@ -232,6 +276,24 @@ waves: 3
 **Command:** `npx vitest run src/lib/agents/executeConfirmedAction.test.ts`
 **Expected:** test run passes
 **Fail if:** the record_voyage_entry confirm coverage fails
+
+### Contract for Task 5 — import tool registered + destructive + stage-time parse
+**Check type:** grep-match
+**Command:** `grep -c "import_voyage_register" src/lib/agents/onedriveTools.ts; grep -c "readRegister" src/lib/agents/onedriveTools.ts`
+**Expected:** first ≥ 4 (TOOL_DEFINITIONS, DESTRUCTIVE, summarizeAction, stage branch), second ≥ 1 (stage-time parse)
+**Fail if:** the import tool is missing from any set, or the stage branch does not read+parse the register
+
+### Contract for Task 5 — confirm inserts the reviewed rows
+**Check type:** grep-match
+**Command:** `grep -c "import_voyage_register" src/lib/agents/executeConfirmedAction.ts`
+**Expected:** ≥ 1
+**Fail if:** Returns 0 — confirming the import does not insert the parsed rows into voyage_entries
+
+### Contract for Task 5 — import undo deletes the imported rows
+**Check type:** grep-match
+**Command:** `grep -c "import_voyage_register" src/lib/agents/pendingActions.ts`
+**Expected:** `1`
+**Fail if:** Returns 0 — the import undo does not remove the inserted voyage rows
 
 ### Contract for Task 4 — voyages API route gated
 **Check type:** grep-match

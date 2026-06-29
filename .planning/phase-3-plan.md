@@ -1,8 +1,8 @@
 ---
 phase: 3
 goal: "The agent generates an invoice from Wency's real per-company template and saves it to OneDrive, confirm-before-finalize, with undo."
-tasks: 5
-waves: 4
+tasks: 4
+waves: 3
 ---
 
 # Phase 3: Invoice generation from template
@@ -53,30 +53,36 @@ waves: 4
 
 ---
 
-## Task 2 — `invoiceTemplate.ts` (docxtemplater fill adapter) + `invoiceExtraction.ts` (LLM field extraction)
+## Task 2 — `invoiceTemplate.ts` (docxtemplater fill adapter) + `invoiceExtraction.ts` (LLM field extraction) + their seam tests
 **Wave:** 2
 **Persona:** backend
 **Files:**
 - `src/lib/agents/invoiceTemplate.ts` (new) — exports `fillInvoiceTemplate(templateBuffer: Buffer, data: InvoiceFields): Buffer` and `InvoiceFields` type; pure docxtemplater fill, no IO.
 - `src/lib/agents/invoiceExtraction.ts` (new) — exports `extractInvoiceFields(pdfText: string): Promise<ExtractedInvoice>` using the existing `complete()` LLM client, Zod-validated; and the `ExtractedInvoice` Zod schema.
+- `src/lib/agents/invoiceTemplate.test.ts` (new) — fills a committed template, asserts non-empty buffer + readable error on a bad template.
+- `src/lib/agents/invoiceExtraction.test.ts` (new) — mocks `complete()`, asserts schema validation pass/fail.
 
 **Depends on:** Task 1 (consumes the committed `.docx` templates as test fixtures and defines the field shape the templates expect)
 
-**Why:** ADR-007 §1+§3 — the templating engine and the LLM extraction are the two pure seams (architecture rule 3: adapters at seams). Keeping fill (docx) and extraction (LLM) in their own lib files makes them unit-testable in isolation and keeps `onedriveTools` thin. The schema is load-bearing: a wrong shipper or off-by-one amount must be a typed field the confirm card can show for correction.
+**Why:** ADR-007 §1+§3 — the templating engine and the LLM extraction are the two pure seams (architecture rule 3: adapters at seams). Keeping fill (docx) and extraction (LLM) in their own lib files makes them unit-testable in isolation and keeps `onedriveTools` thin. The schema is load-bearing: a wrong shipper or off-by-one amount must be a typed field the confirm card can show for correction. Each unit ships with its own seam test in the same task so the code and its proof land together.
 
 **Acceptance Criteria:**
 - `fillInvoiceTemplate(buf, fields)` returns a non-empty Buffer for a valid template+fields pair and throws a readable error (not a raw docxtemplater multi-error) when a template has a malformed tag.
 - `extractInvoiceFields(text)` returns `{ company, recipient_name, recipient_address, recipient_vat, vessel, invoice_date, crewing, travel, service_fee, cash_advance, total, currency }` validated by Zod; `company` is constrained to `"Gefo" | "Novo Porto"`; on a model response that fails schema validation it throws an error naming the invalid fields.
 - Missing optional line-item amounts default to `"0.00"` (string, since they render into the docx as-is), never `undefined`, so the rendered invoice never shows a blank `{crewing}`.
+- `invoiceTemplate.test.ts`: rendering the committed `gefo.docx` with valid sample fields returns a Buffer with `byteLength > 0`; a hand-crafted bad-tag template throws an Error whose message names the bad tag.
+- `invoiceExtraction.test.ts`: a mocked `complete()` returning valid JSON yields a parsed `ExtractedInvoice`; a mocked reply with a missing `total` or an invalid `company` throws the validation error.
 
 **Action:**
 1. `invoiceTemplate.ts`: `import Docxtemplater from "docxtemplater"; import PizZip from "pizzip";`. `fillInvoiceTemplate(templateBuffer, data)` → `const zip = new PizZip(templateBuffer); const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, nullGetter: () => "" }); doc.render(data); return doc.toBuffer();`. Wrap render in try/catch; on docxtemplater's `error.properties.errors` (its multi-error shape) join the `.message`s into one thrown Error so callers get a readable string. Define and export `InvoiceFields` matching the Task-1 token set.
 2. `invoiceExtraction.ts`: define `ExtractedInvoiceSchema = z.object({...})` (`company: z.enum(["Gefo","Novo Porto"])`, the recipient/vessel/date fields as strings, the five amount fields as strings coerced from number-or-string, `currency: z.string().default("EUR")`). `extractInvoiceFields(pdfText)` builds a system+user message instructing strict JSON extraction of those fields from the credit-note/voyage text, calls the existing `complete(messages)` from `@/lib/openrouter/client`, parses the JSON out of the reply (strip code fences), and `ExtractedInvoiceSchema.parse()`s it — on `ZodError` throw `new Error("invoice extraction failed validation: " + issues)`.
 3. Do NOT call any OneDrive or DB code in either file — these are pure seams (the IO happens in Task 4's confirm path).
+4. `invoiceTemplate.test.ts`: `import { fillInvoiceTemplate } from "./invoiceTemplate"; import { readFileSync } from "fs";` — load `assets/invoice-templates/gefo.docx`, render, assert `byteLength > 0`. For the bad-tag case build a tiny in-memory `.docx` with an unclosed `{tag` (reuse the Task-1 zip scaffold) and assert the thrown message names it.
+5. `invoiceExtraction.test.ts`: `vi.mock("@/lib/openrouter/client", () => ({ complete: vi.fn() }))`; set per-case return values (valid JSON → parsed; missing `total` / invalid `company` → ZodError throw); assert.
 
 **Validation:** (builder self-check)
 - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → `0`
-- `npx vitest run src/lib/agents/invoiceTemplate.test.ts src/lib/agents/invoiceExtraction.test.ts` → all pass (tests authored in Task 5)
+- `npx vitest run src/lib/agents/invoiceTemplate.test.ts src/lib/agents/invoiceExtraction.test.ts` → all pass
 - `grep -c "doc.toBuffer()" src/lib/agents/invoiceTemplate.ts` → `≥ 1`
 - `grep -c "ExtractedInvoiceSchema.parse\|.parse(" src/lib/agents/invoiceExtraction.ts` → `≥ 1`
 
@@ -115,7 +121,7 @@ waves: 4
 
 ---
 
-## Task 4 — `generate_invoice_from_template` tool: stage (onedriveTools) + execute (executeConfirmedAction) + undo (pendingActions) + REVERSIBLE_TOOLS + system prompt
+## Task 4 — `generate_invoice_from_template` tool: stage + execute + undo + REVERSIBLE_TOOLS + system prompt + confirm-path test
 **Wave:** 3
 **Persona:** backend
 **Files:**
@@ -125,10 +131,11 @@ waves: 4
 - `src/app/page.tsx` — add `"generate_invoice_from_template"` to `REVERSIBLE_TOOLS` (~line 62). One-line add.
 - `src/app/finance/page.tsx` — add `"generate_invoice_from_template"` to `REVERSIBLE_TOOLS` (~line 61). One-line add.
 - `src/lib/openrouter/client.ts` — add a `SYSTEM_PROMPT` paragraph (after 5e, ~line 197) describing the tool.
+- `src/lib/agents/executeConfirmedAction.test.ts` — ADD a `generate_invoice_from_template` block (mocks already exist for onedrive `uploadFile`; add a mock for `getInvoiceTemplate` + `fillInvoiceTemplate` + `readFileSync`).
 
 **Depends on:** Task 2 (imports `fillInvoiceTemplate` + `extractInvoiceFields`), Task 3 (imports `getInvoiceTemplate`)
 
-**Why:** ADR-003 + ADR-007 §5 — the write to OneDrive must be confirm-before-write: stage captures the extracted fields + chosen company template + target path; the docx fill + `uploadFile` run ONLY at confirm; undo deletes the generated file. This is the enforcement (the model has no code path to the side-effect). **Shared-file note:** Phase 4 edits these same five files for `record_voyage_entry`/`import_voyage_register`; this task adds ONLY the `generate_invoice_from_template` surface so the two phases' edits stay non-overlapping at build time.
+**Why:** ADR-003 + ADR-007 §5 — the write to OneDrive must be confirm-before-write: stage captures the extracted fields + chosen company template + target path; the docx fill + `uploadFile` run ONLY at confirm; undo deletes the generated file. This is the enforcement (the model has no code path to the side-effect). The confirm-path seam test lands in the same task that wires the confirm path, so the proof that `uploadFile` gets the year-suffixed path and `undo_data` captures the uploaded id ships with the code it tests. **Shared-file note:** Phase 4 edits these same files for `record_voyage_entry`/`import_voyage_register`; this task adds ONLY the `generate_invoice_from_template` surface so the two phases' edits stay non-overlapping at build time.
 
 **Acceptance Criteria:**
 - Calling `generate_invoice_from_template` in the agent loop returns `{ status: "confirmation_required", action_id, summary }` and uploads NOTHING (stage only); fails closed with "no verified principal in session" when `sessionPrincipal` is absent (mirror existing gate).
@@ -136,6 +143,7 @@ waves: 4
 - On confirm: `getInvoiceTemplate(company)` selects the template → its committed `.docx` buffer is read → `fillInvoiceTemplate` produces the buffer → `uploadFile(connId, { path: "alle firma's/Aquavoy Ltd/Verzonden Facturen/{year}" }, "{invoice_number} ...docx", buffer, docxContentType)` uploads it → returns `{ itemId, name, webUrl }` and `undo_data: { uploadedItemId }`.
 - Undo deletes the uploaded invoice via `deleteItemOnDrive`; the tool appears as reversible in both chat and finance pending-action cards.
 - The system prompt paragraph instructs the agent to call the tool ONCE, relay the summary, and not re-call after the user says yes (mirror the 5e wording).
+- `executeConfirmedAction.test.ts`: the new block mocks `getInvoiceTemplate`/`fillInvoiceTemplate`/`uploadFile`/`readFileSync`, calls `executeConfirmedAction("generate_invoice_from_template", fields, "Wency")`, and asserts `uploadFile` was called with the year-suffixed path and that `undo_data.uploadedItemId` equals the uploaded item id; the full suite stays green (no regression).
 
 **Action:**
 1. `TOOL_DEFINITIONS`: add the function with params `company` (enum Gefo/Novo Porto — optional; if omitted the agent should infer from the source doc, but the staged fields are user-correctable), the extracted fields (`recipient_name`, `recipient_address`, `recipient_vat`, `vessel`, `invoice_date`, `invoice_number`, `crewing`, `travel`, `service_fee`, `cash_advance`, `total`, `currency`), and `targetYear` (defaults to current year). Description mirrors `save_email_attachment`'s "CONFIRMED BEFORE SAVING / call ONCE / relay summary" framing.
@@ -146,6 +154,7 @@ waves: 4
 6. `pendingActions.ts` undo `case "generate_invoice_from_template"`: identical to the `save_email_attachment` delete case — read `undo.uploadedItemId`, `resolveConnectionId()`, `deleteItemOnDrive(connId, uploadedItemId)`. (Combine with the existing `save_email_attachment` case via fall-through if both reduce to the same delete, to keep it DRY — both reverse by deleting an uploaded item.)
 7. Add `"generate_invoice_from_template"` to both `REVERSIBLE_TOOLS` sets.
 8. `SYSTEM_PROMPT`: add a `5f. GENERATE INVOICES` paragraph after 5e mirroring its structure (read the source PDF with read_file → extract fields → call generate_invoice_from_template ONCE → staged for confirmation → reversible → relay summary, do not re-call).
+9. `executeConfirmedAction.test.ts`: mirror the existing `save_email_attachment` test — add `vi.mock("@/lib/agents/invoiceTemplates", ...)`, `vi.mock("@/lib/agents/invoiceTemplate", ...)`, and a `fs` `readFileSync` mock; call `executeConfirmedAction("generate_invoice_from_template", fields, "Wency")`; assert the `uploadFile` call args include the year-suffixed `Verzonden Facturen/{year}` path and that `undo_data.uploadedItemId` equals the uploaded item id.
 
 **Validation:** (builder self-check)
 - `npx tsc --noEmit 2>&1 | grep -c "error TS"` → `0`
@@ -154,39 +163,16 @@ waves: 4
 - `grep -c "generate_invoice_from_template" src/lib/agents/pendingActions.ts` → `≥ 1`
 - `grep -c "generate_invoice_from_template" src/app/page.tsx src/app/finance/page.tsx` → each `1`
 - `grep -c "generate_invoice_from_template\|GENERATE INVOICE" src/lib/openrouter/client.ts` → `≥ 1`
-
-**Context:** Read @src/lib/agents/onedriveTools.ts @src/lib/agents/executeConfirmedAction.ts @src/lib/agents/pendingActions.ts @src/lib/openrouter/client.ts @src/lib/agents/invoiceTemplate.ts @src/lib/agents/invoiceExtraction.ts @src/lib/agents/invoiceTemplates.ts
-
----
-
-## Task 5 — Seam tests for the three new units + the new confirm/stage path
-**Wave:** 4
-**Persona:** backend
-**Files:**
-- `src/lib/agents/invoiceTemplate.test.ts` (new) — fills a committed template, asserts non-empty buffer + readable error on a bad template.
-- `src/lib/agents/invoiceExtraction.test.ts` (new) — mocks `complete()`, asserts schema validation pass/fail.
-- `src/lib/agents/executeConfirmedAction.test.ts` — ADD a `generate_invoice_from_template` block (mocks already exist for onedrive `uploadFile`; add a mock for `getInvoiceTemplate` + `fillInvoiceTemplate` + `readFileSync`).
-
-**Depends on:** Task 2, Task 3, Task 4 (tests the code those tasks produce)
-
-**Why:** The repo is well-tested at the seam (per learnings + `@src/lib/agents/executeConfirmedAction.test.ts`). These tests prove the fill is deterministic, extraction rejects bad LLM output, and the confirm path captures the right `undo_data` — without a real Graph call, DB write, or LLM request.
-
-**Acceptance Criteria:**
-- `invoiceTemplate.test.ts`: rendering the committed `gefo.docx` with valid sample fields returns a Buffer with `byteLength > 0`; a hand-crafted bad-tag template throws an Error whose message names the bad tag.
-- `invoiceExtraction.test.ts`: a mocked `complete()` returning valid JSON yields a parsed `ExtractedInvoice`; a mocked reply with a missing `total` or an invalid `company` throws the validation error.
-- `executeConfirmedAction.test.ts`: the new block mocks `getInvoiceTemplate`/`fillInvoiceTemplate`/`uploadFile`, calls `executeConfirmedAction("generate_invoice_from_template", fields, "Wency")`, and asserts `uploadFile` was called with the year-suffixed path and that `undo_data.uploadedItemId` equals the uploaded item id.
-- All tests pass; existing tests still pass (no regression).
-
-**Action:**
-1. `invoiceTemplate.test.ts`: `import { fillInvoiceTemplate } from "./invoiceTemplate"; import { readFileSync } from "fs";` — load `assets/invoice-templates/gefo.docx`, render, assert. For the bad-tag case build a tiny in-memory `.docx` with an unclosed `{tag` (reuse the Task-1 zip scaffold) and assert the thrown message.
-2. `invoiceExtraction.test.ts`: `vi.mock("@/lib/openrouter/client", () => ({ complete: vi.fn() }))`; set return values per case; assert.
-3. Extend `executeConfirmedAction.test.ts` mirroring its existing `save_email_attachment` test: add `vi.mock("@/lib/agents/invoiceTemplates", ...)`, `vi.mock("@/lib/agents/invoiceTemplate", ...)`, and a `fs` `readFileSync` mock; assert the `uploadFile` call args and `undo_data`.
-
-**Validation:** (builder self-check)
-- `npx vitest run src/lib/agents/invoiceTemplate.test.ts src/lib/agents/invoiceExtraction.test.ts src/lib/agents/executeConfirmedAction.test.ts` → all pass
+- `npx vitest run src/lib/agents/executeConfirmedAction.test.ts` → all pass
 - `npx vitest run` → full suite green (no regression)
 
-**Context:** Read @src/lib/agents/executeConfirmedAction.test.ts @src/lib/agents/invoiceTemplate.ts @src/lib/agents/invoiceExtraction.ts @src/lib/agents/executeConfirmedAction.ts
+**Design:**
+- Register: product
+- Tokens used: var(--accent), var(--surface), var(--border), var(--text) (constant-only edit to REVERSIBLE_TOOLS — no new rendered elements; tokens are those the existing pending-action card already uses)
+- Scope: component
+- Anti-pattern guard: builder runs `node bin/slop-detect.mjs` pre-commit (no-op — no style changes)
+
+**Context:** Read @src/lib/agents/onedriveTools.ts @src/lib/agents/executeConfirmedAction.ts @src/lib/agents/pendingActions.ts @src/lib/openrouter/client.ts @src/lib/agents/invoiceTemplate.ts @src/lib/agents/invoiceExtraction.ts @src/lib/agents/invoiceTemplates.ts @src/lib/agents/executeConfirmedAction.test.ts
 
 ---
 
@@ -229,6 +215,12 @@ waves: 4
 **Expected:** Non-zero (≥ 1)
 **Fail if:** Returns 0 — extraction is not Zod-validated (an unchecked LLM parse could book a wrong invoice).
 
+### Contract for Task 2 — seam tests pass
+**Check type:** command-exit
+**Command:** `npx vitest run src/lib/agents/invoiceTemplate.test.ts src/lib/agents/invoiceExtraction.test.ts 2>&1 | tail -3`
+**Expected:** Both files report passed (0 failed).
+**Fail if:** Either fill or extraction test fails — the adapter or schema is broken.
+
 ### Contract for Task 3 — migration is service-role-only (RLS, no policies)
 **Check type:** command-exit
 **Command:** `grep -c "enable row level security" supabase/migrations/0016_invoice_templates.sql; grep -c "create policy" supabase/migrations/0016_invoice_templates.sql`
@@ -253,6 +245,24 @@ waves: 4
 **Expected:** Both files non-zero
 **Fail if:** The execute case or the undo case is missing — the tool would stage but never fill/upload, or could not be undone.
 
+### Contract for Task 4 — fill adapter wired into the confirm path
+**Check type:** grep-match
+**Command:** `grep -c "fillInvoiceTemplate" src/lib/agents/executeConfirmedAction.ts`
+**Expected:** Non-zero (≥ 1)
+**Fail if:** Returns 0 — `fillInvoiceTemplate` exists in lib but is never called from the confirm path (the docx would never be filled).
+
+### Contract for Task 4 — template accessor wired into the confirm path
+**Check type:** grep-match
+**Command:** `grep -c "getInvoiceTemplate" src/lib/agents/executeConfirmedAction.ts`
+**Expected:** Non-zero (≥ 1)
+**Fail if:** Returns 0 — `getInvoiceTemplate` exists in lib but is never called from the confirm path (the per-company template would never be selected).
+
+### Contract for Task 4 — extraction wired into the agent path
+**Check type:** grep-match
+**Command:** `grep -rc "extractInvoiceFields" src/lib/agents/onedriveTools.ts src/lib/agents/executeConfirmedAction.ts`
+**Expected:** At least one of the two files returns non-zero (the file whose branch extracts the invoice fields)
+**Fail if:** Both return 0 — `extractInvoiceFields` exists in lib but is never called (the LLM extraction is dead code).
+
 ### Contract for Task 4 — reversible in both UI surfaces
 **Check type:** command-exit
 **Command:** `grep -c "generate_invoice_from_template" src/app/page.tsx; grep -c "generate_invoice_from_template" src/app/finance/page.tsx`
@@ -265,13 +275,13 @@ waves: 4
 **Expected:** `0`
 **Fail if:** Any TS error.
 
-### Contract for Task 5 — new + existing seam tests pass
+### Contract for Task 4 — confirm-path test + full suite pass
 **Check type:** command-exit
 **Command:** `npx vitest run 2>&1 | tail -3`
 **Expected:** Suite reports all files passed (0 failed).
 **Fail if:** Any test fails — the fill, extraction, or confirm path is broken, or a regression was introduced.
 
-### Contract for Task 5 — E2E confirm path proven
+### Contract for Task 4 — E2E confirm path proven
 **Check type:** behavioral
 **Command:** (verifier inspects `executeConfirmedAction.test.ts` `generate_invoice_from_template` block)
 **Expected:** The test calls `executeConfirmedAction("generate_invoice_from_template", fields, "Wency")` with `uploadFile` mocked, and asserts `uploadFile` received the year-suffixed `Verzonden Facturen/{year}` path and that `undo_data.uploadedItemId` matches the uploaded id.

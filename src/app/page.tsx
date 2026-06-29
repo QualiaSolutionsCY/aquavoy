@@ -349,6 +349,10 @@ export default function Chat() {
       const res = await fetch("/api/actions");
       const json = await res.json();
       setPending(json.data?.actions ?? []);
+      // A successful refresh reconciles the stack with the server, so any error
+      // left over from a prior action attempt (e.g. a dropped "not pending"
+      // cancel) no longer applies — clear it so it doesn't linger across turns.
+      setActionError(null);
     } catch (e) {
       devWarn("pending-actions load failed", e);
     }

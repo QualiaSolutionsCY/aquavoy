@@ -283,7 +283,8 @@ html, body {
     background: oklch(0.14 0.015 220 / 0.92);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-right: 1px solid var(--border-subtle);
+    /* 1px structural divider against page content (inset = no box-width change, no outset overdraw) */
+    box-shadow: inset -1px 0 0 var(--border-subtle);
     overflow-y: auto;
   }
 }
@@ -357,8 +358,8 @@ html, body {
   width: min(80vw, 300px);
   padding: var(--sp-4);
   background: var(--bg);
-  border-right: 1px solid var(--border);
-  box-shadow: var(--shadow-2);
+  /* trailing-edge divider folded into the existing drop shadow (inset keeps drawer width fixed) */
+  box-shadow: var(--shadow-2), inset -1px 0 0 var(--border);
   transform: translateX(-100%);
   transition: transform var(--transition-base);
   overflow-y: auto;

@@ -56,11 +56,13 @@ export default function Settings() {
       !("serviceWorker" in navigator) ||
       !("PushManager" in window)
     ) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only browser-capability probe; a lazy useState initializer would run during SSR and cause a hydration mismatch
       setPermState("unsupported");
       return;
     }
     if (typeof Notification !== "undefined") {
       const current = Notification.permission;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Notification.permission is browser-only (same SSR-safety reason as above)
       setPermState(current === "granted" ? "granted" : current === "denied" ? "denied" : "default");
     }
   }, []);
@@ -82,6 +84,7 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- canonical fetch-on-mount; setState happens after the await, not synchronously
     fetchPrefs();
   }, [fetchPrefs]);
 
@@ -202,6 +205,7 @@ export default function Settings() {
   /* Sync inputs when prefs load */
   useEffect(() => {
     if (prefs) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the controlled quiet-hours inputs once from async-loaded prefs; user edits diverge afterward
       setQStart(prefs.quiet_hours_start ?? "");
       setQEnd(prefs.quiet_hours_end ?? "");
     }

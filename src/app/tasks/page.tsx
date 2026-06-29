@@ -98,6 +98,7 @@ export default function Tasks() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- canonical fetch-on-mount; setState happens after the await, not synchronously
     fetchTasks();
   }, [fetchTasks]);
 

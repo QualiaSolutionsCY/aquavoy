@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { notifyOnStage } from "@/lib/notify/triggers";
+import type { Principal } from "@/lib/openrouter/client";
 import { resolveConnectionId } from "@/lib/microsoft/connections";
 import { updateItem, deleteItem as deleteItemOnDrive } from "@/lib/microsoft/onedrive";
 import { cancelScheduled } from "@/lib/mail/scheduled";
@@ -97,7 +99,11 @@ export async function stagePendingAction(input: StageInput): Promise<PendingActi
     .single();
 
   if (error) throw new Error(`Failed to stage pending action: ${error.message}`);
-  return toPendingAction(data as PendingRow);
+  const action = toPendingAction(data as PendingRow);
+  // Fire-and-forget: a notification failure MUST NOT fail the staging insert
+  // (ADR-003 + ADR-008 invariant — the insert is the confirm-gate).
+  void notifyOnStage(action.principal as Principal, { summary: action.summary }).catch(() => {});
+  return action;
 }
 
 // ── List ─────────────────────────────────────────────────────

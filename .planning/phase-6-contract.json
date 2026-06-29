@@ -1,0 +1,296 @@
+{
+  "version": 1,
+  "phase": 6,
+  "goal": "Tell Wency when a proposal/action stages for confirmation, via web-push (PWA Service Worker) as the MVP channel behind a vendor-agnostic adapter seam, with preferences + quiet hours; triggers are fire-and-forget (never break stagePendingAction); WhatsApp deferred (ADR-008).",
+  "why": "Wency's meeting ask was 'tell me like a WhatsApp when an invoice is ready'. Web-push delivers that immediately with zero vendor onboarding, riding the Phase-1 PWA manifest; the adapter seam means the WhatsApp follow-on is one file, not a refactor.",
+  "generated_at": "2026-06-29T09:15:00Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:08076f19db74cab81bb9844b3c2deed69ab0829225865684092c60c0afffbbe7",
+  "success_criteria": [
+    "When a destructive action stages (stagePendingAction), the signed-in operator with a registered subscription and a 'stage' opt-in gets an OS web-push notification on their installed PWA, outside quiet hours.",
+    "A notification delivery failure NEVER throws or fails the stagePendingAction insert; it is logged to notification_log and swallowed (fire-and-forget, test-proven).",
+    "The notify layer is a vendor-agnostic NotificationChannel adapter; web-push is one implementation; adding WhatsApp later is one new file with no change to triggers/routes.",
+    "notification_preferences + notification_log exist (migration 0019), RLS-on / service-role-only, principal-CHECK-constrained, every query scoped to the session principal.",
+    "The operator can enable push, toggle the stage event, and set wrap-midnight quiet hours from /settings; the iOS 'install first' caveat is shown.",
+    "WhatsApp/Telnyx is NOT built (deferred per ADR-008); only the adapter seam is left ready.",
+    "npx tsc --noEmit exits 0; all new tests pass."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Migration: notification_preferences + notification_log (0019)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0019_notifications.sql"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "notification_preferences keyed by principal with channel, enabled_events (jsonb), quiet_hours_start/end (nullable time), push_subscription (nullable jsonb), timestamps; principal is unique.",
+        "notification_log with id, principal, channel, event, sent_at, error (nullable), metadata (jsonb); index on (principal, sent_at).",
+        "Both tables: principal text not null check (principal in ('Wency','Jeanette')), matching 0010_pending_actions.sql.",
+        "Both tables: RLS enabled with NO policies (service-role-only), matching the project pattern; justification stated in a SQL comment (no Supabase Auth, principal lives in a signed cookie)."
+      ],
+      "action": "Mirror 0010_pending_actions.sql header + structure. enabled_events default '[\"stage\"]'. Quiet-hours wrap logic lives in code, not schema. 90-day audit enforced at query time (SQL comment, no DB cron).",
+      "context_files": [
+        "supabase/migrations/0010_pending_actions.sql",
+        ".planning/decisions/ADR-008-notification-channel.md",
+        "src/app/api/actions/route.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0019_notifications.sql"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0019_notifications.sql",
+          "pattern": "enable row level security",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0019_notifications.sql",
+          "pattern": "push_subscription",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0019_notifications.sql",
+          "pattern": "principal in \\('Wency', ?'Jeanette'\\)",
+          "expect": "present"
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Adapter seam + web-push channel + Service Worker",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/env.ts",
+        "package.json"
+      ],
+      "files_create": [
+        "src/lib/notify/adapter.ts",
+        "src/lib/notify/webpush.ts",
+        "src/lib/notify/webpush.test.ts",
+        "public/sw.js"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "adapter.ts exports a NotificationChannel interface (name + send(principal, message, subscription)) and a NotifyMessage type; it contains NO web-push specifics (the seam).",
+        "webpush.ts imports and implements the NotificationChannel seam; webPushChannel.send() never throws: WebPushError 410/404 -> { ok:false, expired:true }, other error -> { ok:false, error }, missing VAPID keys -> { ok:false } without calling sendNotification.",
+        "public/sw.js has push (showNotification) + notificationclick handlers.",
+        "web-push is in package.json dependencies; getVapidEnv() added to env.ts with all fields optional (app boots without keys)."
+      ],
+      "action": "npm install web-push + -D @types/web-push. adapter.ts is vendor-agnostic, imports Principal from @/lib/openrouter/client. webpush.ts imports NotificationChannel from the adapter and implements it; uses setVapidDetails + sendNotification, wrapped in try/catch. env getVapidEnv reads VAPID keys optionally (try/catch returning null). webpush.test.ts mocks web-push: 410 maps to expired, generic error does not throw, missing keys skips send.",
+      "context_files": [
+        ".planning/decisions/ADR-008-notification-channel.md",
+        "src/lib/env.ts",
+        "src/lib/openrouter/client.ts"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "package.json",
+          "pattern": "web-push",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/notify/adapter.ts",
+          "pattern": "NotificationChannel",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/notify/webpush.ts",
+          "pattern": "adapter",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "public/sw.js",
+          "pattern": "showNotification",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "public/sw.js",
+          "pattern": "notificationclick",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/notify/webpush.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Fire-and-forget trigger + preferences lib + API routes (subscribe + preferences)",
+      "wave": 2,
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/lib/agents/pendingActions.ts"
+      ],
+      "files_create": [
+        "src/lib/notify/triggers.ts",
+        "src/lib/notify/preferences.ts",
+        "src/lib/notify/triggers.test.ts",
+        "src/app/api/notify/subscribe/route.ts",
+        "src/app/api/notify/preferences/route.ts",
+        "src/app/api/notify/preferences/route.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "notifyOnStage(principal, action) gates on push_subscription present + 'stage' opt-in + not within quiet hours; otherwise sends nothing.",
+        "On send it builds a NotifyMessage from action.summary, calls webPushChannel.send, logs the outcome to notification_log; on expired (410/404) clears push_subscription.",
+        "stagePendingAction calls notifyOnStage AFTER the insert via void notifyOnStage(...).catch(()=>{}) and still returns the staged PendingAction unchanged; the hook can never throw into the insert path.",
+        "isWithinQuietHours handles wrap-midnight (start 22:00 / end 07:00 -> 23:30 and 06:00 quiet, 12:00 not).",
+        "triggers.ts does NOT import pendingActions (no cycle).",
+        "POST /api/notify/subscribe: principal via getPrincipal (401 if absent), Zod-validates a PushSubscriptionJSON, upserts push_subscription via savePreferences.",
+        "GET /api/notify/preferences: returns the principal's prefs via loadPreferences, creating a default row (enabled_events ['stage'], no quiet hours, channel webpush) if none.",
+        "POST /api/notify/preferences: Zod-validates { enabled_events?, quiet_hours_start?, quiet_hours_end? }, updates only provided fields via savePreferences; push subscription NOT settable here.",
+        "All handlers 401 without a session principal; runtime nodejs + dynamic force-dynamic; routes NOT added to the src/proxy.ts cron allowlist."
+      ],
+      "action": "preferences.ts: loadPreferences/savePreferences(upsert)/clearExpiredSubscription scoped to principal; isWithinQuietHours with wrap. triggers.ts: load, gate, send, log, clear-on-expired; body in try/catch, never re-throws. pendingActions.ts: void notifyOnStage(...).catch after insert. Both /api/notify routes model on api/actions/route.ts, go through the preferences helpers, Zod-validate (400 on bad), NOT in proxy allowlist. Tests: no-throw, gating, clear-on-expired, 401, principal-scoping.",
+      "context_files": [
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/agents/pendingActions.test.ts",
+        "src/app/api/actions/route.ts",
+        "src/lib/auth/session.ts",
+        "src/proxy.ts",
+        ".planning/decisions/ADR-008-notification-channel.md",
+        ".planning/decisions/ADR-003-enforced-confirm-undo.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "webPushChannel|notifyOnStage",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/agents/pendingActions.ts",
+          "pattern": "void notifyOnStage",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/notify/triggers.ts",
+          "pattern": "pendingActions",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/notify/preferences/route.ts",
+          "pattern": "loadPreferences|savePreferences",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/notify/subscribe/route.ts",
+          "pattern": "getPrincipal",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/notify/preferences/route.ts",
+          "pattern": "getPrincipal",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/proxy.ts",
+          "pattern": "notify",
+          "expect": "absent"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/notify/triggers.test.ts",
+            "src/lib/agents/pendingActions.test.ts",
+            "src/app/api/notify/preferences/route.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Settings UI: enable push + preferences + quiet hours",
+      "wave": 3,
+      "depends_on": [
+        "T2",
+        "T3"
+      ],
+      "persona": "frontend",
+      "files_modify": [
+        "src/components/Nav.tsx"
+      ],
+      "files_create": [
+        "src/app/settings/page.tsx"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "/settings renders under the app shell with the maritime dark-ocean tokens (matches Emails/Finance/Tasks).",
+        "Enable-notifications control: registers /sw.js, requests permission, pushManager.subscribe with the VAPID public key (NEXT_PUBLIC_VAPID_PUBLIC_KEY), POSTs the subscription to /api/notify/subscribe.",
+        "Unsupported browser OR denied permission shows a clear message, including the iOS 'install to Home Screen first' caveat (ADR-008).",
+        "Event opt-in toggles (incl. 'stage') + quiet-hours start/end inputs, loaded from and saved to /api/notify/preferences.",
+        "Loading, error, and permission/empty states handled; /settings link added to Nav.tsx."
+      ],
+      "action": "use client. Follow src/app/tasks/page.tsx structure + tokens (var(--bg), var(--surface), var(--border), var(--text), var(--accent), --sp-3, --radius, var(--font-sans) from globals.css). Enable flow inside a click handler (user gesture), guard serviceWorker/PushManager support. urlBase64ToUint8Array helper inline for applicationServerKey. NEXT_PUBLIC_VAPID_PUBLIC_KEY (public key, bundle-safe). Add { href: '/settings', label: 'Settings' } to the LINKS array in Nav.tsx.",
+      "context_files": [
+        "src/app/tasks/page.tsx",
+        "src/components/Nav.tsx",
+        "src/app/globals.css",
+        ".planning/decisions/ADR-008-notification-channel.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/app/settings/page.tsx",
+          "pattern": "pushManager.subscribe",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/settings/page.tsx",
+          "pattern": "/api/notify/subscribe",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/settings/page.tsx",
+          "pattern": "Home Screen|installed|iOS",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/components/Nav.tsx",
+          "pattern": "/settings",
+          "expect": "present"
+        }
+      ]
+    }
+  ]
+}

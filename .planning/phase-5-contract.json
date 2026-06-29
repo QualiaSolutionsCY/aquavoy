@@ -1,0 +1,264 @@
+{
+  "version": 1,
+  "phase": 5,
+  "goal": "A cron checks the admin@/rice@ inboxes ~4x/day, classifies new mail (invoice/credit-note/voyage-summary) via the LLM, is idempotent, and STAGES save-attachment/record-finance/generate-invoice/record-voyage proposals into the existing confirm/undo action-stack -- never auto-executing a financial write.",
+  "why": "This is the 'checks email 4x/day and presents what's ready' behavior -- the autonomous front-end of the M6 invoice/voyage pipeline whose confirm-and-execute back-end P2-P4 already shipped. P5 produces only cron + classification + staging; it ships independently.",
+  "generated_at": "2026-06-29T08:29:30Z",
+  "generated_by": "planner",
+  "source_plan_hash": "sha256:94642e86e48e9099661bd8d18213c6adf09d8131cd646fff3cc18f53a58f46e8",
+  "success_criteria": [
+    "A cron (/api/mail/scan/run, 0 */6 * * * in vercel.json, allowlisted in proxy.ts, CRON_SECRET-gated) runs ~4x/day.",
+    "The scan reads admin@aquavoy.com and rice@aquavoy.com, classifies each new message via the LLM (inboxClassifier, separate from briefing), and is idempotent on (mailbox, uid) via processed_messages (markProcessed commits BEFORE staging).",
+    "Financial messages (invoice / creditNote / voyageSummary) are staged as exactly ONE pending_actions row each (principal Wency, tool record_finance_entry / record_voyage_entry), surfacing automatically in the existing home-page action-stack via /api/actions.",
+    "The scan NEVER calls executeConfirmedAction -- no financial write happens without human confirmation (ADR-003).",
+    "A per-message error (classification failure, IMAP read error, staging failure) is caught, increments errors in ScanSummary, and never aborts the batch -- remaining messages in the same run still process.",
+    "processed_messages has RLS on, no policies (constitution); tsc clean; all new tests + proxy.test.ts pass."
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Idempotency table + processedMessages store",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "supabase/migrations/0018_processed_messages.sql",
+        "src/lib/mail/processedMessages.ts",
+        "src/lib/mail/processedMessages.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "Migration 0018 creates processed_messages(id, mailbox, uid, message_id, category, processed_at) with UNIQUE(mailbox, uid), RLS enabled, no policies.",
+        "isAlreadyProcessed(mailbox, uid) returns true for a previously-marked pair and false otherwise.",
+        "markProcessed is safe to call twice for the same (mailbox, uid) -- second call does not throw (upsert onConflict mailbox,uid, ignoreDuplicates)."
+      ],
+      "action": "Write 0018_processed_messages.sql (columns + UNIQUE(mailbox,uid) + processed_at index + enable RLS + no policies + comment). Write processedMessages.ts exporting markProcessed (upsert onConflict 'mailbox,uid'), isAlreadyProcessed (maybeSingle on mailbox+uid), cleanupProcessed (delete older than N days). Write processedMessages.test.ts mocking @/lib/supabase/server.",
+      "context_files": [
+        "supabase/migrations/0017_voyage_entries.sql",
+        "src/lib/mail/scheduled.ts",
+        ".planning/scope-m6.md"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "supabase/migrations/0018_processed_messages.sql",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0018_processed_messages.sql",
+          "pattern": "enable row level security",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0018_processed_messages.sql",
+          "pattern": "create policy",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "supabase/migrations/0018_processed_messages.sql",
+          "pattern": "unique \\(mailbox, ?uid\\)",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/mail/processedMessages.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T2",
+      "title": "Inbox classifier (separate from briefing.ts)",
+      "wave": 1,
+      "depends_on": [],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "src/lib/mail/inboxClassifier.ts",
+        "src/lib/mail/inboxClassifier.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "classifyMessage({from, subject, body}) returns one of six InboxCategory literals (invoice | creditNote | voyageSummary | important | routine | spam).",
+        "A credit-note email classifies as creditNote, a voyage-details email as voyageSummary, a supplier invoice as invoice.",
+        "A malformed model reply degrades to 'routine' rather than throwing (mirrors briefing.ts defensive parse)."
+      ],
+      "action": "Write inboxClassifier.ts: import complete/ChatMessage/ChatOptions from @/lib/openrouter/client; export InboxCategory union + ClassifyInput; SYSTEM_INSTRUCTION (join newlines) asking for STRICT JSON {category}; classifyMessage builds messages, calls complete, parses defensively (strip fence, JSON.parse try/catch, validate literal), returns 'routine' on any failure. Write inboxClassifier.test.ts mocking @/lib/openrouter/client.",
+      "context_files": [
+        "src/lib/mail/briefing.ts",
+        "src/lib/openrouter/client.ts",
+        ".planning/scope-m6.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/inboxClassifier.ts",
+          "pattern": "from \"@/lib/openrouter/client\"",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/inboxClassifier.ts",
+          "pattern": "creditNote|voyageSummary",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/mail/inboxClassifier.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T3",
+      "title": "Scan orchestration (list -> classify -> markProcessed -> stage)",
+      "wave": 2,
+      "depends_on": [
+        "T1",
+        "T2"
+      ],
+      "persona": "backend",
+      "files_modify": [],
+      "files_create": [
+        "src/lib/mail/inboxScan.ts",
+        "src/lib/mail/inboxScan.test.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "runInboxScan lists recent mail from admin@aquavoy.com and rice@aquavoy.com via listEmails, and for each not-already-processed message: classifies, calls markProcessed BEFORE any stagePendingAction, and stages exactly one pending action for the three financial categories.",
+        "An already-processed (mailbox, uid) is skipped -- classifyMessage and stagePendingAction are NOT called for it.",
+        "Each staged action uses principal 'Wency' and the matching tool (record_finance_entry / record_voyage_entry); runInboxScan NEVER calls executeConfirmedAction.",
+        "runInboxScan returns a ScanSummary and per-message errors never abort the batch (per-message try/catch)."
+      ],
+      "action": "Write inboxScan.ts: import listEmails/readEmail, classifyMessage, markProcessed/isAlreadyProcessed, stagePendingAction. SCAN_PRINCIPAL='Wency', MAILBOXES=[admin@,rice@], FINANCIAL=[invoice,creditNote,voyageSummary]. runInboxScan loops mailboxes->listEmails->per-message try/catch: skip if processed; readEmail; classify; markProcessed BEFORE stage; stage ONE action per financial message; return ScanSummary. Never import executeConfirmedAction. Write inboxScan.test.ts mocking all collaborators.",
+      "context_files": [
+        "src/lib/mail/imap.ts",
+        "src/lib/agents/pendingActions.ts",
+        "src/lib/mail/scheduled.ts",
+        ".planning/m6-onedrive-discovery.md",
+        ".planning/scope-m6.md"
+      ],
+      "verification": [
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/inboxScan.ts",
+          "pattern": "executeConfirmedAction",
+          "expect": "absent"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/inboxScan.ts",
+          "pattern": "admin@aquavoy.com",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/inboxScan.ts",
+          "pattern": "rice@aquavoy.com",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/lib/mail/inboxScan.ts",
+          "pattern": "Wency",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/lib/mail/inboxScan.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    },
+    {
+      "id": "T4",
+      "title": "Cron route + proxy allowlist + vercel.json schedule",
+      "wave": 3,
+      "depends_on": [
+        "T3"
+      ],
+      "persona": "backend",
+      "files_modify": [
+        "src/proxy.ts",
+        "vercel.json"
+      ],
+      "files_create": [
+        "src/app/api/mail/scan/run/route.ts"
+      ],
+      "files_delete": [],
+      "acceptance_criteria": [
+        "GET /api/mail/scan/run with Authorization: Bearer CRON_SECRET returns {ok:true,data:ScanSummary}; without/wrong token returns 401.",
+        "ALLOWLIST in src/proxy.ts contains /api/mail/scan/run.",
+        "vercel.json crons contains {path:/api/mail/scan/run, schedule:0 */6 * * *}.",
+        "src/proxy.test.ts passes (locks vercel.json crons and allowlist in lock-step)."
+      ],
+      "action": "Write src/app/api/mail/scan/run/route.ts mirroring scheduled/run/route.ts: runtime nodejs, force-dynamic, CRON_SECRET bearer gate, ok(await runInboxScan()) / Sentry.captureException + fail on error. Edit src/proxy.ts: add '/api/mail/scan/run' to ALLOWLIST Set + doc comment bullet. Edit vercel.json: append {path:/api/mail/scan/run, schedule:'0 */6 * * *'} to crons.",
+      "context_files": [
+        "src/app/api/mail/scheduled/run/route.ts",
+        "src/proxy.ts",
+        "vercel.json",
+        "src/proxy.test.ts"
+      ],
+      "verification": [
+        {
+          "type": "file-exists",
+          "path": "src/app/api/mail/scan/run/route.ts",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/mail/scan/run/route.ts",
+          "pattern": "CRON_SECRET",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/app/api/mail/scan/run/route.ts",
+          "pattern": "runInboxScan",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "src/proxy.ts",
+          "pattern": "/api/mail/scan/run",
+          "expect": "present"
+        },
+        {
+          "type": "grep-match",
+          "path": "vercel.json",
+          "pattern": "/api/mail/scan/run",
+          "expect": "present"
+        },
+        {
+          "type": "command-exit",
+          "command": "npx",
+          "args": [
+            "vitest",
+            "run",
+            "src/proxy.test.ts"
+          ],
+          "expected_exit": 0
+        }
+      ]
+    }
+  ]
+}
